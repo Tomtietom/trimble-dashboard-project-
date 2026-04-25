@@ -818,7 +818,8 @@ function openExtension(key){
   // en krijgt opnieuw token + hub-check. ?from=cockpit is een hint voor
   // een optionele "← Cockpit"-link in die extensie (niet verplicht).
   const sep = ext.url.includes('?') ? '&' : '?';
-  window.location.href = ext.url + sep + 'from=cockpit&v=' + Date.now();
+  // Geen Date.now() in URL — voorkomt TC's "Rechten aanvragen"-popup door iframe-URL stabiel te houden
+  window.location.href = ext.url + sep + 'from=cockpit';
 }
 
 // ============================================================
