@@ -480,7 +480,20 @@ async function init(){
       const dataStr = (typeof data==='string') ? data.substring(0,80) : JSON.stringify(data).substring(0,200);
       console.log('[TC-event] event:', event, '| data:', dataStr);
     } catch(e){}
-    // Probeer token uit elke mogelijke positie
+
+    // Sub-menu klik in TC zijbalk → 'extension.command' event met data.data === '<command>'
+    if (event === 'extension.command' && data && typeof data.data === 'string') {
+      const cmd = data.data;
+      // Hoofdmenu 'open_cockpit' negeren we — we zijn al op de cockpit
+      if (cmd === 'open_cockpit') { return; }
+      // Sub-command: zoek de bijbehorende extensie en open hem in het iframe
+      const ext = EXTENSIONS.find(function(e){ return ('open_' + e.key.replace(/-/g,'_')) === cmd; });
+      if (ext) { openExtension(ext.key); return; }
+    }
+
+    // Probeer token uit elke mogelijke positie (alleen relevant bij accessToken events,
+    // niet bij command events waar data.data een command-string is)
+    if (event === 'extension.command') return;
     let possibleToken = null;
     if (typeof data === 'string' && data.length > 20) possibleToken = data;
     else if (data && typeof data === 'object') {
@@ -502,11 +515,17 @@ async function init(){
   console.log('[TC] Project:', tcProject.name);
   setStep('tc','done');
 
-  // Menu-item registreren (title moet matchen met manifest.json)
+  // Menu-item registreren met subMenus voor de 4 extensies (kennisbank-pattern).
+  // TC toont "At Fielt Cockpit" als hoofd-item en eronder elk extensie als sub.
+  // Klik op hoofd → extension.command 'open_cockpit' (wij negeren, blijven op dashboard)
+  // Klik op sub → extension.command met de slug → wij doen location.href naar oude extensie
   const menuDef = {
     title: 'At Fielt Cockpit',
     icon: 'https://tomtietom.github.io/trimble-dashboard-project-/icon.png',
-    command: 'open_cockpit'
+    command: 'open_cockpit',
+    subMenus: EXTENSIONS.map(function(e){
+      return { title: e.title, command: 'open_' + e.key.replace(/-/g, '_') };
+    })
   };
   try {
     if (tcAPI.ui && typeof tcAPI.ui.setMenu==='function') tcAPI.ui.setMenu(menuDef);
