@@ -457,9 +457,26 @@ async function init(){
   setStep('tc','active');
   const apiLib = await waitForWorkspaceAPI(10000);
   tcAPI = await apiLib.connect(window.parent, function(event,data){
-    if (data && (data.type==='token'||event==='extension.accessToken')){
-      const t = (typeof data==='string')?data:(data.token||data.accessToken||null);
-      if (t&&t.length>20) tcToken = t;
+    // Verbose log: laat zien wat TC stuurt zodat we het juiste token-veld vinden
+    try {
+      const dataStr = (typeof data==='string') ? data.substring(0,80) : JSON.stringify(data).substring(0,200);
+      console.log('[TC-event] event:', event, '| data:', dataStr);
+    } catch(e){}
+    // Probeer token uit elke mogelijke positie
+    let possibleToken = null;
+    if (typeof data === 'string' && data.length > 20) possibleToken = data;
+    else if (data && typeof data === 'object') {
+      possibleToken = data.token || data.accessToken || data.access_token
+        || data.value || data.payload || null;
+      if (!possibleToken && data.data) {
+        possibleToken = (typeof data.data==='string' && data.data.length>20)
+          ? data.data
+          : (data.data.token || data.data.accessToken || data.data.access_token || null);
+      }
+    }
+    if (possibleToken && typeof possibleToken === 'string' && possibleToken.length > 20) {
+      console.log('[TC-event] Token opgepikt via event, lengte:', possibleToken.length);
+      tcToken = possibleToken;
     }
   }, 15000);
 
@@ -484,40 +501,61 @@ async function init(){
   else if (loc.includes('asia')){TC_API_BASE=TC_API_REGIONS.asia;tcRegion='asia';}
   else {TC_API_BASE=TC_API_REGIONS.europe;tcRegion='europe';}
 
-  // Token — 3 methodes (zelfde patroon als rechten-viewer)
+  // Token — meerdere methodes met retry (TC retourneert soms "Pending" en moet je opnieuw vragen)
   setStep('token','active');
   console.log('[TC] Token ophalen... (al beschikbaar via event?', !!tcToken, ')');
 
-  // Methode 1: requestPermission
-  if (!tcToken){
+  // Methode 1: requestPermission, max 3 pogingen met 2s pauze (na "Pending" werkt soms een retry)
+  for (let attempt = 0; !tcToken && attempt < 3; attempt++){
+    if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
     try {
-      console.log('[TC] Probeer requestPermission...');
+      console.log('[TC] requestPermission poging ' + (attempt+1) + '...');
       const r = await Promise.race([
         tcAPI.extension.requestPermission('accesstoken'),
         new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), 5000))
       ]);
       console.log('[TC] requestPermission resultaat:', typeof r, String(r).substring(0,50));
-      if (typeof r==='string'&&r.length>20) tcToken = r;
-      else if (r&&typeof r==='object') tcToken = r.token || r.accessToken || null;
-    } catch(e){ console.warn('[TC] requestPermission mislukt:', e.message); }
+      if (typeof r==='string' && r.length>20) tcToken = r;
+      else if (r && typeof r==='object') tcToken = r.token || r.accessToken || r.value || null;
+      // Tussentijdse event-poll: misschien is het token via event al binnen
+      if (!tcToken){
+        await new Promise(function(resolve){
+          const timeout = setTimeout(resolve, 1500);
+          const check = setInterval(function(){
+            if (tcToken){ clearInterval(check); clearTimeout(timeout); resolve(); }
+          }, 100);
+        });
+      }
+    } catch(e){ console.warn('[TC] requestPermission poging ' + (attempt+1) + ' faalde:', e.message); }
   }
 
-  // Methode 2: wacht op token via event (apiLib.connect callback zet tcToken)
+  // Methode 2: getPermission — ophalen van eerder verleende permission
+  if (!tcToken && tcAPI.extension && typeof tcAPI.extension.getPermission==='function'){
+    try {
+      console.log('[TC] Probeer getPermission(accesstoken)...');
+      const r = await tcAPI.extension.getPermission('accesstoken');
+      console.log('[TC] getPermission resultaat:', typeof r, String(r).substring(0,50));
+      if (typeof r==='string' && r.length>20) tcToken = r;
+      else if (r && typeof r==='object') tcToken = r.token || r.accessToken || r.value || null;
+    } catch(e){ console.warn('[TC] getPermission mislukt:', e.message); }
+  }
+
+  // Methode 3: nog langer wachten op event (10s)
   if (!tcToken){
-    console.log('[TC] Wachten op token via event...');
+    console.log('[TC] Wachten op token via event (10s)...');
     await new Promise(function(resolve){
-      const timeout = setTimeout(resolve, 5000);
+      const timeout = setTimeout(resolve, 10000);
       const check = setInterval(function(){
         if (tcToken){ clearInterval(check); clearTimeout(timeout); resolve(); }
       }, 200);
     });
   }
 
-  // Methode 3: getAccessToken fallback
+  // Methode 4: getAccessToken (legacy fallback)
   if (!tcToken && tcAPI.extension && typeof tcAPI.extension.getAccessToken==='function'){
     try {
       const t = await tcAPI.extension.getAccessToken();
-      if (t&&t.length>20) tcToken = t;
+      if (t && t.length>20) tcToken = t;
       console.log('[TC] getAccessToken resultaat:', !!tcToken);
     } catch(e){ console.warn('[TC] getAccessToken mislukt:', e.message); }
   }
