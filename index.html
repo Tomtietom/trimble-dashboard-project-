@@ -484,23 +484,50 @@ async function init(){
   else if (loc.includes('asia')){TC_API_BASE=TC_API_REGIONS.asia;tcRegion='asia';}
   else {TC_API_BASE=TC_API_REGIONS.europe;tcRegion='europe';}
 
-  // Token
+  // Token — 3 methodes (zelfde patroon als rechten-viewer)
   setStep('token','active');
+  console.log('[TC] Token ophalen... (al beschikbaar via event?', !!tcToken, ')');
+
+  // Methode 1: requestPermission
   if (!tcToken){
     try {
+      console.log('[TC] Probeer requestPermission...');
       const r = await Promise.race([
         tcAPI.extension.requestPermission('accesstoken'),
         new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), 5000))
       ]);
+      console.log('[TC] requestPermission resultaat:', typeof r, String(r).substring(0,50));
       if (typeof r==='string'&&r.length>20) tcToken = r;
-      else if (r&&r.token) tcToken = r.token;
-      else if (r&&r.accessToken) tcToken = r.accessToken;
-    } catch(e){ console.warn('[TC] requestPermission faalde:', e.message); }
+      else if (r&&typeof r==='object') tcToken = r.token || r.accessToken || null;
+    } catch(e){ console.warn('[TC] requestPermission mislukt:', e.message); }
   }
-  if (!tcToken && tcAPI.extension?.getAccessToken){
-    try { const t = await tcAPI.extension.getAccessToken(); if (t&&t.length>20) tcToken = t; } catch(e){}
+
+  // Methode 2: wacht op token via event (apiLib.connect callback zet tcToken)
+  if (!tcToken){
+    console.log('[TC] Wachten op token via event...');
+    await new Promise(function(resolve){
+      const timeout = setTimeout(resolve, 5000);
+      const check = setInterval(function(){
+        if (tcToken){ clearInterval(check); clearTimeout(timeout); resolve(); }
+      }, 200);
+    });
   }
-  if (!tcToken) throw new Error('Geen access token ontvangen van Trimble');
+
+  // Methode 3: getAccessToken fallback
+  if (!tcToken && tcAPI.extension && typeof tcAPI.extension.getAccessToken==='function'){
+    try {
+      const t = await tcAPI.extension.getAccessToken();
+      if (t&&t.length>20) tcToken = t;
+      console.log('[TC] getAccessToken resultaat:', !!tcToken);
+    } catch(e){ console.warn('[TC] getAccessToken mislukt:', e.message); }
+  }
+
+  if (!tcToken){
+    console.log('[TC] Geen token gevonden. Extension methodes:',
+      tcAPI.extension ? Object.keys(tcAPI.extension) : 'geen extension namespace');
+    console.log('[TC] Alle API namespaces:', Object.keys(tcAPI));
+    throw new Error('Geen access token beschikbaar. Controleer of de extensie toegang heeft tot het project.');
+  }
   console.log('[TC] Token OK, lengte:', tcToken.length);
   setStep('token','done');
 
