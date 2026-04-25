@@ -263,6 +263,48 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .ftr a:hover{text-decoration:underline}
 
 /* =========================================
+   Views (alles-in-1: switch tussen dashboard + 4 extensie-views zonder iframe-navigatie)
+   ========================================= */
+.view{display:none}
+.view.active{display:block}
+.view-placeholder{
+  background:#fff;border:1px solid var(--hl-light);
+  border-radius:var(--r-lg);padding:48px var(--s5);
+  max-width:680px;margin:24px auto;text-align:center;
+  box-shadow:0 4px 20px rgba(34,34,34,.04);
+}
+.view-placeholder .overline{color:var(--af);font-weight:600;text-transform:uppercase;letter-spacing:.15em;font-size:var(--fs-sm);margin-bottom:var(--s3)}
+.view-placeholder h2{font-family:'Montserrat',sans-serif;font-weight:800;font-size:28px;letter-spacing:-.02em;color:var(--dk);margin-bottom:var(--s3)}
+.view-placeholder p{color:var(--g5);line-height:1.6;margin-bottom:var(--s4)}
+.view-placeholder .ext-icon{
+  width:64px;height:64px;border-radius:var(--r-md);
+  background:var(--afl);color:var(--af);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto var(--s4);
+}
+.view-placeholder .ext-icon svg{width:32px;height:32px}
+.view-placeholder .actions{display:flex;gap:var(--s3);justify-content:center;flex-wrap:wrap;margin-top:var(--s4)}
+.btn-primary{
+  display:inline-flex;align-items:center;gap:var(--s2);
+  padding:10px 20px;background:var(--af);color:#fff;
+  border:0;border-radius:var(--r-md);
+  font-family:'Poppins',sans-serif;font-size:var(--fs-md);font-weight:600;
+  cursor:pointer;text-decoration:none;
+  transition:background .15s, transform .1s;
+  box-shadow:0 4px 14px rgba(212,130,26,.25);
+}
+.btn-primary:hover{background:var(--af2);transform:translateY(-1px)}
+.btn-secondary{
+  display:inline-flex;align-items:center;gap:var(--s2);
+  padding:10px 20px;background:transparent;color:var(--dk);
+  border:1px solid var(--hl);border-radius:var(--r-md);
+  font-family:'Poppins',sans-serif;font-size:var(--fs-md);font-weight:600;
+  cursor:pointer;text-decoration:none;
+  transition:border-color .15s, color .15s;
+}
+.btn-secondary:hover{border-color:var(--af);color:var(--af)}
+
+/* =========================================
    Responsive
    ========================================= */
 @media (max-width:768px){
@@ -271,6 +313,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   .wrap{padding:var(--s4)}
   .load-card{padding:var(--s5) var(--s4)}
   .load-card h2{font-size:26px}
+  .view-placeholder{padding:var(--s5) var(--s4)}
 }
 </style>
 </head>
@@ -302,29 +345,44 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   </header>
 
   <main class="wrap">
-    <section class="sec">
-      <div class="overline">Project in één oogopslag</div>
-      <div class="big-stats" id="stats">
-        <div class="bstat"><div class="lab">Leden</div><div class="val" id="st-members">–</div></div>
-        <div class="bstat"><div class="lab">Mappen</div><div class="val" id="st-folders">–</div></div>
-        <div class="bstat"><div class="lab">Groepen</div><div class="val" id="st-groups">–</div></div>
-        <div class="bstat"><div class="lab">Regio</div><div class="val small" id="st-region">–</div></div>
-      </div>
-    </section>
+    <!-- View: Dashboard (default) -->
+    <div class="view active" id="view-dashboard">
+      <section class="sec">
+        <div class="overline">Project in één oogopslag</div>
+        <div class="big-stats" id="stats">
+          <div class="bstat"><div class="lab">Leden</div><div class="val" id="st-members">–</div></div>
+          <div class="bstat"><div class="lab">Mappen</div><div class="val" id="st-folders">–</div></div>
+          <div class="bstat"><div class="lab">Groepen</div><div class="val" id="st-groups">–</div></div>
+          <div class="bstat"><div class="lab">Regio</div><div class="val small" id="st-region">–</div></div>
+        </div>
+      </section>
 
-    <section class="sec">
-      <div class="overline">Ga aan de slag</div>
-      <div class="sec-head"><h2>Kies een <em>extensie</em></h2></div>
-      <div class="tiles" id="tiles"></div>
-    </section>
+      <section class="sec">
+        <div class="overline">Ga aan de slag</div>
+        <div class="sec-head"><h2>Kies een <em>extensie</em></h2></div>
+        <div class="tiles" id="tiles"></div>
+      </section>
 
-    <section class="sec">
-      <div class="overline">Laatste activiteit</div>
-      <div class="sec-head"><h2>Recent in dit project</h2></div>
-      <div class="activity" id="activity">
-        <div class="activity-empty">Nog geen activiteit geladen</div>
-      </div>
-    </section>
+      <section class="sec">
+        <div class="overline">Laatste activiteit</div>
+        <div class="sec-head"><h2>Recent in dit project</h2></div>
+        <div class="activity" id="activity">
+          <div class="activity-empty">Nog geen activiteit geladen</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- View: Project Dashboard (placeholder, content komt in fase B) -->
+    <div class="view" id="view-project-dashboard"></div>
+
+    <!-- View: Documentenlijst Viewer (placeholder, content komt in fase B) -->
+    <div class="view" id="view-documentenlijst"></div>
+
+    <!-- View: Rechten Viewer (placeholder, content komt in fase B) -->
+    <div class="view" id="view-rechten-viewer"></div>
+
+    <!-- View: Projectinformatie toevoegen (placeholder, content komt in fase B) -->
+    <div class="view" id="view-project-upload"></div>
   </main>
 
   <footer class="ftr">
@@ -499,13 +557,13 @@ async function init(){
     } catch(e){}
 
     // Sub-menu klik in TC zijbalk → 'extension.command' event met data.data === '<command>'
+    // Alles-in-1: switch view binnen dezelfde iframe, geen URL-change → geen TC popup
     if (event === 'extension.command' && data && typeof data.data === 'string') {
       const cmd = data.data;
-      // Hoofdmenu 'open_cockpit' of sub-item 'Dashboard' → we zijn al op de cockpit, niets doen
-      if (cmd === 'open_cockpit' || cmd === 'open_dashboard') { return; }
-      // Sub-command: zoek de bijbehorende extensie en open hem in het iframe
+      if (cmd === 'open_cockpit' || cmd === 'open_dashboard') { showView('dashboard'); return; }
+      // Sub-command: zoek de bijbehorende extensie-view en switch
       const ext = EXTENSIONS.find(function(e){ return ('open_' + e.key.replace(/-/g,'_')) === cmd; });
-      if (ext) { openExtension(ext.key); return; }
+      if (ext) { if (ext.allowed !== false) showView(ext.key); return; }
     }
 
     // Probeer token uit elke mogelijke positie (alleen relevant bij accessToken events,
@@ -692,6 +750,7 @@ async function loadDashboard(){
   console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', '));
 
   renderTiles();
+  renderPlaceholders();
 
   const pid = tcProject.id;
 
@@ -807,22 +866,54 @@ function renderActivity(rootList){
 }
 
 // ============================================================
-//  Doorstart naar andere extensie
+//  Alles-in-1: view-switcher (geen iframe-navigatie meer = geen TC popups)
 // ============================================================
+function showView(name){
+  // 'name' is bv. 'dashboard', 'project-dashboard', 'documentenlijst', 'rechten-viewer', 'project-upload'
+  document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
+  const target = document.getElementById('view-' + name);
+  if (target) {
+    target.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else {
+    // Onbekende view → val terug op dashboard
+    document.getElementById('view-dashboard').classList.add('active');
+  }
+  // Hub-event voor analytics (welke views worden gebruikt)
+  if (window.atfieltHub){
+    try { window.atfieltHub.logEvent('feature', { action: 'view-switch', view: name }); } catch(e){}
+  }
+}
+
 function openExtension(key){
   const ext = EXTENSIONS.find(e => e.key === key);
   if (!ext) return;
+  if (ext.allowed === false) return; // disabled tegel
+  showView(ext.key);
+}
 
-  if (window.atfieltHub){
-    try { window.atfieltHub.logEvent('feature', {action:'open-extension', target:key}); } catch(e){}
-  }
-
-  // Navigatie binnen hetzelfde TC-iframe: oude extensie neemt het over
-  // en krijgt opnieuw token + hub-check. ?from=cockpit is een hint voor
-  // een optionele "← Cockpit"-link in die extensie (niet verplicht).
-  const sep = ext.url.includes('?') ? '&' : '?';
-  // Geen Date.now() in URL — voorkomt TC's "Rechten aanvragen"-popup door iframe-URL stabiel te houden
-  window.location.href = ext.url + sep + 'from=cockpit';
+// Renders placeholder-content in de 4 extensie-views (Fase A — Fase B vervangt dit door de echte UI)
+function renderPlaceholders(){
+  EXTENSIONS.forEach(function(ext){
+    const container = document.getElementById('view-' + ext.key);
+    if (!container) return;
+    container.innerHTML =
+        '<div class="view-placeholder">'
+      +   '<div class="ext-icon">' + ext.icon + '</div>'
+      +   '<div class="overline">' + escapeHtml(ext.title) + '</div>'
+      +   '<h2>Binnenkort hier <em>geïntegreerd</em></h2>'
+      +   '<p>' + escapeHtml(ext.desc) + '</p>'
+      +   '<p style="font-size:13px;color:var(--g4)">Voor nu: open de standalone-extensie in een nieuw tabblad. De volledige functionaliteit wordt stapsgewijs in de cockpit ingebouwd.</p>'
+      +   '<div class="actions">'
+      +     '<button class="btn-secondary" type="button" data-back>← Terug naar dashboard</button>'
+      +     '<a class="btn-primary" href="' + escapeHtml(ext.url) + '" target="_blank" rel="noopener">Open in nieuw tabblad ↗</a>'
+      +   '</div>'
+      + '</div>';
+  });
+  // Bind alle "Terug naar dashboard"-knoppen
+  document.querySelectorAll('[data-back]').forEach(function(btn){
+    btn.addEventListener('click', function(){ showView('dashboard'); });
+  });
 }
 
 // ============================================================
