@@ -501,8 +501,8 @@ async function init(){
     // Sub-menu klik in TC zijbalk → 'extension.command' event met data.data === '<command>'
     if (event === 'extension.command' && data && typeof data.data === 'string') {
       const cmd = data.data;
-      // Hoofdmenu 'open_cockpit' negeren we — we zijn al op de cockpit
-      if (cmd === 'open_cockpit') { return; }
+      // Hoofdmenu 'open_cockpit' of sub-item 'Dashboard' → we zijn al op de cockpit, niets doen
+      if (cmd === 'open_cockpit' || cmd === 'open_dashboard') { return; }
       // Sub-command: zoek de bijbehorende extensie en open hem in het iframe
       const ext = EXTENSIONS.find(function(e){ return ('open_' + e.key.replace(/-/g,'_')) === cmd; });
       if (ext) { openExtension(ext.key); return; }
@@ -540,9 +540,12 @@ async function init(){
     title: 'At Fielt Cockpit',
     icon: 'https://tomtietom.github.io/trimble-dashboard-project-/icon.png',
     command: 'open_cockpit',
-    subMenus: EXTENSIONS.map(function(e){
+    subMenus: [
+      // "Dashboard" als eerste sub-item zodat gebruiker altijd terug kan naar de cockpit-landing
+      { title: 'Dashboard', command: 'open_dashboard', icon: 'https://tomtietom.github.io/trimble-dashboard-project-/icon.png' }
+    ].concat(EXTENSIONS.map(function(e){
       return { title: e.title, command: 'open_' + e.key.replace(/-/g, '_'), icon: e.iconUrl };
-    })
+    }))
   };
   try {
     if (tcAPI.ui && typeof tcAPI.ui.setMenu==='function') tcAPI.ui.setMenu(menuDef);

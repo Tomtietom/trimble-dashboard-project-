@@ -1,16 +1,16 @@
 #!/bin/bash
-# deploy.sh — bump versie, commit + push. Breekt Trimble Connect iframe cache.
+# deploy.sh — commit + push. Houdt manifest URL stabiel (geen ?v= cache-buster).
 #
 # Gebruik:
 #   ./deploy.sh "Commit bericht hier"
 #
 # Wat het doet:
-#   1. Timestamp (YYYYMMDDHHmm) in manifest.json injecteren als ?v= query
-#   2. Alle wijzigingen committen met meegegeven bericht
-#   3. Git push
+#   1. Strip eventuele ?v= uit manifest.json url-veld (idempotent)
+#   2. Commit + push
+#   3. GitHub Pages bouwt opnieuw — TC ziet stabiele URL = registered URL
 #
-# Na ~1-3 min serveert GitHub Pages de nieuwe versie. Trimble Connect
-# ziet een nieuwe URL (?v=202604201547) dus cached niet de oude versie.
+# Cache-busting gebeurt via <meta http-equiv="Cache-Control"> in HTML head.
+# Resultaat: TC's "Rechten aanvragen"-popup blijft uit (URL-mismatch voorkomen).
 
 set -e
 cd "$(dirname "$0")"
@@ -18,28 +18,31 @@ cd "$(dirname "$0")"
 MSG="${1:-update}"
 V=$(date +%Y%m%d%H%M)
 
-# Update URL in manifest.json: <base>/?v=VERSIE
-NEW_URL=$(python3 -c "
+# Strip ?v=… uit manifest.json url (zorgt dat TC altijd dezelfde URL ziet)
+URL=$(python3 -c "
 import json
 with open('manifest.json','r') as f: m = json.load(f)
 base = m['url'].split('?')[0]
-m['url'] = base + '?v=$V'
+m['url'] = base
 with open('manifest.json','w') as f: json.dump(m, f, indent=2, ensure_ascii=False); f.write('\n')
 print(m['url'])
 ")
-BASE_URL=$(echo "$NEW_URL" | sed 's|?.*||')
 
 git add -A
+if git diff --cached --quiet; then
+  echo "Geen wijzigingen om te committen — niets te deployen."
+  exit 0
+fi
 git commit -m "$MSG
 
-Bump versie: $V
+Versie: $V
 "
 git push
 
 echo ""
-echo "✓ Gedeployed als versie $V"
-echo "  Manifest: ${BASE_URL}manifest.json"
-echo "  Cockpit:  $NEW_URL"
+echo "✓ Gedeployed (versie $V — stabiele URL zonder ?v=)"
+echo "  Manifest: ${URL}manifest.json"
+echo "  Cockpit:  ${URL}"
 echo ""
 echo "Wacht 1-3 min op GitHub Pages rebuild, dan herlaad Trimble Connect"
 echo "(complete tab sluiten & opnieuw openen, geen gewone refresh)."
