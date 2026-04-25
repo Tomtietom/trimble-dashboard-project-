@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cockpit | At Fielt</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- Trimble Connect Workspace API — altijd eerst laden -->
+<script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+
+<!-- At Fielt Extension Hub — NIET VERWIJDEREN (zie atfielt-extension-hub/HUB-INTEGRATION.md) -->
+<script src="https://atfielt-extension-hub.tom-da0.workers.dev/client.js"></script>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  /* At Fielt huisstijl — 1:1 uit brand guide en tc-viewer */
+  --af:#D4821A;--af2:#8a5410;--afl:#F5E6D6;
+  --dk:#222;--gr:#F5F0EA;
+  --ok:#15803d;--okbg:#f0fdf4;--warn:#b91c1c;
+  /* Neutrale grijsschaal */
+  --g1:#F9F9F9;--g2:#F5F0EA;--g3:#b8b5ad;--g4:#7F8C8D;--g5:#555555;--g6:#333333;
+  /* Hairlines */
+  --hl-light:#e8e2d8;--hl:#d6cdc0;
+  /* Border-radius */
+  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-pill:999px;
+  /* Spacing */
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;
+  /* Font-sizes */
+  --fs-xs:11px; --fs-sm:12px; --fs-md:13px; --fs-lg:15px; --fs-xl:18px;
+}
+
+body{
+  font-family:'Poppins',system-ui,-apple-system,sans-serif;
+  background:#fff;color:var(--dk);
+  min-height:100vh;font-size:14px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+}
+h1,h2,h3,h4{font-family:'Montserrat',system-ui,sans-serif;letter-spacing:-.02em;color:var(--dk)}
+/* Accent-woord: <em> binnen heading kleurt oranje (website hero pattern) */
+h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
+/* Overline pattern */
+.overline{
+  font-family:'Poppins',sans-serif;font-size:var(--fs-sm);font-weight:600;
+  color:var(--af);text-transform:uppercase;letter-spacing:.15em;
+  margin-bottom:var(--s3);
+}
+
+/* =========================================
+   Header (donker, sticky) — tc-viewer stijl
+   ========================================= */
+.hdr{
+  background:var(--dk);color:#fff;
+  padding:var(--s3) var(--s5);
+  display:flex;align-items:center;gap:var(--s3);
+  box-shadow:0 2px 8px rgba(0,0,0,.15);
+  position:sticky;top:0;z-index:100;
+  flex-wrap:wrap;
+}
+.hdr h1{
+  font-family:'Montserrat',sans-serif;font-size:var(--fs-lg);
+  font-weight:700;white-space:nowrap;color:#fff;
+  display:flex;align-items:center;gap:var(--s2);
+}
+.hdr h1 em{font-style:normal;color:var(--af);font-weight:700}
+.hdr .sub{
+  font-size:var(--fs-sm);color:rgba(255,255,255,.7);
+  padding-left:var(--s3);margin-left:var(--s1);
+  border-left:1px solid rgba(255,255,255,.15);
+  font-weight:500;
+}
+.hdr .spacer{flex:1}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 10px;border-radius:var(--r-pill);
+  font-size:var(--fs-sm);font-weight:600;
+  font-family:'Poppins',sans-serif;
+}
+.pill-email{background:rgba(255,255,255,.08);color:rgba(255,255,255,.85);border:1px solid rgba(255,255,255,.12)}
+.pill-role{background:var(--af);color:#fff}
+.pill-role.viewer{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.15)}
+
+/* =========================================
+   Loading-card — tc-viewer pattern
+   ========================================= */
+.pg-loading{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:calc(100vh - 56px);padding:var(--s6) var(--s5);
+  background:linear-gradient(180deg,var(--gr) 0%,#fff 100%);
+}
+.load-card{
+  background:#fff;border-radius:var(--r-lg);padding:48px var(--s5);
+  max-width:520px;width:100%;text-align:center;
+  box-shadow:0 12px 40px rgba(0,0,0,.06);
+  border:1px solid rgba(0,0,0,.05);
+}
+.load-card h2{
+  font-family:'Montserrat',sans-serif;font-weight:800;
+  font-size:32px;letter-spacing:-.02em;line-height:1.1;
+  color:var(--dk);margin-bottom:var(--s3);
+}
+.load-sub{
+  font-size:16px;color:var(--g4);margin-bottom:var(--s5);
+  line-height:1.6;font-weight:500;
+}
+.load-steps{text-align:left;margin-bottom:var(--s4)}
+.load-step{
+  padding:6px 0;font-size:14px;color:var(--g3);
+  display:flex;align-items:center;gap:10px;transition:color .2s;
+}
+.load-step .si{display:inline-block;min-width:18px;text-align:center;font-size:14px}
+.load-step.active{color:var(--dk)}
+.load-step.done{color:var(--dk)}
+.load-step.done .si{color:var(--af)}
+.load-step.err{color:var(--warn)}
+.load-err{
+  margin-top:var(--s4);padding:var(--s3) var(--s4);
+  background:#fde8e8;border:1px solid #f5c0c0;border-left:4px solid var(--warn);
+  border-radius:var(--r-sm);color:var(--warn);
+  font-size:13px;text-align:left;line-height:1.5;
+}
+.load-err a{color:var(--warn);font-weight:600}
+
+/* =========================================
+   Main content
+   ========================================= */
+.wrap{max-width:1100px;margin:0 auto;padding:var(--s5) var(--s5) var(--s6)}
+
+.sec{margin-bottom:var(--s6)}
+.sec-head{margin-bottom:var(--s4)}
+.sec-head h2{
+  font-family:'Montserrat',sans-serif;font-weight:700;
+  font-size:22px;letter-spacing:-.02em;color:var(--dk);
+}
+
+/* Big stats — tc-viewer dashboard pattern */
+.big-stats{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+  gap:var(--s3);margin-bottom:var(--s5);
+}
+.bstat{
+  background:#fff;border:1px solid var(--hl-light);
+  border-radius:var(--r-md);padding:var(--s4) var(--s5);
+  box-shadow:0 2px 8px rgba(0,0,0,.03);
+}
+.bstat .lab{
+  font-size:10px;color:var(--g4);text-transform:uppercase;
+  letter-spacing:.8px;font-family:'Montserrat',sans-serif;font-weight:600;
+  margin-bottom:var(--s1);
+}
+.bstat .val{
+  font-size:28px;font-weight:800;font-family:'Montserrat',sans-serif;
+  color:var(--dk);line-height:1.1;letter-spacing:-.02em;
+}
+.bstat .val.small{font-size:16px;font-weight:700}
+.bstat .val .muted{color:var(--g3);font-weight:600}
+
+/* =========================================
+   Tiles — extension-card pattern
+   ========================================= */
+.tiles{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:var(--s4);
+}
+.tile{
+  background:#fff;border:1px solid rgba(0,0,0,.06);
+  border-radius:var(--r-lg);padding:var(--s5);
+  cursor:pointer;transition:transform .2s, box-shadow .2s, border-color .2s;
+  display:flex;flex-direction:column;gap:var(--s3);
+  text-align:left;font-family:'Poppins',sans-serif;
+  box-shadow:0 4px 20px rgba(34,34,34,.04);
+  width:100%;
+}
+.tile:hover{
+  transform:translateY(-4px);
+  box-shadow:0 12px 40px rgba(0,0,0,.08);
+  border-color:var(--afl);
+}
+.tile:focus-visible{outline:2px solid var(--af);outline-offset:2px}
+.tile-icon{
+  width:44px;height:44px;border-radius:var(--r-md);
+  background:var(--afl);color:var(--af);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.tile-icon svg{width:22px;height:22px}
+.tile-title{
+  font-family:'Montserrat',sans-serif;font-weight:700;
+  font-size:var(--fs-xl);letter-spacing:-.02em;color:var(--dk);
+}
+.tile-desc{
+  font-size:var(--fs-md);color:var(--g5);line-height:1.6;
+  flex-grow:1;
+}
+.tile-foot{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:var(--s3);padding-top:var(--s3);
+  border-top:1px solid var(--hl-light);
+  font-size:var(--fs-sm);
+}
+.tile-stat{color:var(--g4);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile-cta{color:var(--af);font-weight:600;white-space:nowrap}
+
+/* =========================================
+   Activity
+   ========================================= */
+.activity{
+  background:#fff;border:1px solid var(--hl-light);
+  border-radius:var(--r-md);overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.03);
+}
+.activity-item{
+  padding:var(--s3) var(--s4);
+  border-bottom:1px solid var(--hl-light);
+  display:flex;align-items:center;gap:var(--s3);
+  font-size:var(--fs-md);
+}
+.activity-item:last-child{border-bottom:none}
+.activity-item .ac-ico{
+  width:28px;height:28px;border-radius:var(--r-sm);
+  background:var(--gr);color:var(--g5);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.activity-item .ac-ico svg{width:14px;height:14px}
+.activity-item .name{
+  flex-grow:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--dk);font-weight:500;
+}
+.activity-item .meta{color:var(--g4);font-size:var(--fs-sm);white-space:nowrap}
+.activity-empty{
+  padding:var(--s5);text-align:center;color:var(--g4);
+  font-size:var(--fs-md);
+}
+
+/* =========================================
+   Footer
+   ========================================= */
+.ftr{
+  text-align:center;color:var(--g5);font-size:var(--fs-sm);
+  padding:var(--s5);
+  background:var(--gr);border-top:1px solid var(--hl-light);
+  margin-top:var(--s5);
+}
+.ftr a{color:var(--af);text-decoration:none;font-weight:500}
+.ftr a:hover{text-decoration:underline}
+
+/* =========================================
+   Responsive
+   ========================================= */
+@media (max-width:768px){
+  .hdr{padding:var(--s3) var(--s4)}
+  .hdr .sub{display:none}
+  .wrap{padding:var(--s4)}
+  .load-card{padding:var(--s5) var(--s4)}
+  .load-card h2{font-size:26px}
+}
+</style>
+</head>
+<body>
+
+<!-- Laadscherm — tc-viewer stijl -->
+<div id="loading" class="pg-loading">
+  <div class="load-card">
+    <div class="overline">Cockpit</div>
+    <h2>Klaarmaken voor <em>vluchtklaar</em></h2>
+    <p class="load-sub">Eén moment, we halen je projectgegevens binnen.</p>
+    <div class="load-steps" id="loadSteps">
+      <div class="load-step active" data-step="tc"><span class="si">◐</span><span>Verbinden met Trimble Connect</span></div>
+      <div class="load-step" data-step="token"><span class="si">◯</span><span>Access token ophalen</span></div>
+      <div class="load-step" data-step="hub"><span class="si">◯</span><span>Toegang verifiëren bij At Fielt Hub</span></div>
+      <div class="load-step" data-step="data"><span class="si">◯</span><span>Projectgegevens laden</span></div>
+    </div>
+    <div id="loadErr"></div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app" style="display:none">
+  <header class="hdr">
+    <h1>At <em>Fielt</em> <span class="sub" id="projName">–</span></h1>
+    <div class="spacer"></div>
+    <span id="userEmail" class="pill pill-email">–</span>
+    <span id="userRole" class="pill pill-role viewer">–</span>
+  </header>
+
+  <main class="wrap">
+    <section class="sec">
+      <div class="overline">Project in één oogopslag</div>
+      <div class="big-stats" id="stats">
+        <div class="bstat"><div class="lab">Leden</div><div class="val" id="st-members">–</div></div>
+        <div class="bstat"><div class="lab">Mappen</div><div class="val" id="st-folders">–</div></div>
+        <div class="bstat"><div class="lab">Groepen</div><div class="val" id="st-groups">–</div></div>
+        <div class="bstat"><div class="lab">Regio</div><div class="val small" id="st-region">–</div></div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="overline">Ga aan de slag</div>
+      <div class="sec-head"><h2>Kies een <em>extensie</em></h2></div>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <section class="sec">
+      <div class="overline">Laatste activiteit</div>
+      <div class="sec-head"><h2>Recent in dit project</h2></div>
+      <div class="activity" id="activity">
+        <div class="activity-empty">Nog geen activiteit geladen</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="ftr">
+    At Fielt Cockpit · <a href="mailto:info@atfielt.nl">info@atfielt.nl</a> · <a href="https://bimplementeer.nl" target="_blank" rel="noopener">bimplementeer.nl</a>
+  </footer>
+</div>
+
+<script>
+// ============================================================
+//  Slug in de hub-database (moet matchen)
+// ============================================================
+const EXTENSION_SLUG = 'cockpit';
+
+// ============================================================
+//  SVG-iconen (inline — geen externe requests, schalen scherp)
+// ============================================================
+const ICON_DASHBOARD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>';
+const ICON_DOCS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+const ICON_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+const ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
+const ICON_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+const ICON_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+
+// ============================================================
+//  De 4 bestaande extensies — doorstart-targets
+// ============================================================
+const EXTENSIONS = [
+  {
+    key: 'project-dashboard',
+    title: 'Project Dashboard',
+    icon: ICON_DASHBOARD,
+    desc: 'Overzicht van al je Trimble Connect projecten met rollen, leden en activiteit.',
+    url: 'https://tomtietom.github.io/trimble-project-dashboard/',
+  },
+  {
+    key: 'documentenlijst',
+    title: 'Documentenlijst Viewer',
+    icon: ICON_DOCS,
+    desc: 'Documentenlijst met metadata, filters, versies en exporteerbare overzichten.',
+    url: 'https://tomtietom.github.io/tc-viewer/',
+  },
+  {
+    key: 'rechten-viewer',
+    title: 'Rechten Viewer',
+    icon: ICON_LOCK,
+    desc: 'Visueel overzicht van maprechten, groepen en gebruikers per project.',
+    url: 'https://tomtietom.github.io/trimble-rechten-viewer/',
+  },
+  {
+    key: 'project-upload',
+    title: 'Projectinformatie toevoegen',
+    icon: ICON_UPLOAD,
+    desc: 'Begeleide upload-wizard: documenten met metadata op de juiste plek.',
+    url: 'https://tomtietom.github.io/trimble-project-upload/',
+  },
+];
+
+// ============================================================
+//  Trimble regio → REST base URL
+// ============================================================
+const TC_API_REGIONS = {
+  europe: 'https://app21.connect.trimble.com/tc/api/2.0',
+  'north america': 'https://app.connect.trimble.com/tc/api/2.0',
+  asia: 'https://app31.connect.trimble.com/tc/api/2.0',
+};
+let TC_API_BASE = TC_API_REGIONS.europe;
+
+let tcAPI = null;
+let tcToken = null;
+let tcProject = null;
+let tcRegion = 'europe';
+let currentUserEmail = null;
+
+// ============================================================
+//  Helpers
+// ============================================================
+function $(id){return document.getElementById(id)}
+function escapeHtml(s){
+  return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function setStep(key, state){
+  const el = document.querySelector('[data-step="'+key+'"]');
+  if (!el) return;
+  el.classList.remove('active','done','err');
+  el.classList.add(state);
+  const si = el.querySelector('.si');
+  if (state === 'done') si.textContent = '●';
+  else if (state === 'active') si.textContent = '◐';
+  else if (state === 'err') si.textContent = '✕';
+  else si.textContent = '◯';
+}
+
+function showLoadError(msg){
+  $('loadErr').innerHTML = '<div class="load-err">'+escapeHtml(msg)+'<br><br>Herlaad de tab of neem contact op: <a href="mailto:info@atfielt.nl">info@atfielt.nl</a></div>';
+}
+
+function waitForWorkspaceAPI(maxWait){
+  return new Promise(function(resolve,reject){
+    let api = window.WorkspaceAPI||window.Extensions||window.TrimbleConnectWorkspace;
+    if (api) return resolve(api);
+    const start = Date.now();
+    const iv = setInterval(function(){
+      api = window.WorkspaceAPI||window.Extensions||window.TrimbleConnectWorkspace;
+      if (api){clearInterval(iv);resolve(api);}
+      else if (Date.now()-start>maxWait){clearInterval(iv);reject(new Error('Workspace API timeout'));}
+    }, 200);
+  });
+}
+
+async function tcFetch(path){
+  const r = await fetch(TC_API_BASE+path, {
+    headers:{Authorization:'Bearer '+tcToken, Accept:'application/json'},
+  });
+  if (!r.ok) throw new Error('TC API '+r.status+': '+path);
+  return r.json();
+}
+
+async function tcFetchSafe(path, fallback){
+  try { return await tcFetch(path); }
+  catch(e){ console.warn('[TC] fetch failed:', path, e.message); return fallback; }
+}
+
+function formatDate(iso){
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const diff = (Date.now()-d)/1000;
+    if (diff<60) return 'zojuist';
+    if (diff<3600) return Math.floor(diff/60)+' min geleden';
+    if (diff<86400) return Math.floor(diff/3600)+' uur geleden';
+    if (diff<604800) return Math.floor(diff/86400)+' dgn geleden';
+    return d.toLocaleDateString('nl-NL',{day:'2-digit',month:'short'});
+  } catch(e){ return ''; }
+}
+
+// ============================================================
+//  Init
+// ============================================================
+async function init(){
+  setStep('tc','active');
+  const apiLib = await waitForWorkspaceAPI(10000);
+  tcAPI = await apiLib.connect(window.parent, function(event,data){
+    if (data && (data.type==='token'||event==='extension.accessToken')){
+      const t = (typeof data==='string')?data:(data.token||data.accessToken||null);
+      if (t&&t.length>20) tcToken = t;
+    }
+  }, 15000);
+
+  tcProject = await tcAPI.project.getCurrentProject();
+  console.log('[TC] Project:', tcProject.name);
+  setStep('tc','done');
+
+  // Menu-item registreren (title moet matchen met manifest.json)
+  const menuDef = {
+    title: 'At Fielt Cockpit',
+    icon: 'https://tomtietom.github.io/trimble-dashboard-project-/icon.png',
+    command: 'open_cockpit'
+  };
+  try {
+    if (tcAPI.ui && typeof tcAPI.ui.setMenu==='function') tcAPI.ui.setMenu(menuDef);
+    else if (tcAPI.extension && typeof tcAPI.extension.setMenu==='function') tcAPI.extension.setMenu(menuDef);
+  } catch(e){ console.warn('[TC] setMenu faalde:', e.message); }
+
+  // Regio bepalen
+  const loc = (tcProject.location||'europe').toLowerCase();
+  if (loc.includes('america')||loc.includes('north')){TC_API_BASE=TC_API_REGIONS['north america'];tcRegion='north america';}
+  else if (loc.includes('asia')){TC_API_BASE=TC_API_REGIONS.asia;tcRegion='asia';}
+  else {TC_API_BASE=TC_API_REGIONS.europe;tcRegion='europe';}
+
+  // Token
+  setStep('token','active');
+  if (!tcToken){
+    try {
+      const r = await Promise.race([
+        tcAPI.extension.requestPermission('accesstoken'),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), 5000))
+      ]);
+      if (typeof r==='string'&&r.length>20) tcToken = r;
+      else if (r&&r.token) tcToken = r.token;
+      else if (r&&r.accessToken) tcToken = r.accessToken;
+    } catch(e){ console.warn('[TC] requestPermission faalde:', e.message); }
+  }
+  if (!tcToken && tcAPI.extension?.getAccessToken){
+    try { const t = await tcAPI.extension.getAccessToken(); if (t&&t.length>20) tcToken = t; } catch(e){}
+  }
+  if (!tcToken) throw new Error('Geen access token ontvangen van Trimble');
+  console.log('[TC] Token OK, lengte:', tcToken.length);
+  setStep('token','done');
+
+  // ╔══════════════════════════════════════════════════════════╗
+  // ║  AT FIELT EXTENSION HUB — NIET VERWIJDEREN               ║
+  // ║  Toegangscontrole + usage tracking via hub.              ║
+  // ║  Referentie: atfielt-extension-hub/HUB-INTEGRATION.md    ║
+  // ║  Als je dit blok weghaalt is de extensie niet beschermd  ║
+  // ║  en verschijnt er niks in het admin dashboard.           ║
+  // ╚══════════════════════════════════════════════════════════╝
+  setStep('hub','active');
+  if (!window.atfieltHub){
+    document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;">At Fielt Hub kon niet geladen worden. Controleer je internetverbinding en herlaad.<br><br><a href="mailto:info@atfielt.nl">info@atfielt.nl</a></div>';
+    throw new Error('Hub client niet geladen');
+  }
+  await window.atfieltHub.check({
+    slug: EXTENSION_SLUG,
+    tcToken: tcToken,
+    tcProject: tcProject,
+    apiBase: TC_API_BASE,
+  });
+  // ╔══════════════════════════════════════════════════════════╗
+  // ║  EINDE AT FIELT HUB BLOK                                 ║
+  // ╚══════════════════════════════════════════════════════════╝
+  setStep('hub','done');
+
+  currentUserEmail = (window.atfieltTcContext && window.atfieltTcContext.userEmail) || null;
+
+  setStep('data','active');
+  await loadDashboard();
+  setStep('data','done');
+
+  // [HUB] logEvent — niet verwijderen
+  if (window.atfieltHub){
+    window.atfieltHub.logEvent('feature', {
+      action: 'cockpit-loaded',
+      region: tcRegion,
+    });
+  }
+  // [HUB] einde
+
+  // Cross-fade naar app
+  $('loading').style.display = 'none';
+  $('app').style.display = '';
+}
+
+// ============================================================
+//  Dashboard
+// ============================================================
+async function loadDashboard(){
+  $('projName').textContent = tcProject.name || '';
+  $('userEmail').textContent = currentUserEmail || 'Onbekend';
+  $('st-region').textContent = tcRegion === 'north america' ? 'N-Amerika' : (tcRegion.charAt(0).toUpperCase()+tcRegion.slice(1));
+
+  renderTiles();
+
+  const pid = tcProject.id;
+  const [users, folders, groups] = await Promise.all([
+    tcFetchSafe('/projects/'+pid+'/users', []),
+    tcFetchSafe('/projects/'+pid+'/folders', []),
+    tcFetchSafe('/projects/'+pid+'/groups', []),
+  ]);
+
+  const membersCount = Array.isArray(users) ? users.length : (users?.items?.length || 0);
+  const foldersCount = Array.isArray(folders) ? folders.length : (folders?.items?.length || 0);
+  const groupsCount  = Array.isArray(groups)  ? groups.length  : (groups?.items?.length  || 0);
+
+  $('st-members').textContent = membersCount || '–';
+  $('st-folders').textContent = foldersCount || '–';
+  $('st-groups').textContent  = groupsCount  || '–';
+
+  // Gebruikersrol bepalen
+  const rolePill = $('userRole');
+  let role = null;
+  if (Array.isArray(users) && currentUserEmail){
+    const me = users.find(u => (u.email||'').toLowerCase() === currentUserEmail.toLowerCase());
+    if (me) role = me.role || me.projectRole || null;
+  }
+  if (role){
+    rolePill.textContent = String(role).charAt(0).toUpperCase() + String(role).slice(1).toLowerCase();
+    if (/admin/i.test(role)) { rolePill.classList.remove('viewer'); }
+    else { rolePill.classList.add('viewer'); }
+  } else {
+    rolePill.textContent = 'Gebruiker';
+    rolePill.classList.add('viewer');
+  }
+
+  // Kerngetallen naar tegels
+  updateTileStat('project-dashboard', 'Alle projecten');
+  updateTileStat('rechten-viewer', foldersCount ? foldersCount+' mappen · '+groupsCount+' groepen' : 'Rechtenmatrix');
+  updateTileStat('documentenlijst', 'Documentenlijst');
+  updateTileStat('project-upload', 'Upload-wizard');
+
+  // Laatste activiteit
+  renderActivity(folders);
+}
+
+function renderTiles(){
+  const wrap = $('tiles');
+  wrap.innerHTML = EXTENSIONS.map(function(e){
+    return '<button class="tile" type="button" data-key="'+escapeHtml(e.key)+'" aria-label="'+escapeHtml(e.title)+'">'
+      + '<div class="tile-icon">'+e.icon+'</div>'
+      + '<div class="tile-title">'+escapeHtml(e.title)+'</div>'
+      + '<div class="tile-desc">'+escapeHtml(e.desc)+'</div>'
+      + '<div class="tile-foot">'
+        + '<span class="tile-stat" data-stat="'+escapeHtml(e.key)+'">–</span>'
+        + '<span class="tile-cta">Openen →</span>'
+      + '</div>'
+      + '</button>';
+  }).join('');
+  wrap.querySelectorAll('.tile').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      openExtension(btn.getAttribute('data-key'));
+    });
+  });
+}
+
+function updateTileStat(key, text){
+  const el = document.querySelector('[data-stat="'+key+'"]');
+  if (el) el.textContent = text;
+}
+
+async function renderActivity(folders){
+  const el = $('activity');
+  const items = [];
+  try {
+    const rootFolders = Array.isArray(folders) ? folders : (folders?.items || []);
+    const topFolders = rootFolders.slice(0, 3);
+    for (const f of topFolders){
+      const sub = await tcFetchSafe('/folders/'+f.id+'/items?pageSize=5', {items:[]});
+      const list = Array.isArray(sub) ? sub : (sub.items || []);
+      for (const it of list) items.push(it);
+      if (items.length >= 10) break;
+    }
+  } catch(e){ console.warn('[Activity] load faalde:', e.message); }
+
+  items.sort((a,b) => new Date(b.modifiedOn||b.updatedOn||0) - new Date(a.modifiedOn||a.updatedOn||0));
+  const top = items.slice(0, 5);
+
+  if (top.length === 0){
+    el.innerHTML = '<div class="activity-empty">Geen recente activiteit gevonden</div>';
+    return;
+  }
+  el.innerHTML = top.map(function(it){
+    const name = it.name || it.title || 'Onbekend';
+    const when = formatDate(it.modifiedOn || it.updatedOn);
+    const isFolder = it.type === 'FOLDER';
+    return '<div class="activity-item">'
+      + '<span class="ac-ico">'+(isFolder ? ICON_FOLDER : ICON_FILE)+'</span>'
+      + '<span class="name">'+escapeHtml(name)+'</span>'
+      + '<span class="meta">'+escapeHtml(when)+'</span>'
+      + '</div>';
+  }).join('');
+}
+
+// ============================================================
+//  Doorstart naar andere extensie
+// ============================================================
+function openExtension(key){
+  const ext = EXTENSIONS.find(e => e.key === key);
+  if (!ext) return;
+
+  if (window.atfieltHub){
+    try { window.atfieltHub.logEvent('feature', {action:'open-extension', target:key}); } catch(e){}
+  }
+
+  // Navigatie binnen hetzelfde TC-iframe: oude extensie neemt het over
+  // en krijgt opnieuw token + hub-check. ?from=cockpit is een hint voor
+  // een optionele "← Cockpit"-link in die extensie (niet verplicht).
+  const sep = ext.url.includes('?') ? '&' : '?';
+  window.location.href = ext.url + sep + 'from=cockpit&v=' + Date.now();
+}
+
+// ============================================================
+//  Start
+// ============================================================
+document.addEventListener('DOMContentLoaded', function(){
+  init().catch(function(e){
+    console.error('[Cockpit] Init fout:', e);
+    // Markeer welke stap nog active was als err
+    const active = document.querySelector('.load-step.active');
+    if (active) { active.classList.remove('active'); active.classList.add('err'); const si = active.querySelector('.si'); if (si) si.textContent = '✕'; }
+    showLoadError('Kon cockpit niet laden: '+e.message);
+  });
+});
+</script>
+</body>
+</html>
