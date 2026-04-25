@@ -424,12 +424,30 @@ function waitForWorkspaceAPI(maxWait){
   });
 }
 
+// Cloudflare-proxy als fallback bij CORS-fouten — zelfde patroon als tc-viewer (regel 3953)
+const TC_PROXY_BASE = 'https://tc-proxy.tom-da0.workers.dev';
+
+function tcRegionShort(){
+  if (TC_API_BASE.indexOf('app21')>=0) return 'eu';
+  if (TC_API_BASE.indexOf('app31')>=0) return 'ap';
+  return 'us';
+}
+
 async function tcFetch(path){
-  const r = await fetch(TC_API_BASE+path, {
-    headers:{Authorization:'Bearer '+tcToken, Accept:'application/json'},
-  });
-  if (!r.ok) throw new Error('TC API '+r.status+': '+path);
-  return r.json();
+  const direct = TC_API_BASE + path;
+  const proxy  = TC_PROXY_BASE + '/tc/' + tcRegionShort() + path;
+  const headers = { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' };
+  let lastErr = null;
+  for (const url of [direct, proxy]){
+    try {
+      const r = await fetch(url, { headers: headers });
+      if (!r.ok) { lastErr = new Error('TC API '+r.status+': '+path); continue; }
+      return await r.json();
+    } catch(e) {
+      lastErr = e; // CORS of netwerk: probeer volgende
+    }
+  }
+  throw lastErr || new Error('TC fetch faalde voor '+path);
 }
 
 async function tcFetchSafe(path, fallback){
@@ -623,15 +641,22 @@ async function loadDashboard(){
   renderTiles();
 
   const pid = tcProject.id;
-  const [users, folders, groups] = await Promise.all([
+
+  // Project-data eerst (voor rootId) — endpoints zoals rechten-viewer ze gebruikt
+  const projData = await tcFetchSafe('/projects/'+pid, null);
+  const rootId = projData && projData.rootId;
+
+  // Parallel: users, groups (queryparam-vorm zoals rechten-viewer), root-items voor folder-count
+  const [users, groups, rootItems] = await Promise.all([
     tcFetchSafe('/projects/'+pid+'/users', []),
-    tcFetchSafe('/projects/'+pid+'/folders', []),
-    tcFetchSafe('/projects/'+pid+'/groups', []),
+    tcFetchSafe('/groups?projectId='+pid, []),
+    rootId ? tcFetchSafe('/folders/'+rootId+'/items?pageSize=500', {items:[]}) : Promise.resolve({items:[]}),
   ]);
 
   const membersCount = Array.isArray(users) ? users.length : (users?.items?.length || 0);
-  const foldersCount = Array.isArray(folders) ? folders.length : (folders?.items?.length || 0);
   const groupsCount  = Array.isArray(groups)  ? groups.length  : (groups?.items?.length  || 0);
+  const rootList = Array.isArray(rootItems) ? rootItems : (rootItems.items || []);
+  const foldersCount = rootList.filter(function(it){ return it.type === 'FOLDER'; }).length;
 
   $('st-members').textContent = membersCount || '–';
   $('st-folders').textContent = foldersCount || '–';
@@ -659,8 +684,8 @@ async function loadDashboard(){
   updateTileStat('documentenlijst', 'Documentenlijst');
   updateTileStat('project-upload', 'Upload-wizard');
 
-  // Laatste activiteit
-  renderActivity(folders);
+  // Laatste activiteit — hergebruik root-items (al opgehaald) ipv extra fetches
+  renderActivity(rootList);
 }
 
 function renderTiles(){
@@ -688,21 +713,10 @@ function updateTileStat(key, text){
   if (el) el.textContent = text;
 }
 
-async function renderActivity(folders){
+function renderActivity(rootList){
   const el = $('activity');
-  const items = [];
-  try {
-    const rootFolders = Array.isArray(folders) ? folders : (folders?.items || []);
-    const topFolders = rootFolders.slice(0, 3);
-    for (const f of topFolders){
-      const sub = await tcFetchSafe('/folders/'+f.id+'/items?pageSize=5', {items:[]});
-      const list = Array.isArray(sub) ? sub : (sub.items || []);
-      for (const it of list) items.push(it);
-      if (items.length >= 10) break;
-    }
-  } catch(e){ console.warn('[Activity] load faalde:', e.message); }
-
-  items.sort((a,b) => new Date(b.modifiedOn||b.updatedOn||0) - new Date(a.modifiedOn||a.updatedOn||0));
+  const items = Array.isArray(rootList) ? rootList.slice() : [];
+  items.sort(function(a,b){ return new Date(b.modifiedOn||b.updatedOn||0) - new Date(a.modifiedOn||a.updatedOn||0); });
   const top = items.slice(0, 5);
 
   if (top.length === 0){
