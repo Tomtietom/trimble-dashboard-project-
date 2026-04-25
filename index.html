@@ -182,6 +182,19 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   border-color:var(--afl);
 }
 .tile:focus-visible{outline:2px solid var(--af);outline-offset:2px}
+.tile.disabled{
+  cursor:not-allowed;opacity:.55;filter:grayscale(.6);
+}
+.tile.disabled:hover{
+  transform:none;box-shadow:0 4px 20px rgba(34,34,34,.04);
+  border-color:rgba(0,0,0,.06);
+}
+.tile.disabled .tile-cta{color:var(--g4)}
+.tile-badge{
+  display:inline-block;padding:2px 8px;border-radius:var(--r-pill);
+  font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;
+  background:var(--g2);color:var(--g4);margin-left:auto;
+}
 .tile-icon{
   width:44px;height:44px;border-radius:var(--r-md);
   background:var(--afl);color:var(--af);
@@ -343,6 +356,7 @@ const EXTENSIONS = [
     key: 'project-dashboard',
     title: 'Project Dashboard',
     icon: ICON_DASHBOARD,
+    iconUrl: 'https://tomtietom.github.io/trimble-project-dashboard/icon.png',
     desc: 'Overzicht van al je Trimble Connect projecten met rollen, leden en activiteit.',
     url: 'https://tomtietom.github.io/trimble-project-dashboard/',
   },
@@ -350,6 +364,7 @@ const EXTENSIONS = [
     key: 'documentenlijst',
     title: 'Documentenlijst Viewer',
     icon: ICON_DOCS,
+    iconUrl: 'https://tomtietom.github.io/tc-viewer/icon.png',
     desc: 'Documentenlijst met metadata, filters, versies en exporteerbare overzichten.',
     url: 'https://tomtietom.github.io/tc-viewer/',
   },
@@ -357,6 +372,7 @@ const EXTENSIONS = [
     key: 'rechten-viewer',
     title: 'Rechten Viewer',
     icon: ICON_LOCK,
+    iconUrl: 'https://tomtietom.github.io/trimble-rechten-viewer/icon.png',
     desc: 'Visueel overzicht van maprechten, groepen en gebruikers per project.',
     url: 'https://tomtietom.github.io/trimble-rechten-viewer/',
   },
@@ -364,6 +380,7 @@ const EXTENSIONS = [
     key: 'project-upload',
     title: 'Projectinformatie toevoegen',
     icon: ICON_UPLOAD,
+    iconUrl: 'https://tomtietom.github.io/trimble-project-upload/icon.png',
     desc: 'Begeleide upload-wizard: documenten met metadata op de juiste plek.',
     url: 'https://tomtietom.github.io/trimble-project-upload/',
   },
@@ -524,7 +541,7 @@ async function init(){
     icon: 'https://tomtietom.github.io/trimble-dashboard-project-/icon.png',
     command: 'open_cockpit',
     subMenus: EXTENSIONS.map(function(e){
-      return { title: e.title, command: 'open_' + e.key.replace(/-/g, '_') };
+      return { title: e.title, command: 'open_' + e.key.replace(/-/g, '_'), icon: e.iconUrl };
     })
   };
   try {
@@ -657,6 +674,20 @@ async function loadDashboard(){
   $('userEmail').textContent = currentUserEmail || 'Onbekend';
   $('st-region').textContent = tcRegion === 'north america' ? 'N-Amerika' : (tcRegion.charAt(0).toUpperCase()+tcRegion.slice(1));
 
+  // Bepaal toegang per extensie (parallel) via hub legacy auth() — geen blokkade-scherm.
+  // Fail-open: bij API-fout staat tegel klikbaar; de extensie zelf blokkeert dan via hub.check().
+  await Promise.all(EXTENSIONS.map(async function(e){
+    try {
+      if (typeof window.atfieltHub.auth !== 'function') { e.allowed = true; return; }
+      const r = await window.atfieltHub.auth(e.key);
+      e.allowed = (r && r.allowed === false) ? false : true;
+    } catch (err) {
+      console.warn('[Cockpit] auth-check faalde voor', e.key, err.message);
+      e.allowed = true;
+    }
+  }));
+  console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', '));
+
   renderTiles();
 
   const pid = tcProject.id;
@@ -665,17 +696,20 @@ async function loadDashboard(){
   const projData = await tcFetchSafe('/projects/'+pid, null);
   const rootId = projData && projData.rootId;
 
-  // Parallel: users, groups (queryparam-vorm zoals rechten-viewer), root-items voor folder-count
-  const [users, groups, rootItems] = await Promise.all([
+  // Parallel: users, groups, root-items, alle-projecten-van-user
+  const [users, groups, rootItems, allProjects] = await Promise.all([
     tcFetchSafe('/projects/'+pid+'/users', []),
     tcFetchSafe('/groups?projectId='+pid, []),
     rootId ? tcFetchSafe('/folders/'+rootId+'/items?pageSize=500', {items:[]}) : Promise.resolve({items:[]}),
+    tcFetchSafe('/projects?showSubProjects=true&pageSize=500', []),
   ]);
 
   const membersCount = Array.isArray(users) ? users.length : (users?.items?.length || 0);
   const groupsCount  = Array.isArray(groups)  ? groups.length  : (groups?.items?.length  || 0);
   const rootList = Array.isArray(rootItems) ? rootItems : (rootItems.items || []);
   const foldersCount = rootList.filter(function(it){ return it.type === 'FOLDER'; }).length;
+  const filesInRoot  = rootList.filter(function(it){ return it.type === 'FILE'; }).length;
+  const projectsCount = Array.isArray(allProjects) ? allProjects.length : (allProjects?.items?.length || 0);
 
   $('st-members').textContent = membersCount || '–';
   $('st-folders').textContent = foldersCount || '–';
@@ -697,11 +731,19 @@ async function loadDashboard(){
     rolePill.classList.add('viewer');
   }
 
-  // Kerngetallen naar tegels
-  updateTileStat('project-dashboard', 'Alle projecten');
+  // Laatste-upload datum (voor Upload-tegel)
+  let latestUpload = null;
+  rootList.forEach(function(it){
+    const d = new Date(it.modifiedOn || it.updatedOn || 0);
+    if (it.type === 'FILE' && d > 0 && (!latestUpload || d > latestUpload)) latestUpload = d;
+  });
+  const lastUploadStr = latestUpload ? formatDate(latestUpload.toISOString()) : 'nog geen uploads';
+
+  // Kerngetallen naar tegels — echte data per extensie
+  updateTileStat('project-dashboard', projectsCount ? projectsCount+' projecten beschikbaar' : 'Overzicht projecten');
   updateTileStat('rechten-viewer', foldersCount ? foldersCount+' mappen · '+groupsCount+' groepen' : 'Rechtenmatrix');
-  updateTileStat('documentenlijst', 'Documentenlijst');
-  updateTileStat('project-upload', 'Upload-wizard');
+  updateTileStat('documentenlijst', filesInRoot ? filesInRoot+' bestanden in root' : 'Documentenlijst');
+  updateTileStat('project-upload', 'Laatste upload: '+lastUploadStr);
 
   // Laatste activiteit — hergebruik root-items (al opgehaald) ipv extra fetches
   renderActivity(rootList);
@@ -710,18 +752,25 @@ async function loadDashboard(){
 function renderTiles(){
   const wrap = $('tiles');
   wrap.innerHTML = EXTENSIONS.map(function(e){
-    return '<button class="tile" type="button" data-key="'+escapeHtml(e.key)+'" aria-label="'+escapeHtml(e.title)+'">'
+    const disabled = e.allowed === false;
+    const cls = 'tile' + (disabled ? ' disabled' : '');
+    const cta = disabled ? 'Geen toegang' : 'Openen →';
+    const titleAttr = disabled ? 'Je hebt nog geen toegang tot deze extensie. Vraag aan: info@atfielt.nl' : 'Open '+e.title;
+    return '<button class="'+cls+'" type="button" data-key="'+escapeHtml(e.key)+'" aria-label="'+escapeHtml(e.title)+'"'
+      + (disabled ? ' aria-disabled="true"' : '')
+      + ' title="'+escapeHtml(titleAttr)+'">'
       + '<div class="tile-icon">'+e.icon+'</div>'
       + '<div class="tile-title">'+escapeHtml(e.title)+'</div>'
       + '<div class="tile-desc">'+escapeHtml(e.desc)+'</div>'
       + '<div class="tile-foot">'
         + '<span class="tile-stat" data-stat="'+escapeHtml(e.key)+'">–</span>'
-        + '<span class="tile-cta">Openen →</span>'
+        + '<span class="tile-cta">'+escapeHtml(cta)+'</span>'
       + '</div>'
       + '</button>';
   }).join('');
   wrap.querySelectorAll('.tile').forEach(function(btn){
     btn.addEventListener('click', function(){
+      if (btn.classList.contains('disabled')) return;
       openExtension(btn.getAttribute('data-key'));
     });
   });
