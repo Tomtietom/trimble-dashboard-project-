@@ -263,6 +263,113 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .ftr a:hover{text-decoration:underline}
 
 /* =========================================
+   Project-context: 2-koloms grid (todos, releases, recent files, favorites)
+   ========================================= */
+.ctx-grid{
+  display:grid;grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:var(--s5);
+}
+.ctx-col{display:flex;flex-direction:column;min-width:0}
+@media (max-width:768px){
+  .ctx-grid{grid-template-columns:1fr}
+}
+
+/* To-do list items */
+.todos{
+  background:#fff;border:1px solid var(--hl-light);
+  border-radius:var(--r-md);overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.03);
+}
+.todo-item{
+  padding:var(--s3) var(--s4);
+  border-bottom:1px solid var(--hl-light);
+  display:flex;align-items:flex-start;gap:var(--s3);
+  font-size:var(--fs-md);
+}
+.todo-item:last-child{border-bottom:none}
+.todo-item .todo-status{
+  width:24px;height:24px;border-radius:var(--r-sm);
+  background:var(--gr);color:var(--g4);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  font-size:11px;font-weight:600;
+  margin-top:1px;
+}
+.todo-item .todo-status.high{background:#fef0f0;color:#b91c1c}
+.todo-item .todo-status.due{background:#fff7e6;color:#b8851a}
+.todo-item .todo-content{flex-grow:1;min-width:0}
+.todo-item .todo-title{
+  color:var(--dk);font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.todo-item .todo-meta{
+  color:var(--g4);font-size:var(--fs-sm);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* Releases list */
+.releases{
+  background:#fff;border:1px solid var(--hl-light);
+  border-radius:var(--r-md);overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.03);
+}
+.release-item{
+  padding:var(--s3) var(--s4);
+  border-bottom:1px solid var(--hl-light);
+  display:flex;align-items:center;gap:var(--s3);
+  font-size:var(--fs-md);
+}
+.release-item:last-child{border-bottom:none}
+.release-item .rel-tag{
+  padding:3px 8px;border-radius:var(--r-pill);
+  background:var(--afl);color:var(--af);
+  font-size:11px;font-weight:600;flex-shrink:0;
+}
+.release-item .rel-name{
+  flex-grow:1;color:var(--dk);font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.release-item .rel-meta{color:var(--g4);font-size:var(--fs-sm);white-space:nowrap}
+
+/* Favorites */
+.favorites{
+  background:#fff;border:1px solid var(--hl-light);
+  border-radius:var(--r-md);overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.03);
+}
+.fav-item{
+  padding:var(--s3) var(--s4);
+  border-bottom:1px solid var(--hl-light);
+  display:flex;align-items:center;gap:var(--s3);
+  font-size:var(--fs-md);
+}
+.fav-item:last-child{border-bottom:none}
+.fav-item .fav-ico{
+  width:28px;height:28px;border-radius:var(--r-sm);
+  background:var(--afl);color:var(--af);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.fav-item .fav-ico svg{width:14px;height:14px}
+.fav-item .fav-name{
+  flex-grow:1;color:var(--dk);font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.fav-item .fav-remove{
+  background:transparent;border:0;color:var(--g3);
+  cursor:pointer;font-size:16px;padding:4px 8px;
+  transition:color .15s;
+}
+.fav-item .fav-remove:hover{color:var(--warn)}
+
+/* Star button (toggle favorite) op activity-items */
+.activity-item .ac-star{
+  background:transparent;border:0;cursor:pointer;
+  color:var(--g3);font-size:16px;padding:0 4px;
+  transition:color .15s;flex-shrink:0;
+}
+.activity-item .ac-star:hover{color:var(--af)}
+.activity-item .ac-star.active{color:var(--af)}
+
+/* =========================================
    Views (alles-in-1: switch tussen dashboard + 4 extensie-views zonder iframe-navigatie)
    ========================================= */
 .view{display:none}
@@ -363,11 +470,40 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
         <div class="tiles" id="tiles"></div>
       </section>
 
-      <section class="sec">
-        <div class="overline">Laatste activiteit</div>
-        <div class="sec-head"><h2>Recent in dit project</h2></div>
-        <div class="activity" id="activity">
-          <div class="activity-empty">Nog geen activiteit geladen</div>
+      <!-- 2-koloms layout voor projectcontext -->
+      <section class="sec ctx-grid">
+        <div class="ctx-col">
+          <div class="overline">Recent gewijzigd</div>
+          <div class="sec-head"><h2>Laatste <em>bestanden</em></h2></div>
+          <div class="activity" id="activity">
+            <div class="activity-empty">Bezig met laden…</div>
+          </div>
+        </div>
+
+        <div class="ctx-col">
+          <div class="overline">To-do's</div>
+          <div class="sec-head"><h2>Open <em>taken</em></h2></div>
+          <div class="todos" id="todos">
+            <div class="activity-empty">Bezig met laden…</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec ctx-grid">
+        <div class="ctx-col">
+          <div class="overline">Releases</div>
+          <div class="sec-head"><h2>Recente <em>releases</em></h2></div>
+          <div class="releases" id="releases">
+            <div class="activity-empty">Bezig met laden…</div>
+          </div>
+        </div>
+
+        <div class="ctx-col">
+          <div class="overline">Favorieten</div>
+          <div class="sec-head"><h2><em>Favoriete</em> mappen</h2></div>
+          <div class="favorites" id="favorites">
+            <div class="activity-empty">Nog geen favorieten — klik op een ster bij een map.</div>
+          </div>
         </div>
       </section>
     </div>
@@ -758,12 +894,15 @@ async function loadDashboard(){
   const projData = await tcFetchSafe('/projects/'+pid, null);
   const rootId = projData && projData.rootId;
 
-  // Parallel: users, groups, root-items, alle-projecten-van-user
-  const [users, groups, rootItems, allProjects] = await Promise.all([
+  // Parallel: users, groups, root-items, alle-projecten-van-user, releases, todos
+  const [users, groups, rootItems, allProjects, releases, todos] = await Promise.all([
     tcFetchSafe('/projects/'+pid+'/users', []),
     tcFetchSafe('/groups?projectId='+pid, []),
     rootId ? tcFetchSafe('/folders/'+rootId+'/items?pageSize=500', {items:[]}) : Promise.resolve({items:[]}),
     tcFetchSafe('/projects?showSubProjects=true&pageSize=500', []),
+    tcFetchSafe('/releases?projectId='+pid+'&pageSize=10', []),
+    // Todos: TC's standaard endpoint — kan 404 geven, dan tonen we "nog geen integratie"
+    tcFetchSafe('/projects/'+pid+'/todos?pageSize=10', null),
   ]);
 
   const membersCount = Array.isArray(users) ? users.length : (users?.items?.length || 0);
@@ -807,8 +946,11 @@ async function loadDashboard(){
   updateTileStat('documentenlijst', filesInRoot ? filesInRoot+' bestanden in root' : 'Documentenlijst');
   updateTileStat('project-upload', 'Laatste upload: '+lastUploadStr);
 
-  // Laatste activiteit — hergebruik root-items (al opgehaald) ipv extra fetches
+  // Laatste activiteit + todos + releases + favorites
   renderActivity(rootList);
+  renderTodos(todos);
+  renderReleases(releases);
+  renderFavorites();
 }
 
 function renderTiles(){
@@ -853,16 +995,144 @@ function renderActivity(rootList){
     el.innerHTML = '<div class="activity-empty">Geen recente activiteit gevonden</div>';
     return;
   }
+  const favs = loadFavorites();
   el.innerHTML = top.map(function(it){
     const name = it.name || it.title || 'Onbekend';
     const when = formatDate(it.modifiedOn || it.updatedOn);
     const isFolder = it.type === 'FOLDER';
+    const id = it.id || '';
+    const isFav = favs[id] ? 'active' : '';
     return '<div class="activity-item">'
       + '<span class="ac-ico">'+(isFolder ? ICON_FOLDER : ICON_FILE)+'</span>'
-      + '<span class="name">'+escapeHtml(name)+'</span>'
+      + '<span class="name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
       + '<span class="meta">'+escapeHtml(when)+'</span>'
+      + (isFolder ? '<button class="ac-star '+isFav+'" type="button" data-fav-id="'+escapeHtml(id)+'" data-fav-name="'+escapeHtml(name)+'" title="'+(isFav?'Verwijder uit favorieten':'Voeg toe aan favorieten')+'">★</button>' : '')
       + '</div>';
   }).join('');
+  // Bind star-knoppen
+  el.querySelectorAll('.ac-star').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      toggleFavorite(btn.getAttribute('data-fav-id'), btn.getAttribute('data-fav-name'));
+      btn.classList.toggle('active');
+      renderFavorites();
+    });
+  });
+}
+
+// ============================================================
+//  Project-context: To-do's, Releases, Favorieten
+// ============================================================
+function renderTodos(todos){
+  const el = $('todos');
+  const list = Array.isArray(todos) ? todos : (todos && Array.isArray(todos.items) ? todos.items : null);
+  if (!list){
+    // 404 of geen data: TC's todos-API niet beschikbaar in deze omgeving
+    el.innerHTML = '<div class="activity-empty">Te-do\'s nog niet gekoppeld in deze omgeving.</div>';
+    return;
+  }
+  // Filter open todos en sorteer op deadline (oudste eerst)
+  const open = list.filter(function(t){ return !t.status || /open|new|in_progress|active/i.test(t.status); });
+  open.sort(function(a,b){
+    const da = new Date(a.dueDate || a.deadline || '2999-12-31');
+    const db = new Date(b.dueDate || b.deadline || '2999-12-31');
+    return da - db;
+  });
+  const top = open.slice(0, 5);
+  if (top.length === 0){
+    el.innerHTML = '<div class="activity-empty">Geen open te-do\'s — top!</div>';
+    return;
+  }
+  el.innerHTML = top.map(function(t){
+    const title = t.title || t.name || t.subject || 'Onbekend';
+    const due = t.dueDate || t.deadline;
+    const overdue = due && new Date(due) < new Date();
+    const statusCls = overdue ? 'high' : (due ? 'due' : '');
+    const dueStr = due ? (overdue ? 'Verlopen' : formatDate(due)) : '';
+    const assignee = t.assignedTo?.firstName ? (t.assignedTo.firstName + ' ' + (t.assignedTo.lastName || '')).trim() : (t.assignee || '');
+    const meta = [dueStr, assignee].filter(Boolean).join(' · ');
+    return '<div class="todo-item">'
+      + '<span class="todo-status '+statusCls+'">!</span>'
+      + '<div class="todo-content">'
+        + '<div class="todo-title">'+escapeHtml(title)+'</div>'
+        + (meta ? '<div class="todo-meta">'+escapeHtml(meta)+'</div>' : '')
+      + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function renderReleases(releases){
+  const el = $('releases');
+  const list = Array.isArray(releases) ? releases : (releases && Array.isArray(releases.items) ? releases.items : []);
+  if (list.length === 0){
+    el.innerHTML = '<div class="activity-empty">Geen releases in dit project.</div>';
+    return;
+  }
+  // Sorteer op datum DESC
+  list.sort(function(a,b){ return new Date(b.modifiedOn||b.createdOn||0) - new Date(a.modifiedOn||a.createdOn||0); });
+  const top = list.slice(0, 5);
+  el.innerHTML = top.map(function(r){
+    const name = r.name || r.title || 'Onbekend';
+    const tag = r.version || r.code || 'rel';
+    const when = formatDate(r.modifiedOn || r.createdOn);
+    return '<div class="release-item">'
+      + '<span class="rel-tag">'+escapeHtml(String(tag).substring(0,8))+'</span>'
+      + '<span class="rel-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
+      + '<span class="rel-meta">'+escapeHtml(when)+'</span>'
+      + '</div>';
+  }).join('');
+}
+
+// Favorites: per-project bookmarks van folder-IDs (localStorage)
+function getFavKey(){ return 'cockpit-favs-' + (tcProject && tcProject.id ? tcProject.id : 'unknown'); }
+
+function loadFavorites(){
+  try { return JSON.parse(localStorage.getItem(getFavKey()) || '{}'); }
+  catch(e){ return {}; }
+}
+
+function saveFavorites(favs){
+  try { localStorage.setItem(getFavKey(), JSON.stringify(favs)); }
+  catch(e){ console.warn('[Cockpit] saveFavorites faalde:', e.message); }
+}
+
+function toggleFavorite(id, name){
+  if (!id) return;
+  const favs = loadFavorites();
+  if (favs[id]) delete favs[id];
+  else favs[id] = { name: name || '', addedAt: Date.now() };
+  saveFavorites(favs);
+}
+
+function renderFavorites(){
+  const el = $('favorites');
+  const favs = loadFavorites();
+  const ids = Object.keys(favs);
+  if (ids.length === 0){
+    el.innerHTML = '<div class="activity-empty">Nog geen favorieten — klik op een ster bij een map.</div>';
+    return;
+  }
+  // Sorteer op toegevoegd-datum DESC
+  ids.sort(function(a,b){ return (favs[b].addedAt||0) - (favs[a].addedAt||0); });
+  el.innerHTML = ids.map(function(id){
+    const name = favs[id].name || '(naam onbekend)';
+    return '<div class="fav-item">'
+      + '<span class="fav-ico">'+ICON_FOLDER+'</span>'
+      + '<span class="fav-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
+      + '<button class="fav-remove" type="button" data-fav-remove="'+escapeHtml(id)+'" title="Verwijder favoriet">×</button>'
+      + '</div>';
+  }).join('');
+  // Bind remove-knoppen
+  el.querySelectorAll('[data-fav-remove]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      const favs2 = loadFavorites();
+      delete favs2[btn.getAttribute('data-fav-remove')];
+      saveFavorites(favs2);
+      renderFavorites();
+      // Refresh activity-stars (de map kan in de lijst staan)
+      const star = document.querySelector('.ac-star[data-fav-id="' + btn.getAttribute('data-fav-remove') + '"]');
+      if (star) star.classList.remove('active');
+    });
+  });
 }
 
 // ============================================================
