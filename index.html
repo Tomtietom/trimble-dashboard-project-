@@ -903,10 +903,9 @@ function renderPlaceholders(){
       +   '<div class="overline">' + escapeHtml(ext.title) + '</div>'
       +   '<h2>Binnenkort hier <em>geïntegreerd</em></h2>'
       +   '<p>' + escapeHtml(ext.desc) + '</p>'
-      +   '<p style="font-size:13px;color:var(--g4)">Voor nu: open de standalone-extensie in een nieuw tabblad. De volledige functionaliteit wordt stapsgewijs in de cockpit ingebouwd.</p>'
+      +   '<p style="font-size:13px;color:var(--g4)">Deze extensie wordt stapsgewijs in de cockpit ingebouwd. Hij werkt alleen binnen Trimble Connect (token via TC-iframe), dus een externe link heeft geen zin.</p>'
       +   '<div class="actions">'
       +     '<button class="btn-secondary" type="button" data-back>← Terug naar dashboard</button>'
-      +     '<a class="btn-primary" href="' + escapeHtml(ext.url) + '" target="_blank" rel="noopener">Open in nieuw tabblad ↗</a>'
       +   '</div>'
       + '</div>';
   });
