@@ -491,6 +491,24 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 
       <section class="sec ctx-grid">
         <div class="ctx-col">
+          <div class="overline">Uploads</div>
+          <div class="sec-head"><h2>Laatst <em>geüpload</em></h2></div>
+          <div class="activity" id="uploads">
+            <div class="activity-empty">Bezig met laden…</div>
+          </div>
+        </div>
+
+        <div class="ctx-col">
+          <div class="overline">Gedeelde links</div>
+          <div class="sec-head"><h2>Open <em>shares</em></h2></div>
+          <div class="releases" id="shares">
+            <div class="activity-empty">Bezig met laden…</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec ctx-grid">
+        <div class="ctx-col">
           <div class="overline">Releases</div>
           <div class="sec-head"><h2>Recente <em>releases</em></h2></div>
           <div class="releases" id="releases">
@@ -894,15 +912,17 @@ async function loadDashboard(){
   const projData = await tcFetchSafe('/projects/'+pid, null);
   const rootId = projData && projData.rootId;
 
-  // Parallel: users, groups, root-items, alle-projecten-van-user, releases, todos
-  const [users, groups, rootItems, allProjects, releases, todos] = await Promise.all([
+  // Parallel: users, groups, root-items, alle-projecten-van-user, releases, todos, shares
+  const [users, groups, rootItems, allProjects, releases, todos, shares] = await Promise.all([
     tcFetchSafe('/projects/'+pid+'/users', []),
     tcFetchSafe('/groups?projectId='+pid, []),
     rootId ? tcFetchSafe('/folders/'+rootId+'/items?pageSize=500', {items:[]}) : Promise.resolve({items:[]}),
     tcFetchSafe('/projects?showSubProjects=true&pageSize=500', []),
     tcFetchSafe('/releases?projectId='+pid+'&pageSize=10', []),
-    // Todos: TC's standaard endpoint — kan 404 geven, dan tonen we "nog geen integratie"
-    tcFetchSafe('/projects/'+pid+'/todos?pageSize=10', null),
+    // Todos: probeer meerdere endpoints (TC API is variabel)
+    fetchTodosMulti(pid),
+    // Shares: openstaande gedeelde links
+    tcFetchSafe('/shares?projectId='+pid+'&pageSize=20', []),
   ]);
 
   const membersCount = Array.isArray(users) ? users.length : (users?.items?.length || 0);
@@ -946,10 +966,12 @@ async function loadDashboard(){
   updateTileStat('documentenlijst', filesInRoot ? filesInRoot+' bestanden in root' : 'Documentenlijst');
   updateTileStat('project-upload', 'Laatste upload: '+lastUploadStr);
 
-  // Laatste activiteit + todos + releases + favorites
+  // Laatste activiteit + uploads + todos + releases + shares + favorites
   renderActivity(rootList);
+  renderUploads(rootList);
   renderTodos(todos);
   renderReleases(releases);
+  renderShares(shares);
   renderFavorites();
 }
 
@@ -1020,8 +1042,32 @@ function renderActivity(rootList){
 }
 
 // ============================================================
-//  Project-context: To-do's, Releases, Favorieten
+//  Project-context: To-do's, Releases, Uploads, Shares, Favorieten
 // ============================================================
+
+// Probeer meerdere TC API endpoints voor todos — pak het eerste niet-leeg/niet-404 resultaat
+async function fetchTodosMulti(pid){
+  const candidates = [
+    '/todos?projectId=' + pid + '&pageSize=20',
+    '/projects/' + pid + '/todos?pageSize=20',
+    '/issues?projectId=' + pid + '&pageSize=20',
+    '/projects/' + pid + '/issues?pageSize=20'
+  ];
+  for (const path of candidates){
+    try {
+      const r = await tcFetch(path);
+      if (r) {
+        console.log('[Cockpit] Todos via', path, '— items:', Array.isArray(r) ? r.length : (r.items?.length || 0));
+        return r;
+      }
+    } catch (e) {
+      // 404/400/etc → probeer volgende
+    }
+  }
+  console.log('[Cockpit] Geen todos endpoint werkt in deze omgeving');
+  return null;
+}
+
 function renderTodos(todos){
   const el = $('todos');
   const list = Array.isArray(todos) ? todos : (todos && Array.isArray(todos.items) ? todos.items : null);
@@ -1078,6 +1124,64 @@ function renderReleases(releases){
       + '<span class="rel-tag">'+escapeHtml(String(tag).substring(0,8))+'</span>'
       + '<span class="rel-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
       + '<span class="rel-meta">'+escapeHtml(when)+'</span>'
+      + '</div>';
+  }).join('');
+}
+
+// Laatst geüploade bestanden — alleen FILE-types, gesorteerd op createdOn
+function renderUploads(rootList){
+  const el = $('uploads');
+  const items = (Array.isArray(rootList) ? rootList : []).filter(function(it){ return it.type === 'FILE'; });
+  items.sort(function(a,b){ return new Date(b.createdOn||b.modifiedOn||0) - new Date(a.createdOn||a.modifiedOn||0); });
+  const top = items.slice(0, 5);
+  if (top.length === 0){
+    el.innerHTML = '<div class="activity-empty">Nog geen uploads in dit project.</div>';
+    return;
+  }
+  el.innerHTML = top.map(function(it){
+    const name = it.name || 'Onbekend';
+    const when = formatDate(it.createdOn || it.modifiedOn);
+    const uploader = it.createdBy?.firstName ? (it.createdBy.firstName + ' ' + (it.createdBy.lastName || '')).trim() : '';
+    const meta = uploader ? when + ' · ' + uploader : when;
+    return '<div class="activity-item">'
+      + '<span class="ac-ico">'+ICON_FILE+'</span>'
+      + '<span class="name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
+      + '<span class="meta">'+escapeHtml(meta)+'</span>'
+      + '</div>';
+  }).join('');
+}
+
+// Openstaande gedeelde links
+function renderShares(shares){
+  const el = $('shares');
+  const list = Array.isArray(shares) ? shares : (shares && Array.isArray(shares.items) ? shares.items : []);
+  if (list.length === 0){
+    el.innerHTML = '<div class="activity-empty">Geen openstaande share-links.</div>';
+    return;
+  }
+  // Filter: alleen niet-verlopen shares
+  const now = Date.now();
+  const open = list.filter(function(s){
+    if (!s.expiresOn && !s.expiryDate) return true; // geen expiry = nog open
+    const exp = new Date(s.expiresOn || s.expiryDate).getTime();
+    return exp > now;
+  });
+  // Sorteer op createdOn DESC
+  open.sort(function(a,b){ return new Date(b.createdOn||0) - new Date(a.createdOn||0); });
+  const top = open.slice(0, 5);
+  if (top.length === 0){
+    el.innerHTML = '<div class="activity-empty">Alleen verlopen shares — geen openstaande.</div>';
+    return;
+  }
+  el.innerHTML = top.map(function(s){
+    const name = s.name || s.fileName || s.title || s.id || 'Gedeeld bestand';
+    const exp = s.expiresOn || s.expiryDate;
+    const expStr = exp ? 'Verloopt ' + formatDate(exp) : 'Geen einddatum';
+    const tag = s.permission || (s.isPublic ? 'PUBLIEK' : 'LINK');
+    return '<div class="release-item">'
+      + '<span class="rel-tag">'+escapeHtml(String(tag).substring(0,10))+'</span>'
+      + '<span class="rel-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
+      + '<span class="rel-meta">'+escapeHtml(expStr)+'</span>'
       + '</div>';
   }).join('');
 }
