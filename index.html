@@ -657,9 +657,41 @@ function waitForWorkspaceAPI(maxWait){
 const TC_PROXY_BASE = 'https://tc-proxy.tom-da0.workers.dev';
 
 function tcRegionShort(){
-  if (TC_API_BASE.indexOf('app21')>=0) return 'eu';
-  if (TC_API_BASE.indexOf('app31')>=0) return 'ap';
+  if (TC_API_BASE.indexOf('app21')>=0 || TC_API_BASE.indexOf('app.eu.')>=0) return 'eu';
+  if (TC_API_BASE.indexOf('app31')>=0 || TC_API_BASE.indexOf('app.ap.')>=0 || TC_API_BASE.indexOf('asia')>=0) return 'ap';
   return 'us';
+}
+
+// V1 — Region discovery: haal de juiste base-URL op uit /regions ipv hardcoded
+// Skill noemt hardcoded EU/US URLs als #1 integratie-fout.
+async function discoverRegionBase(projectLocation){
+  const cacheKey = 'cockpit-regions';
+  let regions = null;
+  try {
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) regions = JSON.parse(cached);
+  } catch(e){}
+  if (!regions){
+    try {
+      const r = await fetch('https://app.connect.trimble.com/tc/api/2.0/regions', {
+        headers: { Authorization: 'Bearer '+tcToken, Accept: 'application/json' },
+      });
+      if (r.ok) {
+        regions = await r.json();
+        try { sessionStorage.setItem(cacheKey, JSON.stringify(regions)); } catch(e){}
+        console.log('[TC] Regions ontdekt:', Array.isArray(regions) ? regions.length : 0);
+      } else {
+        console.warn('[TC] /regions response:', r.status);
+      }
+    } catch(e){ console.warn('[TC] Region discovery netwerk-fout:', e.message); }
+  }
+  if (!Array.isArray(regions)) return null;
+  const loc = (projectLocation || 'europe').toLowerCase();
+  const region = regions.find(function(r){
+    const id = (r.id || r.name || '').toLowerCase();
+    return id === loc || id.includes(loc.split(' ')[0]);
+  });
+  return region && region.origin ? region.origin + '/tc/api/2.0' : null;
 }
 
 async function tcFetch(path){
@@ -670,8 +702,13 @@ async function tcFetch(path){
   for (const url of [direct, proxy]){
     try {
       const r = await fetch(url, { headers: headers });
-      if (!r.ok) { lastErr = new Error('TC API '+r.status+': '+path); continue; }
-      return await r.json();
+      // V3 — 206 Partial Content is succesvol bij Trimble (cursor-based pagination)
+      if (r.status === 206 || r.ok) {
+        const body = await r.json();
+        const range = r.headers.get('Content-Range') || r.headers.get('content-range') || r.headers.get('Next-Cursor');
+        return range ? { _data: body, _range: range, _partial: true } : body;
+      }
+      lastErr = new Error('TC API '+r.status+': '+path);
     } catch(e) {
       lastErr = e; // CORS of netwerk: probeer volgende
     }
@@ -679,9 +716,34 @@ async function tcFetch(path){
   throw lastErr || new Error('TC fetch faalde voor '+path);
 }
 
+// Auto-unwrap _partial wrapper voor callers die geen pagination doen
 async function tcFetchSafe(path, fallback){
-  try { return await tcFetch(path); }
+  try {
+    const r = await tcFetch(path);
+    return r && r._partial ? r._data : r;
+  }
   catch(e){ console.warn('[TC] fetch failed:', path, e.message); return fallback; }
+}
+
+// V3 — Volg 206-cursors automatisch tot complete dataset is opgehaald (future-proof voor projecten >500 items)
+async function tcFetchAll(path, maxPages){
+  maxPages = maxPages || 20; // safety cap (~10000 items @ 500/page)
+  let allItems = [];
+  let cursor = null;
+  for (let i = 0; i < maxPages; i++){
+    const sep = path.includes('?') ? '&' : '?';
+    const cursorPath = cursor ? path + sep + 'cursor=' + encodeURIComponent(cursor) : path;
+    const result = await tcFetch(cursorPath);
+    const data = result && result._partial ? result._data : result;
+    const items = Array.isArray(data) ? data : (data && Array.isArray(data.items) ? data.items : []);
+    allItems = allItems.concat(items);
+    if (!result || !result._partial) break;
+    // Trimble's exacte cursor-format is niet gedocumenteerd; safety: stop bij ontbrekend match
+    const m = result._range && (result._range.match(/cursor=([^,;\s]+)/) || result._range.match(/^([^,;\s]+)$/));
+    if (!m) { console.warn('[TC] tcFetchAll: kon geen cursor parsen uit:', result._range); break; }
+    cursor = m[1];
+  }
+  return allItems;
 }
 
 function formatDate(iso){
@@ -718,6 +780,22 @@ async function init(){
       // Sub-command: zoek de bijbehorende extensie-view en switch
       const ext = EXTENSIONS.find(function(e){ return ('open_' + e.key.replace(/-/g,'_')) === cmd; });
       if (ext) { if (ext.allowed !== false) showView(ext.key); return; }
+    }
+
+    // V2 — Sessie verloopt → token automatisch verversen (skill: extension.sessionInvalid)
+    if (event === 'extension.sessionInvalid') {
+      console.warn('[TC] Sessie verlopen — token vernieuwen...');
+      if (tcAPI && tcAPI.extension && typeof tcAPI.extension.requestPermission === 'function') {
+        tcAPI.extension.requestPermission('accesstoken')
+          .then(function(r){
+            let t = null;
+            if (typeof r === 'string' && r.length > 20) t = r;
+            else if (r && typeof r === 'object') t = r.token || r.accessToken || r.value || null;
+            if (t) { tcToken = t; console.log('[TC] Token vernieuwd, lengte:', t.length); }
+          })
+          .catch(function(e){ console.warn('[TC] Token-verversing faalde:', e.message); });
+      }
+      return;
     }
 
     // Probeer token uit elke mogelijke positie (alleen relevant bij accessToken events,
@@ -764,10 +842,10 @@ async function init(){
     else if (tcAPI.extension && typeof tcAPI.extension.setMenu==='function') tcAPI.extension.setMenu(menuDef);
   } catch(e){ console.warn('[TC] setMenu faalde:', e.message); }
 
-  // Regio bepalen
-  const loc = (tcProject.location||'europe').toLowerCase();
-  if (loc.includes('america')||loc.includes('north')){TC_API_BASE=TC_API_REGIONS['north america'];tcRegion='north america';}
-  else if (loc.includes('asia')){TC_API_BASE=TC_API_REGIONS.asia;tcRegion='asia';}
+  // Regio bepalen — fallback naar hardcoded constants; dynamische /regions discovery na token-acquisitie
+  const _initialLoc = (tcProject.location||'europe').toLowerCase();
+  if (_initialLoc.includes('america')||_initialLoc.includes('north')){TC_API_BASE=TC_API_REGIONS['north america'];tcRegion='north america';}
+  else if (_initialLoc.includes('asia')){TC_API_BASE=TC_API_REGIONS.asia;tcRegion='asia';}
   else {TC_API_BASE=TC_API_REGIONS.europe;tcRegion='europe';}
 
   // Token — identiek patroon aan andere extensies: 1× requestPermission + event-wait + getAccessToken
@@ -817,6 +895,15 @@ async function init(){
   }
   console.log('[TC] Token OK, lengte:', tcToken.length);
   setStep('token','done');
+
+  // V1 — Region discovery: vervang hardcoded base-URL door /regions API (skill: #1 integratie-fout)
+  try {
+    const dynamicBase = await discoverRegionBase(tcProject.location);
+    if (dynamicBase) {
+      TC_API_BASE = dynamicBase;
+      console.log('[TC] Region via discovery:', tcRegion, '→', TC_API_BASE);
+    }
+  } catch(e){ console.warn('[TC] Region discovery faalde, fallback naar hardcoded:', e.message); }
 
   // ╔══════════════════════════════════════════════════════════╗
   // ║  AT FIELT EXTENSION HUB — NIET VERWIJDEREN               ║
