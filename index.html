@@ -702,7 +702,12 @@ async function discoverRegionBase(projectLocation){
     return targetAliases.some(function(a){ return id === a || id.includes(a); });
   });
   if (!region) console.warn('[TC] Region match faalde voor location:', loc, '— gebruik fallback');
-  return region && region.origin ? region.origin + '/tc/api/2.0' : null;
+  if (!region || !region.origin) return null;
+  // Normaliseer protocol-relative URLs (TC retourneert vaak "//app21.connect.trimble.com" zonder https:-prefix)
+  let origin = String(region.origin).trim();
+  if (origin.startsWith('//')) origin = 'https:' + origin;
+  else if (!origin.startsWith('http://') && !origin.startsWith('https://')) origin = 'https://' + origin;
+  return origin + '/tc/api/2.0';
 }
 
 async function tcFetch(path){
