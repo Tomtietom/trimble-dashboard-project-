@@ -412,6 +412,122 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .btn-secondary:hover{border-color:var(--af);color:var(--af)}
 
 /* =========================================
+   Project Dashboard view (Fase B inline)
+   ========================================= */
+.pd-toolbar{
+  display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;
+  background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);
+  padding:var(--s3) var(--s4);margin-bottom:var(--s4);
+  box-shadow:0 2px 8px rgba(0,0,0,.03);
+}
+.pd-toolbar input[type=text]{
+  flex:1;min-width:160px;padding:8px 12px;
+  border:1px solid var(--hl);border-radius:var(--r-sm);
+  font-family:'Poppins',sans-serif;font-size:var(--fs-md);
+  background:#fff;color:var(--dk);outline:none;transition:border-color .15s;
+}
+.pd-toolbar input[type=text]:focus{border-color:var(--af)}
+.pd-count{
+  background:var(--af);color:#fff;padding:3px 10px;border-radius:var(--r-pill);
+  font-size:var(--fs-sm);font-weight:600;
+}
+.pd-btn{
+  padding:6px 12px;background:transparent;color:var(--g5);
+  border:1px solid var(--hl);border-radius:var(--r-sm);
+  font-family:'Poppins',sans-serif;font-size:var(--fs-sm);font-weight:500;
+  cursor:pointer;transition:all .15s;
+}
+.pd-btn:hover{border-color:var(--af);color:var(--af)}
+.pd-btn-primary{background:var(--af);color:#fff;border-color:var(--af)}
+.pd-btn-primary:hover{background:var(--af2);border-color:var(--af2);color:#fff}
+.pd-btn-icon{padding:4px 10px;font-size:14px}
+.pd-btn-icon.spinning{animation:pd-spin 1s linear infinite}
+@keyframes pd-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+.pd-stats{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:var(--s3);margin-bottom:var(--s4);
+}
+.pd-stat{
+  background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);
+  padding:var(--s4);cursor:pointer;transition:all .15s;
+  box-shadow:0 2px 8px rgba(0,0,0,.03);
+}
+.pd-stat:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.06)}
+.pd-stat.active-filter{border-color:var(--af)}
+.pd-stat .pd-stat-val{
+  font-family:'Montserrat',sans-serif;font-weight:800;
+  font-size:24px;color:var(--dk);line-height:1.1;letter-spacing:-.02em;
+}
+.pd-stat .pd-stat-lab{
+  font-size:11px;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--g4);font-family:'Montserrat',sans-serif;font-weight:600;
+  margin-top:var(--s1);
+}
+.pd-stat.highlight .pd-stat-val{color:var(--af)}
+
+.pd-filters{
+  display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap;
+  margin-bottom:var(--s3);font-size:var(--fs-md);
+}
+.pd-toggle{
+  display:flex;align-items:center;gap:6px;color:var(--g5);
+  cursor:pointer;user-select:none;
+}
+.pd-toggle input[type=checkbox]{accent-color:var(--af);width:16px;height:16px}
+.pd-sort-info{margin-left:auto;font-size:var(--fs-sm);color:var(--g4)}
+
+.pd-table{
+  width:100%;border-collapse:collapse;background:#fff;
+  border-radius:var(--r-md);overflow:hidden;
+  border:1px solid var(--hl-light);box-shadow:0 2px 8px rgba(0,0,0,.03);
+}
+.pd-table thead th{
+  background:var(--gr);color:var(--g5);padding:10px 12px;text-align:left;
+  font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;
+  border-bottom:2px solid var(--hl-light);cursor:pointer;user-select:none;
+  white-space:nowrap;font-family:'Montserrat',sans-serif;
+}
+.pd-table thead th:hover{color:var(--af)}
+.pd-table thead th .pd-arrow{display:inline-block;margin-left:3px;font-size:10px;opacity:.3}
+.pd-table thead th.sorted{color:var(--af)}
+.pd-table thead th.sorted .pd-arrow{opacity:1;color:var(--af)}
+.pd-table tbody tr{border-bottom:1px solid var(--hl-light);transition:background .1s}
+.pd-table tbody tr:hover{background:var(--afl)}
+.pd-table tbody tr:last-child{border-bottom:none}
+.pd-table tbody tr.current-project{border-left:4px solid var(--af);background:var(--afl)}
+.pd-table tbody td{padding:10px 12px;font-size:var(--fs-md);color:var(--dk)}
+
+.pd-fav{cursor:pointer;color:var(--g3);font-size:18px;text-align:center;width:36px;transition:color .15s}
+.pd-fav:hover{color:var(--af)}
+.pd-fav.active{color:var(--af)}
+
+.pd-link{color:var(--dk);text-decoration:none;font-weight:500;transition:color .15s}
+.pd-link:hover{color:var(--af)}
+
+.pd-badge{display:inline-block;padding:2px 10px;border-radius:var(--r-pill);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.pd-badge-admin{background:var(--af);color:#fff}
+.pd-badge-user{background:var(--g2);color:var(--g4)}
+.pd-badge-loading{background:var(--g2);color:var(--g3);font-style:italic;text-transform:none}
+.pd-badge-region{background:#e8f0fe;color:#1967d2;font-size:10px;padding:2px 8px}
+.pd-badge-current{background:var(--af);color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:6px;text-transform:uppercase;letter-spacing:.3px}
+
+.pd-date{color:var(--g4);font-size:var(--fs-sm)}
+.pd-date.recent{color:var(--af);font-weight:500}
+
+.pd-progress{
+  height:4px;background:var(--g2);border-radius:2px;overflow:hidden;
+  margin:var(--s3) 0;display:none;
+}
+.pd-progress.active{display:block}
+.pd-progress-fill{height:100%;background:var(--af);transition:width .3s;width:0%}
+.pd-empty{
+  text-align:center;padding:var(--s6) var(--s4);color:var(--g4);
+  background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);
+}
+.pd-empty h3{font-family:'Montserrat',sans-serif;color:var(--g5);margin-bottom:var(--s2)}
+
+/* =========================================
    Responsive
    ========================================= */
 @media (max-width:768px){
@@ -1336,6 +1452,10 @@ function showView(name){
     // Onbekende view → val terug op dashboard
     document.getElementById('view-dashboard').classList.add('active');
   }
+  // Lazy-activeer Fase B modules bij eerste view-switch
+  if (name === 'project-dashboard' && typeof PD !== 'undefined') {
+    try { PD.activate(); } catch(e){ console.warn('[Cockpit] PD.activate fout:', e.message); }
+  }
   // Hub-event voor analytics (welke views worden gebruikt)
   if (window.atfieltHub){
     try { window.atfieltHub.logEvent('feature', { action: 'view-switch', view: name }); } catch(e){}
@@ -1349,9 +1469,12 @@ function openExtension(key){
   showView(ext.key);
 }
 
-// Renders placeholder-content in de 4 extensie-views (Fase A — Fase B vervangt dit door de echte UI)
+// Renders placeholder-content in de extensie-views die nog geen inline UI hebben
+// Fase B: project-dashboard heeft een eigen module (PD) die zijn HTML zelf injecteert
 function renderPlaceholders(){
+  const INLINE_VIEWS = new Set(['project-dashboard']); // skip placeholders voor views met inline UI
   EXTENSIONS.forEach(function(ext){
+    if (INLINE_VIEWS.has(ext.key)) return;
     const container = document.getElementById('view-' + ext.key);
     if (!container) return;
     container.innerHTML =
@@ -1371,6 +1494,391 @@ function renderPlaceholders(){
     btn.addEventListener('click', function(){ showView('dashboard'); });
   });
 }
+
+// ============================================================
+//  Project Dashboard module (Fase B inline)
+//  Toont al je TC-projecten met rollen/leden/activiteit/regio.
+//  Gebruikt cockpit's tcToken; lazy-load bij eerste view-switch.
+// ============================================================
+const PD = (function(){
+  const TC_REGIONS_PD = {
+    'europe': 'https://app21.connect.trimble.com/tc/api/2.0',
+    'north america': 'https://app.connect.trimble.com/tc/api/2.0',
+    'asia': 'https://app31.connect.trimble.com/tc/api/2.0',
+  };
+  const REGION_KEYS_PD = { 'europe':'eu', 'north america':'us', 'asia':'ap' };
+  const REGION_LABELS_PD = { 'europe':'EU', 'north america':'NA', 'asia':'AP' };
+  const PROXY_BASE_PD = 'https://tc-proxy.tom-da0.workers.dev';
+
+  let _projects = [];
+  let _sortColumn = 'activity';
+  let _sortAsc = false;
+  let _favorites = new Set();
+  let _isLoading = false;
+  let _isLoaded = false;
+  let _isInjected = false;
+
+  function favKey(){ return 'cockpit-pd-favs-' + (currentUserEmail || 'anon'); }
+  function loadFavs(){ try { _favorites = new Set(JSON.parse(localStorage.getItem(favKey()) || '[]')); } catch(e){ _favorites = new Set(); } }
+  function saveFavs(){ try { localStorage.setItem(favKey(), JSON.stringify([..._favorites])); } catch(e){} }
+  function toggleFav(id){
+    if (_favorites.has(id)) _favorites.delete(id); else _favorites.add(id);
+    saveFavs();
+    const cell = document.querySelector('.pd-fav[data-id="'+id+'"]');
+    if (cell) { cell.classList.toggle('active'); cell.innerHTML = _favorites.has(id) ? '★' : '☆'; }
+    renderTable();
+  }
+
+  function injectHtml(){
+    if (_isInjected) return;
+    const view = document.getElementById('view-project-dashboard');
+    if (!view) return;
+    view.innerHTML =
+        '<section class="sec">'
+      +   '<div class="overline">Alle projecten</div>'
+      +   '<div class="sec-head"><h2>Project <em>Dashboard</em></h2></div>'
+      +   '<div class="pd-toolbar">'
+      +     '<input type="text" id="pdSearch" placeholder="Zoek project...">'
+      +     '<span class="pd-count" id="pdCount">0</span>'
+      +     '<button class="pd-btn pd-btn-icon" id="pdRefresh" title="Ververs">↻</button>'
+      +     '<button class="pd-btn pd-btn-primary" id="pdExport" title="Exporteer naar Excel">Excel</button>'
+      +   '</div>'
+      +   '<div class="pd-stats">'
+      +     '<div class="pd-stat" id="pdStatTotal" title="Wis alle filters"><div class="pd-stat-val" id="pdValTotal">0</div><div class="pd-stat-lab">Projecten</div></div>'
+      +     '<div class="pd-stat highlight" id="pdStatAdmin" title="Filter op admin"><div class="pd-stat-val" id="pdValAdmin">0</div><div class="pd-stat-lab">Admin</div></div>'
+      +     '<div class="pd-stat" id="pdStatMembers" title="Sorteer op leden"><div class="pd-stat-val" id="pdValMembers">0</div><div class="pd-stat-lab">Totaal leden</div></div>'
+      +   '</div>'
+      +   '<div class="pd-progress" id="pdProgress"><div class="pd-progress-fill" id="pdProgressFill"></div></div>'
+      +   '<div class="pd-filters">'
+      +     '<label class="pd-toggle"><input type="checkbox" id="pdFilterFav"> Alleen favorieten</label>'
+      +     '<label class="pd-toggle"><input type="checkbox" id="pdFilterAdmin"> Alleen admin</label>'
+      +     '<span class="pd-sort-info" id="pdSortInfo">Sorteer: Activiteit (nieuwste eerst)</span>'
+      +   '</div>'
+      +   '<table class="pd-table">'
+      +     '<thead><tr>'
+      +       '<th data-sort="favorite" style="width:36px">★ <span class="pd-arrow" id="pdSortFav">▲</span></th>'
+      +       '<th data-sort="name">Projectnaam <span class="pd-arrow" id="pdSortName">▲</span></th>'
+      +       '<th data-sort="role">Rol <span class="pd-arrow" id="pdSortRole">▲</span></th>'
+      +       '<th data-sort="members">Leden <span class="pd-arrow" id="pdSortMembers">▲</span></th>'
+      +       '<th data-sort="activity">Activiteit <span class="pd-arrow" id="pdSortActivity">▼</span></th>'
+      +       '<th data-sort="region">Regio <span class="pd-arrow" id="pdSortRegion">▲</span></th>'
+      +     '</tr></thead>'
+      +     '<tbody id="pdBody"></tbody>'
+      +   '</table>'
+      +   '<div class="pd-empty" id="pdEmpty" style="display:none"><h3>Geen projecten gevonden</h3><p>Pas je zoekopdracht of filter aan.</p></div>'
+      + '</section>';
+
+    // Bind events
+    document.getElementById('pdSearch').addEventListener('input', renderTable);
+    document.getElementById('pdFilterFav').addEventListener('change', renderTable);
+    document.getElementById('pdFilterAdmin').addEventListener('change', function(){ renderTable(); updateStats(); });
+    document.getElementById('pdRefresh').addEventListener('click', refresh);
+    document.getElementById('pdExport').addEventListener('click', exportXls);
+    document.getElementById('pdStatTotal').addEventListener('click', clearFilters);
+    document.getElementById('pdStatAdmin').addEventListener('click', toggleAdminFilter);
+    document.getElementById('pdStatMembers').addEventListener('click', function(){ sortBy('members'); });
+    document.querySelectorAll('.pd-table thead th[data-sort]').forEach(function(th){
+      th.addEventListener('click', function(){ sortBy(th.getAttribute('data-sort')); });
+    });
+
+    _isInjected = true;
+  }
+
+  function showLoadingState(active){
+    const bar = document.getElementById('pdProgress');
+    if (bar) bar.classList.toggle('active', !!active);
+  }
+
+  // Multi-region project-fetch via tc-proxy (skipt CORS) — iframeless, gebruikt cockpit's token
+  async function fetchProjectsForRegion(region){
+    const key = REGION_KEYS_PD[region] || 'eu';
+    const all = []; const seen = new Set(); let offset = 0; const limit = 100;
+    while (true){
+      const url = PROXY_BASE_PD + '/tc/' + key + '/projects?offset=' + offset + '&limit=' + limit;
+      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' } });
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      const items = await r.json();
+      if (!Array.isArray(items) || items.length === 0) break;
+      for (const it of items){ if (!seen.has(it.id)){ seen.add(it.id); all.push(it); } }
+      if (items.length < limit) break;
+      offset += items.length;
+    }
+    return all;
+  }
+
+  async function fetchUsersForProject(region, projectId){
+    const key = REGION_KEYS_PD[region] || 'eu';
+    const all = []; const seen = new Set(); let start = 0; const pageSize = 100;
+    while (true){
+      const url = PROXY_BASE_PD + '/tc/' + key + '/projects/' + projectId + '/users';
+      const r = await fetch(url, { headers: { Authorization: 'Bearer '+tcToken, Accept: 'application/json', Range: 'items='+start+'-'+(start+pageSize-1) } });
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      const items = await r.json();
+      if (!Array.isArray(items) || items.length === 0) break;
+      for (const it of items){ if (!seen.has(it.id)){ seen.add(it.id); all.push(it); } }
+      const cr = r.headers.get('Content-Range');
+      if (cr){ const m = cr.match(/items \d+-\d+\/(\d+)/); if (m){ start += items.length; if (start >= parseInt(m[1])) break; } else break; } else break;
+    }
+    return all;
+  }
+
+  async function fetchProjectDetail(region, projectId){
+    const key = REGION_KEYS_PD[region] || 'eu';
+    const url = PROXY_BASE_PD + '/tc/' + key + '/projects/' + projectId;
+    const r = await fetch(url, { headers: { Authorization: 'Bearer '+tcToken, Accept: 'application/json' } });
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }
+
+  async function load(isRefresh){
+    if (_isLoading) return;
+    _isLoading = true;
+    _projects = [];
+    showLoadingState(true);
+
+    try {
+      const regions = Object.keys(TC_REGIONS_PD);
+      const seenIds = new Set();
+      for (const region of regions){
+        try {
+          const items = await fetchProjectsForRegion(region);
+          for (const p of items){
+            if (!seenIds.has(p.id)){
+              seenIds.add(p.id);
+              _projects.push({
+                id: p.id, name: p.name || 'Naamloos',
+                members: p.usersCount || 0,
+                updatedOn: p.updatedOn || p.modifiedOn || null,
+                location: p.location || region, region: region, role: null,
+                rootId: p.rootId || null, description: p.description || ''
+              });
+            }
+          }
+        } catch(e){ console.warn('[PD] regio '+region+' faalde:', e.message); }
+      }
+
+      console.log('[PD] '+_projects.length+' projecten geladen');
+      renderTable();
+      updateStats();
+      _isLoaded = true;
+
+      // Rollen progressief (parallel 5)
+      await loadRolesProgressively();
+
+      if (window.atfieltHub){
+        try { window.atfieltHub.logEvent('feature', { action: 'pd-loaded', count: _projects.length }); } catch(e){}
+      }
+    } catch(e){
+      console.error('[PD] Load fout:', e.message);
+    }
+    showLoadingState(false);
+    _isLoading = false;
+  }
+
+  async function loadRolesProgressively(){
+    const PARALLEL = 5;
+    let done = 0; const total = _projects.length;
+    const fill = document.getElementById('pdProgressFill');
+    const executing = new Set();
+    for (const project of _projects){
+      const task = (async () => {
+        try {
+          const [users, detail] = await Promise.all([
+            fetchUsersForProject(project.region, project.id),
+            fetchProjectDetail(project.region, project.id)
+          ]);
+          const me = currentUserEmail
+            ? users.find(u => (u.email || '').toLowerCase() === currentUserEmail.toLowerCase())
+            : null;
+          project.role = me?.role || 'USER';
+          project.members = users.filter(u => u.status === 'ACTIVE').length || project.members;
+          if (detail.rootId) project.rootId = detail.rootId;
+          if (detail.description) project.description = detail.description;
+        } catch(e){ project.role = '?'; }
+        done++;
+        if (fill) fill.style.width = Math.round((done/total)*100) + '%';
+        updateRow(project);
+        updateStats();
+      })();
+      executing.add(task); task.finally(() => executing.delete(task));
+      if (executing.size >= PARALLEL) await Promise.race(executing);
+    }
+    await Promise.all(executing);
+  }
+
+  function getFiltered(){
+    let list = _projects.slice();
+    const q = (document.getElementById('pdSearch')?.value || '').toLowerCase();
+    if (q) list = list.filter(p => p.name.toLowerCase().includes(q));
+    if (document.getElementById('pdFilterAdmin')?.checked) list = list.filter(p => p.role === 'ADMIN');
+    if (document.getElementById('pdFilterFav')?.checked) list = list.filter(p => _favorites.has(p.id));
+
+    list.sort((a,b) => {
+      // Favorieten eerst (secondary)
+      if (_favorites.size > 0){
+        const fa = _favorites.has(a.id) ? 0 : 1, fb = _favorites.has(b.id) ? 0 : 1;
+        if (fa !== fb) return fa - fb;
+      }
+      let va, vb;
+      switch (_sortColumn){
+        case 'favorite': va = _favorites.has(a.id)?0:1; vb = _favorites.has(b.id)?0:1; break;
+        case 'name': va = a.name.toLowerCase(); vb = b.name.toLowerCase(); break;
+        case 'role': va = a.role === 'ADMIN' ? 0 : 1; vb = b.role === 'ADMIN' ? 0 : 1; break;
+        case 'members': va = a.members || 0; vb = b.members || 0; break;
+        case 'activity': va = a.updatedOn ? new Date(a.updatedOn).getTime() : 0; vb = b.updatedOn ? new Date(b.updatedOn).getTime() : 0; break;
+        case 'region': va = a.location || ''; vb = b.location || ''; break;
+        default: va = a.name; vb = b.name;
+      }
+      if (va < vb) return _sortAsc ? -1 : 1;
+      if (va > vb) return _sortAsc ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }
+
+  function renderTable(){
+    if (!_isInjected) return;
+    const list = getFiltered();
+    const tbody = document.getElementById('pdBody');
+    const empty = document.getElementById('pdEmpty');
+    if (list.length === 0){ tbody.innerHTML = ''; empty.style.display = ''; updateStats(); return; }
+    empty.style.display = 'none';
+
+    const currentId = tcProject && tcProject.id;
+    tbody.innerHTML = list.map(p => {
+      const isFav = _favorites.has(p.id);
+      const isCurrent = currentId && p.id === currentId;
+      const roleBadge = p.role === 'ADMIN' ? '<span class="pd-badge pd-badge-admin">Admin</span>'
+        : p.role === null ? '<span class="pd-badge pd-badge-loading">laden...</span>'
+        : p.role === '?' ? '<span class="pd-badge pd-badge-user">?</span>'
+        : '<span class="pd-badge pd-badge-user">User</span>';
+      const regionLabel = REGION_LABELS_PD[p.region] || p.location || '?';
+      const dateStr = formatDate(p.updatedOn);
+      const isRecent = p.updatedOn && (Date.now() - new Date(p.updatedOn).getTime()) < 7*24*60*60*1000;
+      const url = p.rootId
+        ? 'https://web.connect.trimble.com/projects/' + p.id + '/data/folder/' + p.rootId
+        : 'https://web.connect.trimble.com/projects/' + p.id;
+      const currentBadge = isCurrent ? '<span class="pd-badge-current">huidig</span>' : '';
+      return '<tr data-id="'+escapeHtml(p.id)+'"'+(isCurrent?' class="current-project"':'')+'>'
+        +   '<td class="pd-fav '+(isFav?'active':'')+'" data-id="'+escapeHtml(p.id)+'">'+(isFav?'★':'☆')+'</td>'
+        +   '<td><a href="'+escapeHtml(url)+'" target="_blank" rel="noopener" class="pd-link" title="'+escapeHtml(p.description||'Open in Trimble Connect')+'">'+escapeHtml(p.name)+'</a>'+currentBadge+'</td>'
+        +   '<td>'+roleBadge+'</td>'
+        +   '<td>'+(p.members||0)+'</td>'
+        +   '<td class="pd-date '+(isRecent?'recent':'')+'">'+escapeHtml(dateStr)+'</td>'
+        +   '<td><span class="pd-badge pd-badge-region">'+escapeHtml(regionLabel)+'</span></td>'
+        + '</tr>';
+    }).join('');
+
+    // Bind fav cells
+    tbody.querySelectorAll('.pd-fav').forEach(function(td){
+      td.addEventListener('click', function(e){ e.stopPropagation(); toggleFav(td.getAttribute('data-id')); });
+    });
+
+    // Sort headers
+    document.querySelectorAll('.pd-table thead th').forEach(th => th.classList.remove('sorted'));
+    const colMap = { favorite:'pdSortFav', name:'pdSortName', role:'pdSortRole', members:'pdSortMembers', activity:'pdSortActivity', region:'pdSortRegion' };
+    const arrow = document.getElementById(colMap[_sortColumn]);
+    if (arrow){ arrow.parentElement.classList.add('sorted'); arrow.innerHTML = _sortAsc ? '▲' : '▼'; }
+
+    updateStats();
+  }
+
+  function updateRow(project){
+    const row = document.querySelector('tr[data-id="'+project.id+'"]');
+    if (!row) return;
+    const cells = row.querySelectorAll('td');
+    if (cells.length < 5) return;
+    if (project.role === 'ADMIN') cells[2].innerHTML = '<span class="pd-badge pd-badge-admin">Admin</span>';
+    else if (project.role === '?') cells[2].innerHTML = '<span class="pd-badge pd-badge-user">?</span>';
+    else cells[2].innerHTML = '<span class="pd-badge pd-badge-user">User</span>';
+    cells[3].textContent = project.members;
+  }
+
+  function updateStats(){
+    if (!_isInjected) return;
+    document.getElementById('pdValTotal').textContent = _projects.length;
+    document.getElementById('pdValAdmin').textContent = _projects.filter(p => p.role === 'ADMIN').length;
+    document.getElementById('pdValMembers').textContent = _projects.reduce((s,p) => s + (p.members||0), 0);
+    document.getElementById('pdCount').textContent = getFiltered().length;
+    const adminCard = document.getElementById('pdStatAdmin');
+    if (adminCard) adminCard.classList.toggle('active-filter', !!document.getElementById('pdFilterAdmin')?.checked);
+  }
+
+  function sortBy(column){
+    if (_sortColumn === column) _sortAsc = !_sortAsc;
+    else { _sortColumn = column; _sortAsc = column === 'activity' ? false : true; }
+    const labels = { favorite:'Favoriet', name:'Naam', role:'Rol', members:'Leden', activity:'Activiteit', region:'Regio' };
+    document.getElementById('pdSortInfo').textContent = 'Sorteer: ' + (labels[column]||column) + (_sortAsc ? ' (A-Z)' : ' (Z-A)');
+    renderTable();
+  }
+
+  function clearFilters(){
+    document.getElementById('pdSearch').value = '';
+    document.getElementById('pdFilterAdmin').checked = false;
+    document.getElementById('pdFilterFav').checked = false;
+    renderTable();
+  }
+
+  function toggleAdminFilter(){
+    const cb = document.getElementById('pdFilterAdmin');
+    cb.checked = !cb.checked;
+    renderTable();
+  }
+
+  function refresh(){
+    if (_isLoading) return;
+    const btn = document.getElementById('pdRefresh');
+    if (btn){ btn.classList.add('spinning'); btn.disabled = true; }
+    load(true).finally(function(){ if (btn){ btn.classList.remove('spinning'); btn.disabled = false; } });
+  }
+
+  function exportXls(){
+    const list = getFiltered();
+    const today = new Date().toISOString().slice(0,10);
+    function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n';
+    xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n';
+    xml += '<Styles><Style ss:ID="header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#D4821A" ss:Pattern="Solid"/></Style>';
+    xml += '<Style ss:ID="admin"><Font ss:Bold="1" ss:Color="#D4821A"/></Style></Styles>\n';
+    xml += '<Worksheet ss:Name="Projecten"><Table>\n';
+    xml += '<Row ss:StyleID="header">';
+    ['Favoriet','Projectnaam','Rol','Leden','Laatste activiteit','Regio','URL'].forEach(h => { xml += '<Cell><Data ss:Type="String">'+esc(h)+'</Data></Cell>'; });
+    xml += '</Row>\n';
+    for (const p of list){
+      const isFav = _favorites.has(p.id) ? 'Ja' : '';
+      const role = p.role || '?';
+      const date = p.updatedOn ? p.updatedOn.replace('T',' ').substring(0,16) : '';
+      const region = REGION_LABELS_PD[p.region] || p.location || '';
+      const url = p.rootId
+        ? 'https://web.connect.trimble.com/projects/'+p.id+'/data/folder/'+p.rootId
+        : 'https://web.connect.trimble.com/projects/'+p.id;
+      xml += '<Row>';
+      xml += '<Cell><Data ss:Type="String">'+esc(isFav)+'</Data></Cell>';
+      xml += '<Cell><Data ss:Type="String">'+esc(p.name)+'</Data></Cell>';
+      xml += '<Cell'+(role==='ADMIN'?' ss:StyleID="admin"':'')+'><Data ss:Type="String">'+esc(role)+'</Data></Cell>';
+      xml += '<Cell><Data ss:Type="Number">'+(p.members||0)+'</Data></Cell>';
+      xml += '<Cell><Data ss:Type="String">'+esc(date)+'</Data></Cell>';
+      xml += '<Cell><Data ss:Type="String">'+esc(region)+'</Data></Cell>';
+      xml += '<Cell><Data ss:Type="String">'+esc(url)+'</Data></Cell>';
+      xml += '</Row>\n';
+    }
+    xml += '</Table></Worksheet></Workbook>';
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'TC_Projecten_'+today+'.xls';
+    a.click(); URL.revokeObjectURL(a.href);
+    if (window.atfieltHub){ try { window.atfieltHub.logEvent('feature', { action: 'pd-export-xls', rows: list.length }); } catch(e){} }
+  }
+
+  // Public API
+  return {
+    activate: function(){
+      injectHtml();
+      loadFavs();
+      if (!_isLoaded && !_isLoading) load(false);
+    }
+  };
+})();
 
 // ============================================================
 //  Start
