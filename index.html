@@ -686,11 +686,22 @@ async function discoverRegionBase(projectLocation){
     } catch(e){ console.warn('[TC] Region discovery netwerk-fout:', e.message); }
   }
   if (!Array.isArray(regions)) return null;
+  // Debug: laat zien welke regions TC kent (ID, origin) zodat we de match-logic kunnen finetunen
+  try { console.log('[TC] Regions data:', regions.map(function(r){ return {id:r.id,name:r.name,origin:r.origin,location:r.location}; })); } catch(e){}
   const loc = (projectLocation || 'europe').toLowerCase();
+  const locShort = loc.split(' ')[0]; // 'europe' / 'north' / 'asia'
+  // Aliases per regio: TC's API kan id zijn zoals "eu", "europe", "EU-WEST", "Europe", etc.
+  const ALIASES = {
+    europe: ['europe','eu','eur','eu-west','eu-1'],
+    'north america': ['north america','northamerica','na','us','us-east','us-1','america'],
+    asia: ['asia','ap','as','ap-southeast','ap-1']
+  };
+  const targetAliases = ALIASES[loc] || [loc, locShort];
   const region = regions.find(function(r){
-    const id = (r.id || r.name || '').toLowerCase();
-    return id === loc || id.includes(loc.split(' ')[0]);
+    const id = String(r.id || r.name || r.location || '').toLowerCase();
+    return targetAliases.some(function(a){ return id === a || id.includes(a); });
   });
+  if (!region) console.warn('[TC] Region match faalde voor location:', loc, '— gebruik fallback');
   return region && region.origin ? region.origin + '/tc/api/2.0' : null;
 }
 
