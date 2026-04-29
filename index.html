@@ -374,6 +374,31 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
    ========================================= */
 .view{display:none}
 .view.active{display:block}
+
+/* Cockpit top-bar — persistente in-cockpit nav (dashboard-first design) */
+.cp-tabs{
+  display:flex;flex-wrap:wrap;gap:var(--s2);
+  padding:var(--s3) 0 var(--s4);
+  border-bottom:1px solid var(--hl-light);margin-bottom:var(--s4);
+  position:sticky;top:56px;background:#fff;z-index:50;
+}
+.cp-tab{
+  padding:8px 14px;border:1px solid var(--hl);background:#fff;
+  border-radius:var(--r-pill);
+  font-family:'Poppins',sans-serif;font-size:var(--fs-md);font-weight:500;
+  color:var(--g5);cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.cp-tab:hover{border-color:var(--af);color:var(--af)}
+.cp-tab.active{
+  background:var(--af);color:#fff;border-color:var(--af);
+  box-shadow:0 4px 14px rgba(212,130,26,.25);
+}
+.cp-tab.disabled{cursor:not-allowed;opacity:.45;pointer-events:none}
+.cp-tab:focus-visible{outline:2px solid var(--af);outline-offset:2px}
+@media (max-width:560px){
+  .cp-tabs{gap:6px;padding:var(--s2) 0 var(--s3)}
+  .cp-tab{padding:6px 10px;font-size:var(--fs-sm)}
+}
 .view-placeholder{
   background:#fff;border:1px solid var(--hl-light);
   border-radius:var(--r-lg);padding:48px var(--s5);
@@ -568,6 +593,15 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   </header>
 
   <main class="wrap">
+    <!-- Persistente top-bar: dashboard-first nav binnen cockpit -->
+    <nav class="cp-tabs" id="cpTabs" role="tablist" aria-label="Cockpit navigatie">
+      <button class="cp-tab active" type="button" role="tab" data-view="dashboard" aria-selected="true">Dashboard</button>
+      <button class="cp-tab" type="button" role="tab" data-view="documentenlijst" aria-selected="false">Documentenlijst</button>
+      <button class="cp-tab" type="button" role="tab" data-view="rechten-viewer" aria-selected="false">Rechten</button>
+      <button class="cp-tab" type="button" role="tab" data-view="project-upload" aria-selected="false">Upload</button>
+      <button class="cp-tab" type="button" role="tab" data-view="project-dashboard" aria-selected="false">Project Dashboard</button>
+    </nav>
+
     <!-- View: Dashboard (default) -->
     <div class="view active" id="view-dashboard">
       <section class="sec">
@@ -904,14 +938,14 @@ async function init(){
       console.log('[TC-event] event:', event, '| data:', dataStr);
     } catch(e){}
 
-    // Sub-menu klik in TC zijbalk → 'extension.command' event met data.data === '<command>'
-    // Alles-in-1: switch view binnen dezelfde iframe, geen URL-change → geen TC popup
+    // TC zijbalk klik → 'extension.command' met data.data === '<command>'.
+    // Submenu is gereduceerd tot 1 item; alleen 'open_cockpit' verwacht.
+    // 'open_dashboard' blijft als alias voor TC-clients die de oude menu nog cachen.
     if (event === 'extension.command' && data && typeof data.data === 'string') {
       const cmd = data.data;
       if (cmd === 'open_cockpit' || cmd === 'open_dashboard') { showView('dashboard'); return; }
-      // Sub-command: zoek de bijbehorende extensie-view en switch
-      const ext = EXTENSIONS.find(function(e){ return ('open_' + e.key.replace(/-/g,'_')) === cmd; });
-      if (ext) { if (ext.allowed !== false) showView(ext.key); return; }
+      console.log('[TC-event] Onbekend command (stale menu cache?):', cmd);
+      return;
     }
 
     // V2 — Sessie verloopt → token automatisch verversen (skill: extension.sessionInvalid)
@@ -954,20 +988,13 @@ async function init(){
   console.log('[TC] Project:', tcProject.name);
   setStep('tc','done');
 
-  // Menu-item registreren met subMenus voor de 4 extensies (kennisbank-pattern).
-  // TC toont "At Fielt Cockpit" als hoofd-item en eronder elk extensie als sub.
-  // Klik op hoofd → extension.command 'open_cockpit' (wij negeren, blijven op dashboard)
-  // Klik op sub → extension.command met de slug → wij doen location.href naar oude extensie
+  // Menu-item registreren als enkel top-level command (dashboard-first nav).
+  // Submenu is bewust verwijderd: navigatie loopt voortaan via dashboard-tegels +
+  // persistente top-bar in de cockpit zelf. Gebruiker landt altijd op dashboard.
   const menuDef = {
     title: 'At Fielt Cockpit',
     icon: 'https://tomtietom.github.io/trimble-dashboard-project-/icon.png',
-    command: 'open_cockpit',
-    subMenus: [
-      // "Dashboard" als eerste sub-item zodat gebruiker altijd terug kan naar de cockpit-landing
-      { title: 'Dashboard', command: 'open_dashboard', icon: 'https://tomtietom.github.io/trimble-dashboard-project-/icon.png' }
-    ].concat(EXTENSIONS.map(function(e){
-      return { title: e.title, command: 'open_' + e.key.replace(/-/g, '_'), icon: e.iconUrl };
-    }))
+    command: 'open_cockpit'
   };
   try {
     if (tcAPI.ui && typeof tcAPI.ui.setMenu==='function') tcAPI.ui.setMenu(menuDef);
@@ -1104,6 +1131,7 @@ async function loadDashboard(){
 
   renderTiles();
   renderPlaceholders();
+  bindTopbar(); // moet ná de access-check zodat .allowed correct in tabs landt
 
   const pid = tcProject.id;
 
@@ -1159,11 +1187,11 @@ async function loadDashboard(){
   });
   const lastUploadStr = latestUpload ? formatDate(latestUpload.toISOString()) : 'nog geen uploads';
 
-  // Kerngetallen naar tegels — echte data per extensie
-  updateTileStat('project-dashboard', projectsCount ? projectsCount+' projecten beschikbaar' : 'Overzicht projecten');
-  updateTileStat('rechten-viewer', foldersCount ? foldersCount+' mappen · '+groupsCount+' groepen' : 'Rechtenmatrix');
-  updateTileStat('documentenlijst', filesInRoot ? filesInRoot+' bestanden in root' : 'Documentenlijst');
-  updateTileStat('project-upload', 'Laatste upload: '+lastUploadStr);
+  // Kerngetallen naar tegels — echte data per extensie. Bij ontbrekende data: '–' (eerlijk, geen statisch label).
+  updateTileStat('project-dashboard', projectsCount ? projectsCount+' projecten' : '–');
+  updateTileStat('rechten-viewer',    foldersCount  ? foldersCount+' mappen · '+groupsCount+' groepen' : '–');
+  updateTileStat('documentenlijst',   filesInRoot   ? filesInRoot+' bestanden in root' : '–');
+  updateTileStat('project-upload',    latestUpload  ? 'Laatste upload: '+lastUploadStr : '–');
 
   // Laatste activiteit + uploads + todos + releases + shares + favorites
   renderActivity(rootList);
@@ -1172,6 +1200,22 @@ async function loadDashboard(){
   renderReleases(releases);
   renderShares(shares);
   renderFavorites();
+
+  // Idle warming: PD's zware multi-region fetch alvast starten zodat de
+  // Project Dashboard-view direct gevuld is wanneer gebruiker erop klikt.
+  // PD heeft eigen _isLoading/_isLoaded guards → dubbele aanroep is veilig.
+  function warmPD(){
+    if (typeof PD === 'undefined') return;
+    try {
+      PD.activate();
+      console.log('[Cockpit] PD prefetch started (idle warming)');
+    } catch(e){ console.warn('[Cockpit] PD prefetch faalde:', e.message); }
+  }
+  if ('requestIdleCallback' in window){
+    requestIdleCallback(warmPD, { timeout: 3000 });
+  } else {
+    setTimeout(warmPD, 1500);
+  }
 }
 
 function renderTiles(){
@@ -1198,6 +1242,30 @@ function renderTiles(){
       if (btn.classList.contains('disabled')) return;
       openExtension(btn.getAttribute('data-key'));
     });
+  });
+}
+
+// Top-bar tabs: zelfde gedrag als tegels, maar altijd zichtbaar voor snelle switch
+function bindTopbar(){
+  document.querySelectorAll('#cpTabs .cp-tab').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      const v = btn.getAttribute('data-view');
+      if (v === 'dashboard') { showView('dashboard'); return; }
+      const ext = EXTENSIONS.find(function(e){ return e.key === v; });
+      if (ext && ext.allowed === false) return;
+      showView(v);
+    });
+  });
+  // Disabled-state spiegelen aan EXTENSIONS[].allowed (vereist: aanroep ná access-check)
+  EXTENSIONS.forEach(function(e){
+    if (e.allowed === false){
+      const t = document.querySelector('#cpTabs .cp-tab[data-view="'+e.key+'"]');
+      if (t){
+        t.classList.add('disabled');
+        t.setAttribute('aria-disabled','true');
+        t.title = 'Geen toegang — vraag aan info@atfielt.nl';
+      }
+    }
   });
 }
 
@@ -1445,13 +1513,21 @@ function showView(name){
   // 'name' is bv. 'dashboard', 'project-dashboard', 'documentenlijst', 'rechten-viewer', 'project-upload'
   document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
   const target = document.getElementById('view-' + name);
+  let activeName = name;
   if (target) {
     target.classList.add('active');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } else {
     // Onbekende view → val terug op dashboard
     document.getElementById('view-dashboard').classList.add('active');
+    activeName = 'dashboard';
   }
+  // Top-bar tab-state synchroniseren
+  document.querySelectorAll('#cpTabs .cp-tab').forEach(function(t){
+    const isActive = t.getAttribute('data-view') === activeName;
+    t.classList.toggle('active', isActive);
+    t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
   // Lazy-activeer Fase B modules bij eerste view-switch
   if (name === 'project-dashboard' && typeof PD !== 'undefined') {
     try { PD.activate(); } catch(e){ console.warn('[Cockpit] PD.activate fout:', e.message); }
