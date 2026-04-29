@@ -484,6 +484,30 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .pu-bulk-bar .bulk-suggestion-tag{font-size:var(--fs-xs);color:var(--af);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
 .pu-bulk-bar .bulk-apply{padding:8px 18px;background:var(--af);color:#fff;border:0;border-radius:var(--r-pill);font-family:'Montserrat',sans-serif;font-weight:600;cursor:pointer;font-size:var(--fs-md);box-shadow:0 4px 14px rgba(212,130,26,.25);transition:all .2s}
 .pu-bulk-bar .bulk-apply:hover{background:var(--af2)}
+
+/* Settings-modal (admin: hub-config bewerken) */
+.pu-app-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s3);margin-bottom:var(--s3)}
+.pu-app-head>div{flex:1;min-width:0}
+.pu-cfg-btn{background:transparent;border:1px solid var(--hl);border-radius:var(--r-sm);padding:8px 14px;cursor:pointer;font-size:var(--fs-md);color:var(--g5);font-family:'Poppins',sans-serif;transition:all .15s;white-space:nowrap}
+.pu-cfg-btn:hover{background:var(--gr);color:var(--dk);border-color:var(--af)}
+
+.pu-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px var(--s4);z-index:1000;backdrop-filter:blur(2px)}
+.pu-modal{background:#fff;border-radius:var(--r-lg);max-width:640px;width:100%;padding:var(--s5);box-shadow:0 12px 40px rgba(0,0,0,.22);max-height:calc(100vh - 80px);overflow-y:auto}
+.pu-modal h2{font-family:'Montserrat',sans-serif;margin:0 0 var(--s1);font-size:20px;font-weight:700;color:var(--dk)}
+.pu-modal h3{font-family:'Montserrat',sans-serif;font-weight:700;color:var(--dk)}
+.pu-modal .sub{color:var(--g5);font-size:var(--fs-sm);margin:0 0 var(--s4)}
+.pu-modal code{background:var(--gr);padding:1px 5px;border-radius:3px;font-size:var(--fs-sm);font-family:'SFMono-Regular',Menlo,Consolas,monospace}
+.pu-modal .rule-row{display:grid;grid-template-columns:100px 1fr 40px;gap:var(--s2);align-items:center;margin-bottom:var(--s2)}
+.pu-modal .rule-row.pattern-row{grid-template-columns:1.5fr 1fr 1fr 40px}
+.pu-modal .rule-row input,.pu-modal .rule-row select{padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font-size:var(--fs-md);width:100%;background:#fff;font-family:'Poppins',sans-serif;color:var(--dk);outline:none}
+.pu-modal .rule-row input:focus,.pu-modal .rule-row select:focus{border-color:var(--af)}
+.pu-modal .rule-del{background:transparent;border:1px solid var(--hl);color:var(--g4);border-radius:var(--r-sm);padding:6px 8px;cursor:pointer;font-size:15px;transition:all .15s}
+.pu-modal .rule-del:hover{color:var(--warn);border-color:var(--warn)}
+.pu-modal .modal-actions{margin-top:var(--s4);display:flex;justify-content:flex-end;gap:var(--s2)}
+.pu-modal .add-rule{background:transparent;border:1.5px dashed var(--hl);border-radius:var(--r-sm);padding:8px var(--s3);cursor:pointer;font-size:var(--fs-md);color:var(--g5);margin-top:var(--s1);font-family:'Poppins',sans-serif;transition:all .15s}
+.pu-modal .add-rule:hover{border-color:var(--af);color:var(--af)}
+.pu-modal .btn-ghost{padding:8px 18px;background:transparent;color:var(--g5);border:1px solid var(--hl);border-radius:var(--r-pill);font-family:'Poppins',sans-serif;font-weight:500;cursor:pointer;font-size:var(--fs-md);transition:all .15s}
+.pu-modal .btn-ghost:hover{background:var(--gr);color:var(--dk)}
 .view-placeholder{
   background:#fff;border:1px solid var(--hl-light);
   border-radius:var(--r-lg);padding:48px var(--s5);
@@ -2327,6 +2351,415 @@ const PU = (function(){
   }
 
   // ============================================================
+  //  Stage 2B: Hub-config save + cross-project import (admin)
+  // ============================================================
+  async function _saveUploadConfig(){
+    const headers = { 'Content-Type': 'application/json' };
+    const session = _getHubSessionToken();
+    if (session) headers['X-Session'] = session;
+    else throw new Error('Geen geldige hub-sessie — herlaad de extensie.');
+    const body = {
+      slug: EXTENSION_SLUG_PU,
+      project: tcProject.id,
+      key: 'metadata-rules',
+      value: { rules: _uploadConfig.rules, filePatterns: _uploadConfig.filePatterns, synonyms: _uploadConfig.synonyms },
+      tcToken: tcToken,
+    };
+    const r = await _fetchTimeout(HUB_CONFIG_URL_PU, { method:'POST', headers: headers, body: JSON.stringify(body) }, 15000);
+    if (r.status === 401) throw new Error('Sessie verlopen — herlaad de extensie.');
+    if (r.status === 403) throw new Error('Alleen projectbeheerders mogen deze regels wijzigen.');
+    if (!r.ok){ const t = await r.text().catch(function(){ return ''; }); throw new Error('Opslaan mislukt (' + r.status + ') ' + t.slice(0,200)); }
+    return true;
+  }
+
+  let _projectListCachePU = null;
+  async function _fetchProjectList(){
+    if (_projectListCachePU) return _projectListCachePU;
+    try {
+      const arr = await _puFetch('/projects');
+      const list = (Array.isArray(arr) ? arr : (arr.items || []))
+        .map(function(p){ return { id: p.id, name: p.name || '(naamloos)' }; })
+        .filter(function(p){ return p.id; });
+      _projectListCachePU = list;
+      return list;
+    } catch(e){ console.warn('[PU] projectenlijst ophalen mislukt:', e.message); return []; }
+  }
+
+  async function _fetchConfigForProject(projectId){
+    const url = HUB_CONFIG_URL_PU + '?slug=' + encodeURIComponent(EXTENSION_SLUG_PU)
+      + '&project=' + encodeURIComponent(projectId) + '&key=metadata-rules';
+    const headers = { 'Accept':'application/json' };
+    const session = _getHubSessionToken();
+    if (session) headers['X-Session'] = session;
+    const r = await _fetchTimeout(url, { headers: headers }, 10000);
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error('Hub gaf ' + r.status);
+    const body = await r.json().catch(function(){ return null; });
+    let cfg = body && (body.value || body.config || body);
+    if (typeof cfg === 'string'){ try { cfg = JSON.parse(cfg); } catch(_){ cfg = null; } }
+    return cfg || null;
+  }
+
+  // ============================================================
+  //  Stage 2B: Settings-modal — admin bewerkt rules / patterns / synonyms
+  // ============================================================
+  function _openConfigModal(){
+    // Werkkopie voor in-modal editing (cancel = discard)
+    // synoniemen worden platgeslagen tot een array [{field, alias, canonical}] zodat editor-UI simpel is
+    const flatSynonyms = [];
+    for (const f of METADATA_FIELDS){
+      const src = (_uploadConfig.synonyms && _uploadConfig.synonyms[f]) || {};
+      for (const alias in src) flatSynonyms.push({ field: f, alias: alias, canonical: src[alias] });
+    }
+    const draft = {
+      rules: _uploadConfig.rules.map(function(r){ return { depth: r.depth, field: r.field, map: r.map ? Object.assign({}, r.map) : null }; }),
+      filePatterns: (_uploadConfig.filePatterns || []).map(function(p){ return { regex: p.regex, field: p.field, value: p.value }; }),
+      synonyms: flatSynonyms,
+    };
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'pu-modal-backdrop';
+    backdrop.addEventListener('click', function(e){ if (e.target === backdrop) backdrop.remove(); });
+
+    const modal = document.createElement('div');
+    modal.className = 'pu-modal';
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+
+    const fieldOptionsFor = function(selected){
+      return METADATA_FIELDS.map(function(f){ return '<option value="' + f + '"' + (f === selected ? ' selected' : '') + '>' + escapeHtml(FIELD_LABEL[f]) + '</option>'; }).join('');
+    };
+    const valueOptionsFor = function(field, selected){
+      const opts = ['<option value="">— kies waarde —</option>'];
+      for (const v of (ENUM_VALUES[field] || [])){
+        opts.push('<option value="' + escapeHtml(v) + '"' + (v === selected ? ' selected' : '') + '>' + escapeHtml(v) + '</option>');
+      }
+      return opts.join('');
+    };
+
+    const render = function(){
+      const rulesHtml = draft.rules.length === 0
+        ? '<p class="sub" style="margin:8px 0 12px;">Nog geen regels. Voeg er een toe om metadata automatisch af te leiden uit het pad.</p>'
+        : draft.rules.map(function(r, i){
+            return '<div class="rule-row">'
+              + '<input type="number" min="1" max="10" step="1" value="' + r.depth + '" data-rule-depth="' + i + '" title="Mapniveau (1 = eerste map onder projectroot)">'
+              + '<select data-rule-field="' + i + '">' + fieldOptionsFor(r.field) + '</select>'
+              + '<button class="rule-del" data-rule-del="' + i + '" title="Regel verwijderen">×</button>'
+            + '</div>';
+          }).join('');
+
+      const patternsHtml = draft.filePatterns.length === 0
+        ? '<p class="sub" style="margin:8px 0 12px;">Nog geen bestandsnaam-patronen. Voeg er een toe om metadata automatisch te vullen bij het slepen van een bestand.</p>'
+        : draft.filePatterns.map(function(p, i){
+            return '<div class="rule-row pattern-row">'
+              + '<input type="text" value="' + escapeHtml(p.regex) + '" data-pat-regex="' + i + '" placeholder="bv. \\bVO\\b of Plattegrond" title="Woord of patroon dat in de bestandsnaam voorkomt. Hoofdletters doen er niet toe.">'
+              + '<select data-pat-field="' + i + '">' + fieldOptionsFor(p.field) + '</select>'
+              + '<select data-pat-value="' + i + '" title="Waarde die bij match wordt ingevuld">' + valueOptionsFor(p.field, p.value) + '</select>'
+              + '<button class="rule-del" data-pat-del="' + i + '" title="Regel verwijderen">×</button>'
+            + '</div>';
+          }).join('');
+
+      const synonymsHtml = draft.synonyms.length === 0
+        ? '<p class="sub" style="margin:8px 0 12px;">Nog geen synoniemen. Handig als je mapnamen afkortingen bevatten (VO, DO, ARC, ...).</p>'
+        : draft.synonyms.map(function(s, i){
+            return '<div class="rule-row pattern-row">'
+              + '<select data-syn-field="' + i + '">' + fieldOptionsFor(s.field) + '</select>'
+              + '<input type="text" value="' + escapeHtml(s.alias) + '" data-syn-alias="' + i + '" placeholder="alias (zoals in mapnaam)" title="Alias zoals die in het folder-pad verschijnt">'
+              + '<select data-syn-canon="' + i + '" title="Metadata-waarde die deze alias voorstelt">' + valueOptionsFor(s.field, s.canonical) + '</select>'
+              + '<button class="rule-del" data-syn-del="' + i + '" title="Synoniem verwijderen">×</button>'
+            + '</div>';
+          }).join('');
+
+      modal.innerHTML =
+        '<h2>Instellingen — metadata automatisch invullen</h2>'
+        + '<p class="sub" style="margin-bottom:var(--s3);">Vertel de uploader hoe je bestanden herkend moeten worden, dan stelt hij de juiste map voor en vult Discipline / Fase / Status alvast in.</p>'
+        + '<div style="background:var(--afl);border-left:3px solid var(--af);border-radius:var(--r-sm);padding:var(--s3) var(--s4);margin:0 0 var(--s4);font-size:var(--fs-sm);line-height:1.5;">'
+          + '<strong>Voorbeeld:</strong> je bestand heet <code>TTP-UO-101 Plattegrond.pdf</code> en moet in '
+          + '<code>A. Project informatie / 3.5 Uitvoeringsontwerp / 00.02 Architect / 03 Definitief</code>. '
+          + 'Met de juiste instellingen herkent de uploader <em>UO</em> = Uitvoeringsontwerp, snapt uit de mapstructuur wat Discipline en Status zijn, en zet het bestand automatisch in de goede map.'
+        + '</div>'
+        + '<div id="import-box" style="background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm);padding:var(--s3);margin:0 0 var(--s5);">'
+          + '<div style="display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;">'
+            + '<span style="font-size:var(--fs-sm);color:var(--dk);font-weight:500;">📥 Instellingen overnemen van ander project:</span>'
+            + '<select id="import-project" style="flex:1;min-width:200px;padding:6px 8px;border:1px solid var(--hl);border-radius:var(--r-sm);font-family:\'Poppins\',sans-serif;font-size:var(--fs-sm);background:#fff;">'
+              + '<option value="">— kies project —</option>'
+            + '</select>'
+            + '<button type="button" class="btn-ghost" id="import-btn" style="padding:6px 14px;font-size:var(--fs-sm);">Haal op</button>'
+          + '</div>'
+          + '<div id="import-msg" style="font-size:var(--fs-xs);color:var(--g5);margin-top:6px;">Eerder ingesteld in een ander project? Neem het hier met één klik over.</div>'
+        + '</div>'
+        + '<h3 style="font-size:14px;margin:18px 0 4px;">1. Welke mapniveau = welk veld?</h3>'
+        + '<p class="sub" style="margin:0 0 var(--s1);">Projectmappen liggen in een vaste volgorde. Vertel de uploader welk mapniveau bij welk metadata-veld hoort.</p>'
+        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Voorbeeld: pad <code>A / 3.5 Uitvoeringsontwerp / 00.02 Architect / 03 Definitief</code> — dan is niveau <strong>2 = Fase</strong>, niveau <strong>3 = Discipline</strong>, niveau <strong>4 = Status</strong>. (Niveau 1 is hier de hoofdmap <code>A</code>, vaak niet relevant.)</p>'
+        + '<div id="rules-list">' + rulesHtml + '</div>'
+        + '<button type="button" class="add-rule" id="add-rule-btn">+ Regel toevoegen</button>'
+        + '<h3 style="font-size:14px;margin:22px 0 4px;">2. Herken afkortingen in bestandsnamen</h3>'
+        + '<p class="sub" style="margin:0 0 var(--s1);">Zet een term uit de bestandsnaam om in een metadata-waarde. Hoofdletters doen er niet toe.</p>'
+        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Voorbeeld: typ in "Zoek" het woord <code>UO</code>, kies "Fase" en vul <code>Uitvoeringsontwerp</code> in. Bij elk bestand waar "UO" in staat (zoals <code>TTP-UO-101.pdf</code>) wordt de fase direct ingevuld. Tip: gebruik <code>\\bUO\\b</code> om alleen het losse woord UO te matchen (niet "plaUOrder" o.i.d.).</p>'
+        + '<div id="patterns-list">' + patternsHtml + '</div>'
+        + '<button type="button" class="add-rule" id="add-pattern-btn">+ Patroon toevoegen</button>'
+        + '<h3 style="font-size:14px;margin:22px 0 4px;">3. Vertaal afkortingen in mapnamen</h3>'
+        + '<p class="sub" style="margin:0 0 var(--s1);">Als de echte mapnamen afkortingen gebruiken (bv. <code>3.2 VO</code>) maar de metadata-waarde voluit is (<code>Voorlopig ontwerp</code>), vertel hier dat die hetzelfde betekenen.</p>'
+        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Voorbeeld: <code>VO</code> → <code>Voorlopig ontwerp</code>, <code>ARC</code> → <code>Architect</code>. Zonder deze vertaling ziet de uploader <code>3.2 VO</code> niet als Fase = Voorlopig ontwerp.</p>'
+        + '<div id="synonyms-list">' + synonymsHtml + '</div>'
+        + '<button type="button" class="add-rule" id="add-synonym-btn">+ Synoniem toevoegen</button>'
+        + '<div class="modal-actions">'
+          + '<button class="btn-ghost" type="button" id="cfg-cancel">Annuleren</button>'
+          + '<button class="btn-primary" type="button" id="cfg-save">Opslaan</button>'
+        + '</div>'
+        + '<div id="cfg-msg" style="margin-top:8px;font-size:12px;"></div>';
+
+      // === Pad-regel handlers ===
+      modal.querySelectorAll('input[data-rule-depth]').forEach(function(el){
+        el.addEventListener('input', function(){
+          const i = Number(el.getAttribute('data-rule-depth'));
+          const n = parseInt(el.value, 10);
+          if (Number.isFinite(n) && n >= 1 && n <= 10) draft.rules[i].depth = n;
+        });
+      });
+      modal.querySelectorAll('select[data-rule-field]').forEach(function(el){
+        el.addEventListener('change', function(){
+          const i = Number(el.getAttribute('data-rule-field'));
+          draft.rules[i].field = el.value;
+        });
+      });
+      modal.querySelectorAll('button[data-rule-del]').forEach(function(el){
+        el.addEventListener('click', function(){
+          draft.rules.splice(Number(el.getAttribute('data-rule-del')), 1);
+          render();
+        });
+      });
+      modal.querySelector('#add-rule-btn').addEventListener('click', function(){
+        const last = draft.rules[draft.rules.length - 1];
+        const nextDepth = (last && last.depth || 0) + 1;
+        const usedFields = new Set(draft.rules.map(function(r){ return r.field; }));
+        const firstFree = METADATA_FIELDS.find(function(f){ return !usedFields.has(f); }) || 'discipline';
+        draft.rules.push({ depth: nextDepth, field: firstFree });
+        render();
+      });
+
+      // === Bestandsnaam-patroon handlers ===
+      modal.querySelectorAll('input[data-pat-regex]').forEach(function(el){
+        el.addEventListener('input', function(){
+          draft.filePatterns[Number(el.getAttribute('data-pat-regex'))].regex = el.value;
+        });
+      });
+      modal.querySelectorAll('select[data-pat-field]').forEach(function(el){
+        el.addEventListener('change', function(){
+          const i = Number(el.getAttribute('data-pat-field'));
+          draft.filePatterns[i].field = el.value;
+          if (!(ENUM_VALUES[el.value] || []).includes(draft.filePatterns[i].value)){
+            draft.filePatterns[i].value = '';
+          }
+          render();
+        });
+      });
+      modal.querySelectorAll('select[data-pat-value]').forEach(function(el){
+        el.addEventListener('change', function(){
+          draft.filePatterns[Number(el.getAttribute('data-pat-value'))].value = el.value;
+        });
+      });
+      modal.querySelectorAll('button[data-pat-del]').forEach(function(el){
+        el.addEventListener('click', function(){
+          draft.filePatterns.splice(Number(el.getAttribute('data-pat-del')), 1);
+          render();
+        });
+      });
+      modal.querySelector('#add-pattern-btn').addEventListener('click', function(){
+        draft.filePatterns.push({ regex:'', field:'project_fase', value:'' });
+        render();
+      });
+
+      // === Synoniemen handlers ===
+      modal.querySelectorAll('select[data-syn-field]').forEach(function(el){
+        el.addEventListener('change', function(){
+          const i = Number(el.getAttribute('data-syn-field'));
+          draft.synonyms[i].field = el.value;
+          if (!(ENUM_VALUES[el.value] || []).includes(draft.synonyms[i].canonical)){
+            draft.synonyms[i].canonical = '';
+          }
+          render();
+        });
+      });
+      modal.querySelectorAll('input[data-syn-alias]').forEach(function(el){
+        el.addEventListener('input', function(){
+          draft.synonyms[Number(el.getAttribute('data-syn-alias'))].alias = el.value;
+        });
+      });
+      modal.querySelectorAll('select[data-syn-canon]').forEach(function(el){
+        el.addEventListener('change', function(){
+          draft.synonyms[Number(el.getAttribute('data-syn-canon'))].canonical = el.value;
+        });
+      });
+      modal.querySelectorAll('button[data-syn-del]').forEach(function(el){
+        el.addEventListener('click', function(){
+          draft.synonyms.splice(Number(el.getAttribute('data-syn-del')), 1);
+          render();
+        });
+      });
+      modal.querySelector('#add-synonym-btn').addEventListener('click', function(){
+        draft.synonyms.push({ field:'project_fase', alias:'', canonical:'' });
+        render();
+      });
+
+      // === Import-dropdown vullen (async, één keer per modal-sessie volstaat) ===
+      const projectSel = modal.querySelector('#import-project');
+      if (projectSel && projectSel.options.length <= 1){
+        _fetchProjectList().then(function(list){
+          const filtered = list.filter(function(p){ return p.id !== tcProject.id; });
+          if (!filtered.length){
+            projectSel.innerHTML = '<option value="">— geen andere projecten —</option>';
+            projectSel.disabled = true;
+            return;
+          }
+          filtered.sort(function(a,b){ return a.name.localeCompare(b.name, 'nl'); });
+          projectSel.innerHTML = '<option value="">— kiezen —</option>'
+            + filtered.map(function(p){ return '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name) + '</option>'; }).join('');
+        });
+      }
+
+      // === Import-knop handler ===
+      const importBtn = modal.querySelector('#import-btn');
+      const importMsg = modal.querySelector('#import-msg');
+      if (importBtn){
+        importBtn.addEventListener('click', async function(){
+          const pid = projectSel.value;
+          if (!pid){ importMsg.textContent = 'Kies eerst een project.'; importMsg.style.color = 'var(--warn)'; return; }
+          importBtn.disabled = true;
+          importMsg.style.color = 'var(--g5)';
+          importMsg.textContent = 'Ophalen…';
+          try {
+            const cfg = await _fetchConfigForProject(pid);
+            if (!cfg){
+              importMsg.style.color = 'var(--warn)';
+              importMsg.textContent = 'Dat project heeft nog geen regels ingesteld.';
+              importBtn.disabled = false;
+              return;
+            }
+            const totalOld = draft.rules.length + draft.filePatterns.length + draft.synonyms.length;
+            if (totalOld > 0 && !confirm('Huidige regels overschrijven met die van het andere project?')){
+              importBtn.disabled = false;
+              importMsg.textContent = '';
+              return;
+            }
+            draft.rules = Array.isArray(cfg.rules)
+              ? cfg.rules.filter(function(r){ return r && Number.isFinite(r.depth) && METADATA_FIELDS.indexOf(r.field) >= 0; })
+                         .map(function(r){ return { depth: r.depth, field: r.field, map: r.map ? Object.assign({}, r.map) : null }; })
+              : [];
+            draft.filePatterns = Array.isArray(cfg.filePatterns)
+              ? cfg.filePatterns.filter(function(p){ return p && typeof p.regex === 'string' && METADATA_FIELDS.indexOf(p.field) >= 0 && typeof p.value === 'string'; })
+                                 .map(function(p){ return { regex: p.regex, field: p.field, value: p.value }; })
+              : [];
+            draft.synonyms = [];
+            if (cfg.synonyms && typeof cfg.synonyms === 'object'){
+              for (const f of METADATA_FIELDS){
+                const src = cfg.synonyms[f] || {};
+                for (const alias in src){
+                  if (typeof alias === 'string' && typeof src[alias] === 'string'){
+                    draft.synonyms.push({ field: f, alias: alias, canonical: src[alias] });
+                  }
+                }
+              }
+            }
+            importMsg.style.color = 'var(--ok)';
+            importMsg.textContent = '✓ Overgenomen: ' + draft.rules.length + ' pad-regels, ' + draft.filePatterns.length + ' patronen, ' + draft.synonyms.length + ' synoniemen — nog niet opgeslagen.';
+            render();
+          } catch(e){
+            importMsg.style.color = 'var(--warn)';
+            importMsg.textContent = 'Fout bij ophalen: ' + e.message;
+            importBtn.disabled = false;
+          }
+        });
+      }
+
+      // === Annuleren / Opslaan ===
+      modal.querySelector('#cfg-cancel').addEventListener('click', function(){ backdrop.remove(); });
+      modal.querySelector('#cfg-save').addEventListener('click', async function(){
+        const msgEl = modal.querySelector('#cfg-msg');
+        const saveBtn = modal.querySelector('#cfg-save');
+        saveBtn.disabled = true;
+        msgEl.style.color = 'var(--g5)';
+        msgEl.textContent = 'Opslaan…';
+
+        // Valideer pad-regels: unieke depth
+        const seen = new Set();
+        for (const r of draft.rules){
+          if (seen.has(r.depth)){
+            msgEl.style.color = 'var(--warn)';
+            msgEl.textContent = 'Elk mapniveau mag maar één keer voorkomen.';
+            saveBtn.disabled = false;
+            return;
+          }
+          seen.add(r.depth);
+        }
+        // Valideer bestandsnaam-patronen: regex parsebaar + waarde niet leeg
+        for (const p of draft.filePatterns){
+          if (!p.regex || !p.value){
+            msgEl.style.color = 'var(--warn)';
+            msgEl.textContent = 'Een bestandsnaam-patroon heeft lege regex of waarde.';
+            saveBtn.disabled = false;
+            return;
+          }
+          try { new RegExp(p.regex); }
+          catch(e){
+            msgEl.style.color = 'var(--warn)';
+            msgEl.textContent = 'Ongeldige regex: ' + p.regex;
+            saveBtn.disabled = false;
+            return;
+          }
+        }
+        // Valideer synoniemen: geen lege alias of canoniek
+        for (const s of draft.synonyms){
+          if (!s.alias || !s.canonical){
+            msgEl.style.color = 'var(--warn)';
+            msgEl.textContent = 'Een synoniem heeft lege alias of waarde.';
+            saveBtn.disabled = false;
+            return;
+          }
+        }
+
+        // Flat synonyms-array omzetten naar { field: { alias: canonical } }
+        const synObj = {};
+        for (const s of draft.synonyms){
+          if (!synObj[s.field]) synObj[s.field] = {};
+          synObj[s.field][s.alias] = s.canonical;
+        }
+
+        const previousRules = _uploadConfig.rules;
+        const previousPatterns = _uploadConfig.filePatterns;
+        const previousSyn = _uploadConfig.synonyms;
+        _uploadConfig.rules = draft.rules;
+        _uploadConfig.filePatterns = draft.filePatterns;
+        _uploadConfig.synonyms = synObj;
+        try {
+          await _saveUploadConfig();
+          // Re-suggestie voor pending items met nieuwe config
+          for (const item of _queue){
+            if (item.status !== 'pending') continue;
+            for (const f of METADATA_FIELDS){
+              if (item.metadataAuto[f]){ item.metadata[f] = ''; item.metadataAuto[f] = false; }
+            }
+            _applyFilenamePatterns(item);
+            _recomputeFolderSuggestion(item);
+            _applyMetadataSuggestion(item);
+          }
+          renderQueue();
+          backdrop.remove();
+        } catch(e){
+          _uploadConfig.rules = previousRules;
+          _uploadConfig.filePatterns = previousPatterns;
+          _uploadConfig.synonyms = previousSyn;
+          msgEl.style.color = 'var(--warn)';
+          msgEl.textContent = e.message;
+          saveBtn.disabled = false;
+        }
+      });
+    };
+
+    render();
+  }
+
+  // ============================================================
   //  Stage 2: Suggestion engine (folder-scoring + filename-patterns + synonyms)
   // ============================================================
   function _tokenize(s){
@@ -2580,8 +3013,13 @@ const PU = (function(){
     if (!root) return;
     root.innerHTML =
       '<section class="sec">' +
-        '<div class="overline">Bestanden uploaden</div>' +
-        '<p class="pu-subtitle"><span id="pu-folder-count">–</span> map<span id="pu-folder-suffix">pen</span> beschikbaar voor upload in <strong>' + escapeHtml(tcProject.name || '–') + '</strong></p>' +
+        '<div class="pu-app-head">' +
+          '<div>' +
+            '<div class="overline">Bestanden uploaden</div>' +
+            '<p class="pu-subtitle"><span id="pu-folder-count">–</span> map<span id="pu-folder-suffix">pen</span> beschikbaar voor upload in <strong>' + escapeHtml(tcProject.name || '–') + '</strong></p>' +
+          '</div>' +
+          '<button class="pu-cfg-btn" type="button" id="pu-cfg-btn" title="Metadata-regels instellen">⚙ Instellingen</button>' +
+        '</div>' +
         '<div id="pu-warn-box"></div>' +
         '<div class="dropzone" id="pu-dropzone">' +
           '<p><strong>Sleep bestanden hierheen</strong></p>' +
@@ -2634,6 +3072,8 @@ const PU = (function(){
       renderQueue();
     });
     root.querySelector('#pu-upload-btn').addEventListener('click', uploadAll);
+    const cfgBtn = root.querySelector('#pu-cfg-btn');
+    if (cfgBtn) cfgBtn.addEventListener('click', _openConfigModal);
   }
 
   function addFiles(fileList){
