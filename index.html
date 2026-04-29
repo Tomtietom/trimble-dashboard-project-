@@ -456,6 +456,34 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .folder-hint{font-size:var(--fs-xs);color:var(--g4);margin-top:var(--s1);padding:0 var(--s3)}
 
 .pu-actions{display:flex;gap:var(--s3);justify-content:flex-end;margin-top:var(--s5);position:sticky;bottom:0;background:#fff;padding:var(--s3) 0;border-top:1px solid var(--hl-light);z-index:5}
+
+/* Path-preview onder folder-picker (metadata-samenvatting) */
+.path-preview{font-size:var(--fs-sm);color:var(--g5);margin-top:var(--s2);padding:var(--s2) var(--s3);background:var(--gr);border-left:3px solid var(--af);border-radius:var(--r-sm);line-height:1.5}
+.path-preview .auto-tag{color:var(--af);font-weight:500}
+.path-preview .missing-tag{color:#7a5c00}
+
+/* Auto-fill highlight op metadata-select (oranje tekst = automatisch ingevuld) */
+.meta-row select[data-auto="1"]{color:var(--af);font-weight:500}
+
+/* Folder-suggestie badge (TOP) op shortlist */
+.folder-option .badge{display:inline-block;padding:1px 8px;border-radius:var(--r-pill);font-size:10px;letter-spacing:.5px;background:var(--af);color:#fff;font-weight:700;font-family:'Montserrat',sans-serif}
+
+/* Bulk-bar — alle in queue tegelijk metadata + map */
+.pu-bulk-bar:empty{display:none}
+.pu-bulk-bar{background:#fff7ec;border:1px solid #f0d4a3;border-radius:var(--r-md);padding:var(--s3) var(--s4);margin:var(--s4) 0 var(--s2)}
+.pu-bulk-bar .bulk-title{font-weight:600;font-size:var(--fs-md);margin-bottom:var(--s2);color:#6f4514}
+.pu-bulk-bar .bulk-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--s2) var(--s3);margin-bottom:var(--s3)}
+.pu-bulk-bar .bulk-fields label{display:block;font-size:var(--fs-sm);color:var(--g5);margin-bottom:3px}
+.pu-bulk-bar .bulk-fields select{width:100%;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font-family:'Poppins',sans-serif;font-size:var(--fs-md);background:#fff;color:var(--dk);outline:none}
+.pu-bulk-bar .bulk-actions{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap}
+.pu-bulk-bar .bulk-toggle{font-size:var(--fs-md);color:var(--g6);display:flex;align-items:center;gap:6px;cursor:pointer}
+.pu-bulk-bar .bulk-suggestion{font-size:var(--fs-sm);color:var(--g5);background:var(--afl);border-left:3px solid var(--af);padding:8px var(--s3);border-radius:var(--r-sm);margin:0 0 var(--s3);display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.pu-bulk-bar .bulk-suggestion strong{color:var(--dk);font-weight:600}
+.pu-bulk-bar .bulk-suggestion-btn{background:#fff;border:1px solid var(--af);color:var(--af);padding:3px 12px;border-radius:var(--r-pill);cursor:pointer;font-size:var(--fs-sm);font-family:'Poppins',sans-serif;font-weight:500;transition:all .15s}
+.pu-bulk-bar .bulk-suggestion-btn:hover{background:var(--af);color:#fff}
+.pu-bulk-bar .bulk-suggestion-tag{font-size:var(--fs-xs);color:var(--af);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.pu-bulk-bar .bulk-apply{padding:8px 18px;background:var(--af);color:#fff;border:0;border-radius:var(--r-pill);font-family:'Montserrat',sans-serif;font-weight:600;cursor:pointer;font-size:var(--fs-md);box-shadow:0 4px 14px rgba(212,130,26,.25);transition:all .2s}
+.pu-bulk-bar .bulk-apply:hover{background:var(--af2)}
 .view-placeholder{
   background:#fff;border:1px solid var(--hl-light);
   border-radius:var(--r-lg);padding:48px var(--s5);
@@ -2082,6 +2110,22 @@ const PU = (function(){
   let _isLoaded = false;
   let _psetStats = { ok:0, fail:0 };
 
+  // Stage 2: hub-config + suggestion engine state
+  let _uploadConfig = { rules: [], filePatterns: [], synonyms: {} };
+  let _configLoaded = false;
+  let _configLoading = false;
+  let _bulkMeta = { discipline:'', project_fase:'', document_status:'' };
+  let _bulkFolderId = '';
+  let _bulkOnlyEmpty = true;
+
+  // Hub config endpoint (admin-set rules per project)
+  const EXTENSION_SLUG_PU = 'project-upload';
+  const HUB_CONFIG_URL_PU = 'https://atfielt-extension-hub.tom-da0.workers.dev/api/extension-config';
+  const HUB_SESSION_KEY_PU = 'atfielt-hub-session';
+
+  // NL stopwoorden (suggestie-tokenizer)
+  const NL_STOPWORDS_PU = new Set(['de','het','een','van','voor','en','of','in','op','te','aan','bij','met','tot','uit','naar','door']);
+
   function getRoot(){ return document.getElementById('view-project-upload'); }
 
   // Fetch helpers (cockpit's tcFetch is GET-only — PU heeft POST nodig)
@@ -2215,6 +2259,320 @@ const PU = (function(){
     return METADATA_FIELDS.some(function(f){ return !item.metadata[f]; });
   }
 
+  // ============================================================
+  //  Stage 2: Hub-config loader
+  // ============================================================
+  function _getHubSessionToken(){
+    try { return sessionStorage.getItem(HUB_SESSION_KEY_PU) || ''; }
+    catch(_){ return ''; }
+  }
+
+  async function _loadUploadConfig(){
+    if (_configLoaded || _configLoading) return;
+    _configLoading = true;
+    try {
+      const url = HUB_CONFIG_URL_PU + '?slug=' + encodeURIComponent(EXTENSION_SLUG_PU)
+        + '&project=' + encodeURIComponent(tcProject.id) + '&key=metadata-rules';
+      const headers = { 'Accept': 'application/json' };
+      const session = _getHubSessionToken();
+      if (session) headers['X-Session'] = session;
+      const r = await _fetchTimeout(url, { headers: headers }, 10000);
+      if (r.status === 404) { console.log('[PU] config nog niet ingesteld — default rules'); _configLoaded = true; return; }
+      if (r.status === 401) { console.warn('[PU] config 401 — sessietoken ontbreekt; default rules'); _configLoaded = true; return; }
+      if (!r.ok) { console.warn('[PU] config-fetch fout:', r.status); return; }
+      const body = await r.json().catch(function(){ return null; });
+      let cfg = body && (body.value || body.config || body);
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch(_){ cfg = null; } }
+      if (cfg && Array.isArray(cfg.rules)){
+        _uploadConfig.rules = cfg.rules.filter(function(r){ return r && Number.isFinite(r.depth) && METADATA_FIELDS.indexOf(r.field) >= 0; });
+      }
+      if (cfg && Array.isArray(cfg.filePatterns)){
+        _uploadConfig.filePatterns = cfg.filePatterns.filter(function(p){
+          return p && typeof p.regex === 'string' && METADATA_FIELDS.indexOf(p.field) >= 0 && typeof p.value === 'string';
+        });
+      }
+      if (cfg && cfg.synonyms && typeof cfg.synonyms === 'object'){
+        const clean = {};
+        for (const f of METADATA_FIELDS){
+          const src = cfg.synonyms[f];
+          if (src && typeof src === 'object'){
+            const map = {};
+            for (const alias in src){
+              const canon = src[alias];
+              if (typeof alias === 'string' && typeof canon === 'string' && alias && canon) map[alias] = canon;
+            }
+            if (Object.keys(map).length) clean[f] = map;
+          }
+        }
+        _uploadConfig.synonyms = clean;
+      }
+      _configLoaded = true;
+      const synCount = Object.values(_uploadConfig.synonyms).reduce(function(n,m){ return n + Object.keys(m).length; }, 0);
+      console.log('[PU] config geladen:', _uploadConfig.rules.length, 'pad-regels,', _uploadConfig.filePatterns.length, 'patronen,', synCount, 'synoniemen');
+      // Re-suggest pending items zodra config beschikbaar is
+      if (_isInjected){
+        for (const item of _queue){
+          if (item.status !== 'pending') continue;
+          _applyFilenamePatterns(item);
+          _recomputeFolderSuggestion(item);
+          _applyMetadataSuggestion(item);
+        }
+        renderQueue();
+      }
+    } catch(e){
+      console.warn('[PU] config laden mislukt:', e.message);
+    } finally {
+      _configLoading = false;
+    }
+  }
+
+  // ============================================================
+  //  Stage 2: Suggestion engine (folder-scoring + filename-patterns + synonyms)
+  // ============================================================
+  function _tokenize(s){
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9àáâäèéêëìíîïòóôöùúûü\s]/gi, ' ')
+      .split(/\s+/)
+      .filter(function(w){ return w.length >= 3 && !NL_STOPWORDS_PU.has(w); });
+  }
+
+  function _normalizeFolderPart(s){
+    return String(s || '')
+      .toLowerCase()
+      .replace(/^[\d\.\-\s_]+/, '')
+      .replace(/\[naam\]/g, '')
+      .replace(/\([^)]*\)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function _synonymsFor(field, canonicalValue){
+    const base = String(canonicalValue || '').toLowerCase().trim();
+    const out = base ? [base] : [];
+    const synMap = (_uploadConfig.synonyms && _uploadConfig.synonyms[field]) || {};
+    for (const alias in synMap){
+      if (String(synMap[alias] || '').toLowerCase() === base){
+        out.push(String(alias).toLowerCase());
+      }
+    }
+    return out;
+  }
+
+  function _scoreFolder(folder, item){
+    if (!folder || folder.path === '(projectroot)') return 0;
+    const parts = folder.path.split(' / ').map(_normalizeFolderPart);
+    let score = 0;
+    for (const f of METADATA_FIELDS){
+      const canonical = (item.metadata[f] || '').trim();
+      if (!canonical) continue;
+      const terms = _synonymsFor(f, canonical);
+      let best = 0;
+      for (const p of parts){
+        if (!p) continue;
+        for (const val of terms){
+          if (!val) continue;
+          if (p === val) best = Math.max(best, 15);
+          else if (p.includes(val) || val.includes(p)) best = Math.max(best, 10);
+        }
+        if (best === 15) break;
+      }
+      score += best;
+    }
+    const extraTokens = [].concat(
+      _tokenize((item.file && item.file.name) ? item.file.name.replace(/\.[^.]+$/, '') : ''),
+      _tokenize(item.description)
+    );
+    const seen = new Set();
+    const uniqueTokens = extraTokens.filter(function(t){ if (seen.has(t)) return false; seen.add(t); return true; });
+    const nameLower = folder.name.toLowerCase();
+    const pathLower = folder.path.toLowerCase();
+    for (const tok of uniqueTokens){
+      if (nameLower.includes(tok)) score += 3;
+      else if (pathLower.includes(tok)) score += 1;
+    }
+    if (score > 0) score += Math.min(folder.depth, 6) * 0.3;
+    return score;
+  }
+
+  function _scoreFolders(item, limit){
+    limit = limit || 8;
+    const out = [];
+    for (const f of _writableFolders){
+      const s = _scoreFolder(f, item);
+      if (s > 0) out.push({ folder: f, score: s });
+    }
+    out.sort(function(a,b){ return b.score - a.score; });
+    return out.slice(0, limit);
+  }
+
+  function _recomputeFolderSuggestion(item){
+    item.folderShortlist = _scoreFolders(item);
+    if (item.folderAuto){
+      item.folderId = item.folderShortlist[0] ? item.folderShortlist[0].folder.id : item.folderId;
+    }
+  }
+
+  function _applyFilenamePatterns(item){
+    const patterns = _uploadConfig.filePatterns || [];
+    if (!patterns.length || !item || !item.file) return;
+    const haystack = (item.file.name || '') + ' ' + (item.description || '');
+    for (const p of patterns){
+      if (!p || !p.regex || !p.field || !p.value) continue;
+      if (METADATA_FIELDS.indexOf(p.field) < 0) continue;
+      // User-ingevulde waarde (niet-auto) niet overschrijven
+      if (item.metadata[p.field] && !item.metadataAuto[p.field]) continue;
+      let re;
+      try { re = new RegExp(p.regex, 'i'); } catch(_){ continue; }
+      if (!re.test(haystack)) continue;
+      const match = (ENUM_VALUES[p.field] || []).find(function(v){ return v.toLowerCase() === String(p.value).toLowerCase(); });
+      const finalValue = match || p.value;
+      item.metadata[p.field] = finalValue;
+      item.metadataAuto[p.field] = true;
+    }
+  }
+
+  function _applyMetadataSuggestion(item){
+    const folder = _writableFolders.find(function(f){ return f.id === item.folderId; });
+    if (!folder) return;
+    const parts = (folder.path && folder.path !== '(projectroot)')
+      ? folder.path.split(' / ').map(function(s){ return s.trim(); }).filter(Boolean)
+      : [];
+    for (const rule of (_uploadConfig.rules || [])){
+      const idx = (rule.depth | 0) - 1;
+      if (idx < 0 || idx >= parts.length) continue;
+      const field = rule.field;
+      if (METADATA_FIELDS.indexOf(field) < 0) continue;
+      if (item.metadata[field] && !item.metadataAuto[field]) continue;
+      const raw = parts[idx];
+      const mapped = (rule.map && rule.map[raw]) ? rule.map[raw] : raw;
+      const synMap = (_uploadConfig.synonyms && _uploadConfig.synonyms[field]) || {};
+      let resolved = String(mapped);
+      for (const alias in synMap){
+        if (alias.toLowerCase() === resolved.toLowerCase()) { resolved = synMap[alias]; break; }
+      }
+      const normalized = _normalizeFolderPart(resolved);
+      const match = (ENUM_VALUES[field] || []).find(function(v){
+        return v.toLowerCase() === resolved.toLowerCase() || v.toLowerCase() === normalized;
+      });
+      if (match){
+        item.metadata[field] = match;
+        item.metadataAuto[field] = true;
+      } else if (item.metadataAuto[field]){
+        item.metadata[field] = '';
+        item.metadataAuto[field] = false;
+      }
+    }
+  }
+
+  // ============================================================
+  //  Stage 2: Path-preview + bulk-bar
+  // ============================================================
+  function _renderPathPreview(item){
+    const tags = METADATA_FIELDS.map(function(field){
+      const v = item.metadata[field];
+      const lbl = escapeHtml(FIELD_LABEL[field]);
+      if (v){
+        const cls = item.metadataAuto[field] ? 'auto-tag' : '';
+        const suffix = item.metadataAuto[field] ? ' (auto)' : '';
+        return '<span class="' + cls + '">' + lbl + ': ' + escapeHtml(v) + suffix + '</span>';
+      }
+      return '<span class="missing-tag">' + lbl + ': — ontbreekt</span>';
+    }).join(' · ');
+    return '<div class="path-preview">' + tags + '</div>';
+  }
+
+  function _renderBulkBar(){
+    const root = getRoot();
+    if (!root) return;
+    const bar = root.querySelector('#pu-bulk-bar');
+    if (!bar) return;
+    const pendingCount = _queue.filter(function(i){ return i.status === 'pending'; }).length;
+    if (pendingCount < 2){ bar.innerHTML = ''; return; }
+
+    const metaSelects = METADATA_FIELDS.map(function(f){
+      const opts = ['<option value="">— niet wijzigen —</option>'].concat(
+        (ENUM_VALUES[f] || []).map(function(v){
+          return '<option value="' + escapeHtml(v) + '"' + (v === _bulkMeta[f] ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+        })
+      ).join('');
+      return '<div><label>' + escapeHtml(FIELD_LABEL[f]) + '</label><select data-bulk="' + f + '">' + opts + '</select></div>';
+    }).join('');
+
+    const folderOpts = ['<option value="">— niet wijzigen —</option>'].concat(
+      _writableFolders.map(function(f){
+        return '<option value="' + escapeHtml(f.id) + '"' + (f.id === _bulkFolderId ? ' selected' : '') + '>' + escapeHtml(f.path) + '</option>';
+      })
+    ).join('');
+
+    let suggestionHtml = '';
+    if (METADATA_FIELDS.some(function(f){ return _bulkMeta[f]; })){
+      const dummy = { metadata: _bulkMeta, file: { name:'' }, description:'' };
+      const top = _writableFolders
+        .map(function(f){ return { folder: f, score: _scoreFolder(f, dummy) }; })
+        .filter(function(s){ return s.score > 0; })
+        .sort(function(a,b){ return b.score - a.score; })[0];
+      if (top){
+        const isCurrent = top.folder.id === _bulkFolderId;
+        suggestionHtml = '<div class="bulk-suggestion">💡 Suggestie: <strong>' + escapeHtml(top.folder.path) + '</strong>'
+          + (isCurrent
+              ? ' <span class="bulk-suggestion-tag">geselecteerd</span>'
+              : ' <button class="bulk-suggestion-btn" type="button" data-bulk="apply-suggestion" data-folder-id="' + escapeHtml(top.folder.id) + '">Gebruik deze map</button>')
+          + '</div>';
+      }
+    }
+
+    bar.innerHTML =
+      '<div class="bulk-title">Bulk-instellen voor alle ' + pendingCount + ' bestanden in de queue</div>'
+      + '<div class="bulk-fields">'
+        + metaSelects
+        + '<div><label>Map</label><select data-bulk="folder">' + folderOpts + '</select></div>'
+      + '</div>'
+      + suggestionHtml
+      + '<div class="bulk-actions">'
+        + '<label class="bulk-toggle"><input type="checkbox" data-bulk="onlyEmpty"' + (_bulkOnlyEmpty ? ' checked' : '') + '> Alleen lege velden overschrijven</label>'
+        + '<button class="bulk-apply" type="button" data-bulk="apply">Toepassen op alle</button>'
+      + '</div>';
+
+    bar.querySelectorAll('select[data-bulk]').forEach(function(el){
+      el.addEventListener('change', function(){
+        const key = el.getAttribute('data-bulk');
+        if (key === 'folder'){ _bulkFolderId = el.value; _renderBulkBar(); }
+        else if (METADATA_FIELDS.indexOf(key) >= 0){ _bulkMeta[key] = el.value; _renderBulkBar(); }
+      });
+    });
+    const cb = bar.querySelector('input[data-bulk="onlyEmpty"]');
+    if (cb) cb.addEventListener('change', function(){ _bulkOnlyEmpty = cb.checked; });
+    const btn = bar.querySelector('button[data-bulk="apply"]');
+    if (btn) btn.addEventListener('click', _applyBulkToAll);
+    const sugBtn = bar.querySelector('button[data-bulk="apply-suggestion"]');
+    if (sugBtn) sugBtn.addEventListener('click', function(){
+      _bulkFolderId = sugBtn.getAttribute('data-folder-id') || '';
+      _renderBulkBar();
+    });
+  }
+
+  function _applyBulkToAll(){
+    const pending = _queue.filter(function(i){ return i.status === 'pending'; });
+    if (!pending.length) return;
+    for (const item of pending){
+      for (const f of METADATA_FIELDS){
+        const v = _bulkMeta[f];
+        if (!v) continue;
+        if (_bulkOnlyEmpty && item.metadata[f]) continue;
+        item.metadata[f] = v;
+        item.metadataAuto[f] = false;
+      }
+      if (_bulkFolderId && !(_bulkOnlyEmpty && item.folderId)){
+        item.folderId = _bulkFolderId;
+        item.folderAuto = false;
+        item.folderPickerOpen = false;
+      }
+      _recomputeFolderSuggestion(item);
+    }
+    renderQueue();
+  }
+
   // HTML injection (idempotent)
   function injectHtml(){
     if (_isInjected) return;
@@ -2231,6 +2589,7 @@ const PU = (function(){
           '<button class="pick-btn" type="button" id="pu-pick-btn">Kies bestanden</button>' +
           '<input type="file" id="pu-file-input" multiple>' +
         '</div>' +
+        '<div class="pu-bulk-bar" id="pu-bulk-bar"></div>' +
         '<div class="pu-queue" id="pu-queue"></div>' +
         '<div class="pu-actions" id="pu-actions" style="display:none">' +
           '<button class="btn-secondary" type="button" id="pu-clear-btn">Wissen</button>' +
@@ -2285,19 +2644,29 @@ const PU = (function(){
     }
     if (!_writableFolders.length) return;
     for (const f of fileList){
-      _queue.push({
+      const item = {
         id: _nextQueueId++,
         file: f,
         description: '',
-        folderId: _writableFolders[0] ? _writableFolders[0].id : null, // default: projectroot
-        folderPickerOpen: false,
+        folderId: null,
+        folderAuto: true,
+        folderShortlist: [],
+        folderPickerOpen: true,
         folderSearch: '',
         progress: 0,
         status: 'pending',
         error: null,
         warn: null,
         metadata: { discipline:'', project_fase:'', document_status:'' },
-      });
+        metadataAuto: { discipline:false, project_fase:false, document_status:false },
+      };
+      // Suggestie-keten: 1) metadata uit bestandsnaam → 2) folder scoren met die metadata → 3) overige metadata uit gekozen pad
+      _applyFilenamePatterns(item);
+      _recomputeFolderSuggestion(item);
+      _applyMetadataSuggestion(item);
+      // Fallback: als suggestie geen folder vindt en folderId nog null, kies projectroot
+      if (!item.folderId && _writableFolders[0]) item.folderId = _writableFolders[0].id;
+      _queue.push(item);
     }
     renderQueue();
   }
@@ -2345,6 +2714,7 @@ const PU = (function(){
             + metaRow
             + '<label>Map</label>'
             + folderPicker
+            + (item.status === 'pending' && selectedFolder ? _renderPathPreview(item) : '')
             + progressBar
             + statusLine
           + '</div>'
@@ -2364,7 +2734,14 @@ const PU = (function(){
         const id = Number(el.getAttribute('data-id'));
         const item = _queue.find(function(i){ return i.id === id; });
         if (!item) return;
-        item.description = el.value; // geen re-render: voorkomt focus-verlies
+        item.description = el.value;
+        // Stage 2: description-tokens herzien filename-patterns + folder-scoring
+        _applyFilenamePatterns(item);
+        _recomputeFolderSuggestion(item);
+        const caret = el.selectionStart;
+        renderQueue();
+        const again = qEl.querySelector('textarea[data-field=description][data-id="' + id + '"]');
+        if (again){ again.focus(); try { again.setSelectionRange(caret, caret); } catch(_){} }
       });
     });
     qEl.querySelectorAll('[data-folder-pick]').forEach(function(el){
@@ -2374,8 +2751,14 @@ const PU = (function(){
         const item = _queue.find(function(i){ return i.id === id; });
         if (!item) return;
         item.folderId = fid;
+        item.folderAuto = false;
         item.folderPickerOpen = false;
         item.folderSearch = '';
+        // Reset auto-metadata zodat nieuwe pad opnieuw wordt afgeleid
+        for (const f of METADATA_FIELDS){
+          if (item.metadataAuto[f]){ item.metadata[f] = ''; item.metadataAuto[f] = false; }
+        }
+        _applyMetadataSuggestion(item);
         renderQueue();
       });
     });
@@ -2411,9 +2794,14 @@ const PU = (function(){
         const item = _queue.find(function(i){ return i.id === id; });
         if (!item || METADATA_FIELDS.indexOf(field) < 0) return;
         item.metadata[field] = el.value;
+        item.metadataAuto[field] = false;
+        // Stage 2: gewijzigde metadata her-scoort folders
+        _recomputeFolderSuggestion(item);
         renderQueue();
       });
     });
+
+    _renderBulkBar();
   }
 
   function _renderFolderPicker(item, selectedFolder){
@@ -2427,14 +2815,31 @@ const PU = (function(){
       : '';
     if (hasChoice && !pickerOpen) return '<div class="folder-picker">' + currentBlock + '</div>';
 
-    // MVP: geen scoring/synoniemen — toon zoekveld + eerste 20 mappen als fallback
+    const shortlist = item.folderShortlist || [];
     const searchResults = item.folderSearch ? _filterFolders(item.folderSearch) : [];
-    const fallback = (!item.folderSearch) ? _writableFolders.slice(0, Math.min(_writableFolders.length, 20)) : [];
+    const anyMeta = METADATA_FIELDS.some(function(f){ return item.metadata[f]; });
+
+    // Fallback: bij weinig folders of zonder score-match, toon eerste 20 als statische lijst
+    let fallback = [];
+    if (!shortlist.length && !item.folderSearch){
+      fallback = _writableFolders.slice(0, Math.min(_writableFolders.length, 20));
+    }
 
     let listBlock = '';
-    if (fallback.length){
+    if (shortlist.length){
+      listBlock = '<div class="folder-hint">Voorstel op basis van metadata en bestandsnaam — klik om te kiezen:</div>'
+        + '<div class="folder-list">'
+        + shortlist.slice(0, 5).map(function(s, i){
+            const isCurrent = s.folder.id === item.folderId;
+            return '<div class="folder-option ' + (isCurrent ? 'selected' : '') + '" data-folder-pick="' + s.folder.id + '" data-id="' + item.id + '">'
+              + '<span>' + escapeHtml(s.folder.path || s.folder.name) + '</span>'
+              + (i === 0 && isCurrent ? '<span class="badge">TOP</span>' : '')
+              + '</div>';
+          }).join('')
+        + '</div>';
+    } else if (fallback.length){
       const all = fallback.length >= _writableFolders.length;
-      listBlock = '<div class="folder-hint">' + (all ? 'Beschikbare mappen' : 'Eerste ' + fallback.length + ' mappen (gebruik zoekveld voor meer)') + ':</div>'
+      listBlock = '<div class="folder-hint">' + (all ? 'Beschikbare mappen' : 'Eerste ' + fallback.length + ' mappen (gebruik zoekveld voor meer)') + (anyMeta ? ' — geen directe metadata-match' : '') + ':</div>'
         + '<div class="folder-list">'
         + fallback.map(function(f){
             return '<div class="folder-option ' + (f.id === item.folderId ? 'selected' : '') + '" data-folder-pick="' + f.id + '" data-id="' + item.id + '">'
@@ -2442,6 +2847,8 @@ const PU = (function(){
               + '</div>';
           }).join('')
         + '</div>';
+    } else if (!anyMeta){
+      listBlock = '<div class="folder-hint">Vul Discipline/Fase/Status hierboven in voor een voorstel, of zoek hieronder.</div>';
     }
 
     const showSearch = _writableFolders.length > 20 || item.folderSearch;
@@ -2467,6 +2874,7 @@ const PU = (function(){
     const parts = METADATA_FIELDS.map(function(field){
       const val = item.metadata[field] || '';
       const missing = !val;
+      const auto = item.metadataAuto && item.metadataAuto[field];
       const opts = ['<option value="">— kies —</option>'].concat(
         (ENUM_VALUES[field] || []).map(function(v){
           return '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
@@ -2474,10 +2882,11 @@ const PU = (function(){
       ).join('');
       const icon = missing ? '<span class="warn-icon" title="Verplicht">⚠</span>' : '';
       const cls = missing ? 'warn-select' : '';
+      const autoAttr = auto ? ' data-auto="1" title="Automatisch ingevuld op basis van mapstructuur of bestandsnaam"' : '';
       return ''
         + '<div>'
           + '<label>' + escapeHtml(FIELD_LABEL[field]) + ' ' + icon + '</label>'
-          + '<select class="' + cls + '" data-field="meta-' + field + '" data-id="' + item.id + '">' + opts + '</select>'
+          + '<select class="' + cls + '" data-field="meta-' + field + '" data-id="' + item.id + '"' + autoAttr + '>' + opts + '</select>'
         + '</div>';
     }).join('');
     return '<div class="meta-row">' + parts + '</div>';
@@ -2623,6 +3032,7 @@ const PU = (function(){
       }
       injectHtml();
       if (!_isLoaded && !_isLoading) loadFolders().then(_updateFolderHeader);
+      if (!_configLoaded && !_configLoading) _loadUploadConfig();
     },
     prefetchFolders: function(){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'project-upload'; });
@@ -2630,7 +3040,9 @@ const PU = (function(){
         console.log('[Cockpit] PU prefetch overgeslagen (geen hub-toegang)');
         return;
       }
+      // Parallel prefetch: folders (zwaar) + config (licht)
       if (!_isLoaded && !_isLoading) loadFolders();
+      if (!_configLoaded && !_configLoading) _loadUploadConfig();
     }
   };
 })();
