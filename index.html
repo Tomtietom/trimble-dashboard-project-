@@ -399,6 +399,63 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   .cp-tabs{gap:6px;padding:var(--s2) 0 var(--s3)}
   .cp-tab{padding:6px 10px;font-size:var(--fs-sm)}
 }
+
+/* ===== PU (Project Upload) inline module — Phase B-1 MVP ===== */
+.pu-subtitle{color:var(--g5);margin:0 0 var(--s5);font-size:var(--fs-md)}
+.pu-warn{background:#fff8e8;border:1px solid #e8d89c;border-left:4px solid var(--af);color:#7a5c00;padding:var(--s3) var(--s4);border-radius:var(--r-sm);margin:var(--s4) 0;font-size:var(--fs-md)}
+
+.dropzone{border:2px dashed var(--hl);border-radius:var(--r-md);padding:44px var(--s5);text-align:center;background:#fff;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.dropzone:hover,.dropzone.drag{border-color:var(--af);background:var(--afl)}
+.dropzone p{margin:var(--s1) 0}
+.dropzone .hint{color:var(--g4);font-size:var(--fs-sm)}
+.dropzone input[type=file]{display:none}
+.dropzone .pick-btn{background:var(--af);color:#fff;border:none;padding:10px 24px;border-radius:var(--r-pill);font-weight:600;cursor:pointer;font-size:var(--fs-md);margin-top:var(--s3);font-family:'Montserrat',sans-serif;box-shadow:0 6px 18px rgba(212,130,26,.25);transition:all .2s}
+.dropzone .pick-btn:hover{background:var(--af2);box-shadow:0 8px 22px rgba(212,130,26,.3)}
+
+.pu-queue{margin-top:var(--s5)}
+.queue-item{background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);padding:var(--s4);margin-bottom:var(--s3);box-shadow:0 2px 8px rgba(0,0,0,.04);transition:box-shadow .15s}
+.queue-item:hover{box-shadow:0 4px 14px rgba(0,0,0,.07)}
+.queue-head{display:flex;justify-content:space-between;align-items:center;gap:var(--s3)}
+.queue-name{font-family:'Montserrat',sans-serif;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-md)}
+.queue-size{color:var(--g4);font-size:var(--fs-sm);white-space:nowrap}
+.queue-remove{background:none;border:none;color:var(--g4);cursor:pointer;font-size:20px;line-height:1;padding:0 var(--s1)}
+.queue-remove:hover{color:var(--warn)}
+.queue-body{margin-top:var(--s3)}
+.queue-body label{display:block;font-size:var(--fs-xs);color:var(--g5);margin:var(--s2) 0 var(--s1);text-transform:uppercase;letter-spacing:.4px;font-weight:600;font-family:'Montserrat',sans-serif}
+.queue-body input[type=text],.queue-body textarea,.queue-body select{width:100%;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font-family:'Poppins',sans-serif;font-size:var(--fs-md);background:#fff;color:var(--dk);outline:none;transition:border-color .15s}
+.queue-body input[type=text]:focus,.queue-body textarea:focus,.queue-body select:focus{border-color:var(--af)}
+.queue-body textarea{resize:vertical;min-height:54px}
+
+.pu-progress{height:6px;background:var(--g2);border-radius:3px;margin-top:var(--s3);overflow:hidden}
+.pu-progress-bar{height:100%;background:var(--af);width:0%;transition:width .2s}
+.pu-status{font-size:var(--fs-sm);margin-top:var(--s2);padding:6px var(--s3);border-radius:var(--r-sm);display:inline-block;font-weight:500}
+.pu-status.ok{color:var(--ok);background:var(--okbg)}
+.pu-status.err{color:var(--warn);background:#fde8e8}
+.pu-status.warn{color:#7a5c00;background:#fff3cd}
+.pu-status.info{color:#004085;background:#cce5ff}
+
+.meta-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--s2);margin-top:var(--s2)}
+.meta-row>div{min-width:0}
+.meta-row label{display:flex;align-items:center;gap:var(--s1);margin:0 0 var(--s1);font-size:var(--fs-xs);color:var(--g5);text-transform:uppercase;letter-spacing:.4px;font-weight:600;font-family:'Montserrat',sans-serif}
+.meta-row .warn-icon{color:#d18000;font-size:var(--fs-md);line-height:1}
+.meta-row select.warn-select{border-color:#e0b65c;background:#fffbe9}
+
+.folder-picker{margin-top:var(--s1)}
+.folder-current{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);padding:10px var(--s3);background:var(--afl);border-left:3px solid var(--af);border-radius:var(--r-sm);font-size:var(--fs-md);margin-bottom:var(--s2)}
+.folder-current .path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dk);font-weight:500}
+.folder-current .change-btn{background:#fff;border:1px solid var(--hl);padding:5px 12px;border-radius:var(--r-pill);cursor:pointer;font-size:var(--fs-sm);color:var(--g5);white-space:nowrap;font-family:'Poppins',sans-serif;transition:all .15s}
+.folder-current .change-btn:hover{border-color:var(--af);color:var(--af)}
+.folder-list{margin-top:var(--s1);border:1px solid var(--hl-light);border-radius:var(--r-sm);overflow:hidden;background:#fff}
+.folder-option{padding:8px var(--s3);cursor:pointer;font-size:var(--fs-sm);color:var(--g5);border-bottom:1px solid var(--hl-light);transition:background .1s;display:flex;align-items:center;gap:var(--s2);line-height:1.4}
+.folder-option:last-child{border-bottom:none}
+.folder-option span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.folder-option:hover{background:var(--afl);color:var(--dk)}
+.folder-option.selected{background:var(--afl);color:var(--af);font-weight:600}
+.folder-search{margin-top:var(--s2);width:100%;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font:inherit;background:#fff;outline:none;transition:border-color .15s}
+.folder-search:focus{border-color:var(--af)}
+.folder-hint{font-size:var(--fs-xs);color:var(--g4);margin-top:var(--s1);padding:0 var(--s3)}
+
+.pu-actions{display:flex;gap:var(--s3);justify-content:flex-end;margin-top:var(--s5);position:sticky;bottom:0;background:#fff;padding:var(--s3) 0;border-top:1px solid var(--hl-light);z-index:5}
 .view-placeholder{
   background:#fff;border:1px solid var(--hl-light);
   border-radius:var(--r-lg);padding:48px var(--s5);
@@ -1223,6 +1280,18 @@ async function loadDashboard(){
   } else {
     setTimeout(warmPD, 1500);
   }
+
+  // Idle warming voor PU (folder-tree fetch). Gevoerd na PD om netwerk-throttle te respecteren.
+  function warmPU(){
+    if (typeof PU === 'undefined') return;
+    try { PU.prefetchFolders(); console.log('[Cockpit] PU prefetch started (idle warming)'); }
+    catch(e){ console.warn('[Cockpit] PU prefetch faalde:', e.message); }
+  }
+  if ('requestIdleCallback' in window){
+    setTimeout(function(){ requestIdleCallback(warmPU, { timeout: 3000 }); }, 800);
+  } else {
+    setTimeout(warmPU, 2300);
+  }
 }
 
 function renderTiles(){
@@ -1539,6 +1608,9 @@ function showView(name){
   if (name === 'project-dashboard' && typeof PD !== 'undefined') {
     try { PD.activate(); } catch(e){ console.warn('[Cockpit] PD.activate fout:', e.message); }
   }
+  if (name === 'project-upload' && typeof PU !== 'undefined') {
+    try { PU.activate(); } catch(e){ console.warn('[Cockpit] PU.activate fout:', e.message); }
+  }
   // Hub-event voor analytics (welke views worden gebruikt)
   if (window.atfieltHub){
     try { window.atfieltHub.logEvent('feature', { action: 'view-switch', view: name }); } catch(e){}
@@ -1555,7 +1627,7 @@ function openExtension(key){
 // Renders placeholder-content in de extensie-views die nog geen inline UI hebben
 // Fase B: project-dashboard heeft een eigen module (PD) die zijn HTML zelf injecteert
 function renderPlaceholders(){
-  const INLINE_VIEWS = new Set(['project-dashboard']); // skip placeholders voor views met inline UI
+  const INLINE_VIEWS = new Set(['project-dashboard', 'project-upload']); // skip placeholders voor views met inline UI
   EXTENSIONS.forEach(function(ext){
     if (INLINE_VIEWS.has(ext.key)) return;
     const container = document.getElementById('view-' + ext.key);
@@ -1959,6 +2031,606 @@ const PD = (function(){
       injectHtml();
       loadFavs();
       if (!_isLoaded && !_isLoading) load(false);
+    }
+  };
+})();
+
+// ============================================================
+//  PU — Project Upload module (Phase B-1 MVP, inline absorptie)
+//  Spiegelt PD-pattern. Volledige feature-parity behalve:
+//   - hub-config-driven rules / synonyms / filename-patterns (Stage 2)
+//   - bulk-bar (Stage 2)
+//   - settings-modal (Stage 2)
+//  De losse trimble-project-upload extensie behoudt al deze features.
+// ============================================================
+const PU = (function(){
+  // PSet property-UUIDs (VW BVGO schema)
+  const PROP_UUIDS = {
+    discipline:      '202e0b40-055c-11ea-9ee0-4f66993176e1',
+    project_fase:    'c83d7d90-055a-11ea-9ee0-4f66993176e1',
+    document_status: 'cbc46730-41af-11ea-9125-af458cfb61c4',
+  };
+  const ENUM_VALUES = {
+    discipline: ['Opdrachtgever','Architect','Constructeur','Installateur','Adviseur','Hoofdaannemer','Onderaannemer','Leverancier','Overheid','Nuts','Directievoering','Overig'],
+    project_fase: ['Initiatief','Project definitie','Structuur ontwerp','Voorlopig ontwerp','Definitief ontwerp','Technisch ontwerp','Prijs en contractvorming','Uitvoeringsgereed ontwerp','Realisatie','Gebruik en exploitatie','Project (alle fasen)'],
+    document_status: ['Concept','Voorlopig','Definitief','Vervallen','Voor ontwerp','Voor uitvoering','As built','Intern'],
+  };
+  const FIELD_LABEL = { discipline:'Discipline', project_fase:'Fase', document_status:'Status' };
+  const METADATA_FIELDS = ['discipline','project_fase','document_status'];
+  const DENY_LEVELS = new Set(['READ','READONLY','NONE','VIEW','VIEWER','DENY']);
+
+  // Region-aware proxy bases
+  const PROXY_BASE_PU = 'https://tc-proxy.tom-da0.workers.dev';
+  const PSET_REGIONS = {
+    'europe':        PROXY_BASE_PU + '/pset/eu',
+    'north america': PROXY_BASE_PU + '/pset/us',
+    'asia':          PROXY_BASE_PU + '/pset/ap',
+  };
+  function _getPsetBase(){
+    const loc = ((tcProject && tcProject.location) || 'europe').toLowerCase();
+    if (loc.includes('america') || loc.includes('north')) return PSET_REGIONS['north america'];
+    if (loc.includes('asia')) return PSET_REGIONS.asia;
+    return PSET_REGIONS.europe;
+  }
+
+  // State
+  let _writableFolders = [];
+  let _queue = [];
+  let _nextQueueId = 1;
+  let _isInjected = false;
+  let _isLoading = false;
+  let _isLoaded = false;
+  let _psetStats = { ok:0, fail:0 };
+
+  function getRoot(){ return document.getElementById('view-project-upload'); }
+
+  // Fetch helpers (cockpit's tcFetch is GET-only — PU heeft POST nodig)
+  function _fetchTimeout(url, options, ms){
+    ms = ms || 15000;
+    const ctrl = new AbortController();
+    const id = setTimeout(function(){ ctrl.abort(); }, ms);
+    return fetch(url, Object.assign({}, options, { signal: ctrl.signal }))
+      .catch(function(err){
+        if (err.name === 'AbortError') throw new Error('Verbinding time-out (' + Math.round(ms/1000) + 's)');
+        throw err;
+      })
+      .finally(function(){ clearTimeout(id); });
+  }
+  async function _puFetch(path, opts){
+    opts = opts || {};
+    const headers = Object.assign({
+      Authorization: 'Bearer ' + tcToken,
+      Accept: 'application/json',
+    }, opts.headers || {});
+    const r = await _fetchTimeout(TC_API_BASE + path, {
+      method: opts.method || 'GET',
+      headers: headers,
+      body: opts.body,
+    }, opts.timeout);
+    if (!r.ok){
+      const txt = await r.text().catch(function(){ return ''; });
+      throw new Error('TC API ' + r.status + ' ' + path + ' — ' + txt.slice(0,200));
+    }
+    if (opts.raw) return r;
+    return r.json();
+  }
+  async function _puFetchPSet(path, opts){
+    opts = opts || {};
+    const headers = Object.assign({
+      Authorization: 'Bearer ' + tcToken,
+      Accept: 'application/json',
+    }, opts.headers || {});
+    const r = await _fetchTimeout(_getPsetBase() + path, {
+      method: opts.method || 'GET',
+      headers: headers,
+      body: opts.body,
+    }, opts.timeout);
+    if (!r.ok){
+      const txt = await r.text().catch(function(){ return ''; });
+      throw new Error('PSet ' + r.status + ' ' + path + ' — ' + txt.slice(0,200));
+    }
+    if (r.status === 204) return null;
+    const txt = await r.text();
+    if (!txt) return null;
+    try { return JSON.parse(txt); } catch(_){ return txt; }
+  }
+
+  // Folder tree → schrijfbare mappen
+  async function loadFolders(){
+    if (_isLoading || _isLoaded) return;
+    _isLoading = true;
+    try {
+      let rootId = null;
+      try {
+        const proj = await _puFetch('/projects/' + tcProject.id);
+        rootId = proj.rootId || proj.rootFolderId || (proj.rootFolder && proj.rootFolder.id) || (proj.root && proj.root.id);
+      } catch(e){ console.warn('[PU] /projects/{id} mislukt:', e.message); }
+      if (!rootId) throw new Error('Root folder niet gevonden');
+
+      const result = [{ id: rootId, name: tcProject.name || 'Projectroot', path: '(projectroot)', depth: 0 }];
+      let queueList = [{ id: rootId, path: [] }];
+      const PARALLEL = 50;
+      while (queueList.length){
+        const batch = queueList.splice(0, PARALLEL);
+        const batchResults = await Promise.all(batch.map(async function(b){
+          try {
+            const items = await _puFetch('/folders/' + b.id + '/items');
+            return { path: b.path, items: Array.isArray(items) ? items : (items.items || []) };
+          } catch(e){ return { path: b.path, items: [] }; }
+        }));
+        for (const br of batchResults){
+          const folders = br.items.filter(function(it){ return (it.type||'').toUpperCase() === 'FOLDER'; });
+          for (const f of folders){
+            const currentPath = br.path.concat(f.name || '(naamloos)');
+            const rawPerm = f.permission || f.accessLevel || f.access || f.accessRights || f.role || '';
+            const permStr = (typeof rawPerm === 'object' ? (rawPerm.type || rawPerm.level || '') : rawPerm).toString().toUpperCase();
+            const canWrite = !DENY_LEVELS.has(permStr);
+            if (canWrite){
+              result.push({ id: f.id, name: f.name || '(naamloos)', path: currentPath.join(' / '), depth: currentPath.length });
+            }
+            queueList.push({ id: f.id, path: currentPath });
+          }
+        }
+      }
+      result.sort(function(a,b){ return a.path.localeCompare(b.path,'nl'); });
+      _writableFolders = result;
+      _isLoaded = true;
+      console.log('[PU] writable folders:', result.length);
+      if (window.atfieltHub){
+        try { window.atfieltHub.logEvent('feature', { action:'data-loaded', writableFolders: result.length, source:'cockpit-inline' }); } catch(_){}
+      }
+      // Re-render queue zodat folder-pickers de zojuist geladen lijst krijgen
+      if (_isInjected) renderQueue();
+    } catch(e){
+      console.error('[PU] loadFolders fout:', e.message);
+    } finally {
+      _isLoading = false;
+    }
+  }
+
+  function _filterFolders(query, limit){
+    limit = limit || 10;
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return [];
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const out = [];
+    for (const f of _writableFolders){
+      const p = (f.path || '').toLowerCase();
+      if (tokens.every(function(t){ return p.includes(t); })){
+        out.push(f);
+        if (out.length >= limit) break;
+      }
+    }
+    return out;
+  }
+
+  function _formatBytes(n){
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+    if (n < 1073741824) return (n/1048576).toFixed(1) + ' MB';
+    return (n/1073741824).toFixed(2) + ' GB';
+  }
+
+  function _isMetaIncomplete(item){
+    return METADATA_FIELDS.some(function(f){ return !item.metadata[f]; });
+  }
+
+  // HTML injection (idempotent)
+  function injectHtml(){
+    if (_isInjected) return;
+    const root = getRoot();
+    if (!root) return;
+    root.innerHTML =
+      '<section class="sec">' +
+        '<div class="overline">Bestanden uploaden</div>' +
+        '<p class="pu-subtitle"><span id="pu-folder-count">–</span> map<span id="pu-folder-suffix">pen</span> beschikbaar voor upload in <strong>' + escapeHtml(tcProject.name || '–') + '</strong></p>' +
+        '<div id="pu-warn-box"></div>' +
+        '<div class="dropzone" id="pu-dropzone">' +
+          '<p><strong>Sleep bestanden hierheen</strong></p>' +
+          '<p class="hint">of</p>' +
+          '<button class="pick-btn" type="button" id="pu-pick-btn">Kies bestanden</button>' +
+          '<input type="file" id="pu-file-input" multiple>' +
+        '</div>' +
+        '<div class="pu-queue" id="pu-queue"></div>' +
+        '<div class="pu-actions" id="pu-actions" style="display:none">' +
+          '<button class="btn-secondary" type="button" id="pu-clear-btn">Wissen</button>' +
+          '<button class="btn-primary" type="button" id="pu-upload-btn">Uploaden</button>' +
+        '</div>' +
+      '</section>';
+    _bindRootEvents();
+    _isInjected = true;
+    _updateFolderHeader();
+  }
+
+  function _updateFolderHeader(){
+    const root = getRoot();
+    if (!root) return;
+    const cntEl = root.querySelector('#pu-folder-count');
+    const sfxEl = root.querySelector('#pu-folder-suffix');
+    const warnBox = root.querySelector('#pu-warn-box');
+    if (cntEl) cntEl.textContent = _writableFolders.length || '–';
+    if (sfxEl) sfxEl.textContent = _writableFolders.length === 1 ? '' : 'pen';
+    if (warnBox){
+      warnBox.innerHTML = (_isLoaded && _writableFolders.length === 0)
+        ? '<div class="pu-warn">Je hebt nergens in dit project schrijfrechten. Neem contact op met de projectbeheerder.</div>'
+        : '';
+    }
+  }
+
+  function _bindRootEvents(){
+    const root = getRoot();
+    const dz = root.querySelector('#pu-dropzone');
+    const input = root.querySelector('#pu-file-input');
+    root.querySelector('#pu-pick-btn').addEventListener('click', function(){ input.click(); });
+    dz.addEventListener('click', function(e){ if (e.target.tagName !== 'BUTTON') input.click(); });
+    input.addEventListener('change', function(e){ addFiles(e.target.files); input.value = ''; });
+    dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('drag'); });
+    dz.addEventListener('dragleave', function(){ dz.classList.remove('drag'); });
+    dz.addEventListener('drop', function(e){
+      e.preventDefault(); dz.classList.remove('drag');
+      addFiles(e.dataTransfer.files);
+    });
+    root.querySelector('#pu-clear-btn').addEventListener('click', function(){
+      _queue = _queue.filter(function(i){ return i.status === 'uploading' || i.status === 'saving-props'; });
+      renderQueue();
+    });
+    root.querySelector('#pu-upload-btn').addEventListener('click', uploadAll);
+  }
+
+  function addFiles(fileList){
+    if (!_isLoaded){
+      // Folders nog niet geladen → forceer load en probeer daarna opnieuw
+      loadFolders().then(function(){ if (_writableFolders.length) addFiles(fileList); });
+      return;
+    }
+    if (!_writableFolders.length) return;
+    for (const f of fileList){
+      _queue.push({
+        id: _nextQueueId++,
+        file: f,
+        description: '',
+        folderId: _writableFolders[0] ? _writableFolders[0].id : null, // default: projectroot
+        folderPickerOpen: false,
+        folderSearch: '',
+        progress: 0,
+        status: 'pending',
+        error: null,
+        warn: null,
+        metadata: { discipline:'', project_fase:'', document_status:'' },
+      });
+    }
+    renderQueue();
+  }
+
+  function renderQueue(){
+    const root = getRoot();
+    if (!root) return;
+    const qEl = root.querySelector('#pu-queue');
+    const actions = root.querySelector('#pu-actions');
+    if (!qEl) return;
+    if (!_queue.length){
+      qEl.innerHTML = '';
+      if (actions) actions.style.display = 'none';
+      return;
+    }
+    if (actions) actions.style.display = '';
+
+    qEl.innerHTML = _queue.map(function(item){
+      const selectedFolder = _writableFolders.find(function(f){ return f.id === item.folderId; });
+      const disabled = item.status !== 'pending' ? 'disabled' : '';
+      const folderPicker = item.status === 'pending' ? _renderFolderPicker(item, selectedFolder) : '';
+      const metaRow = item.status === 'pending' ? _renderMetaRow(item) : '';
+
+      let statusLine = '';
+      if (item.status === 'done') statusLine = '<div class="pu-status ok">✓ Geüpload</div>';
+      else if (item.status === 'done-warn') statusLine = '<div class="pu-status warn">✓ Geüpload — ' + escapeHtml(item.warn || 'metadata niet opgeslagen') + '</div>';
+      else if (item.status === 'saving-props') statusLine = '<div class="pu-status info">Metadata opslaan…</div>';
+      else if (item.status === 'error') statusLine = '<div class="pu-status err">✗ ' + escapeHtml(item.error || 'Fout') + '</div>';
+
+      const showProg = item.status === 'uploading' || item.status === 'done' || item.status === 'done-warn' || item.status === 'saving-props';
+      const progressBar = showProg
+        ? '<div class="pu-progress"><div class="pu-progress-bar" style="width:' + item.progress + '%"></div></div>'
+        : '';
+
+      return ''
+        + '<div class="queue-item" data-id="' + item.id + '">'
+          + '<div class="queue-head">'
+            + '<div class="queue-name" title="' + escapeHtml(item.file.name) + '">' + escapeHtml(item.file.name) + '</div>'
+            + '<div class="queue-size">' + _formatBytes(item.file.size) + '</div>'
+            + (item.status === 'pending' ? '<button class="queue-remove" type="button" data-remove="' + item.id + '" title="Verwijderen">×</button>' : '')
+          + '</div>'
+          + '<div class="queue-body">'
+            + '<label>Beschrijving</label>'
+            + '<textarea data-field="description" data-id="' + item.id + '" ' + disabled + ' placeholder="Optioneel…">' + escapeHtml(item.description) + '</textarea>'
+            + metaRow
+            + '<label>Map</label>'
+            + folderPicker
+            + progressBar
+            + statusLine
+          + '</div>'
+        + '</div>';
+    }).join('');
+
+    // Event handlers — opnieuw binden na elke render
+    qEl.querySelectorAll('[data-remove]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        const id = Number(btn.getAttribute('data-remove'));
+        _queue = _queue.filter(function(i){ return i.id !== id; });
+        renderQueue();
+      });
+    });
+    qEl.querySelectorAll('textarea[data-field=description]').forEach(function(el){
+      el.addEventListener('input', function(){
+        const id = Number(el.getAttribute('data-id'));
+        const item = _queue.find(function(i){ return i.id === id; });
+        if (!item) return;
+        item.description = el.value; // geen re-render: voorkomt focus-verlies
+      });
+    });
+    qEl.querySelectorAll('[data-folder-pick]').forEach(function(el){
+      el.addEventListener('click', function(){
+        const id = Number(el.getAttribute('data-id'));
+        const fid = el.getAttribute('data-folder-pick');
+        const item = _queue.find(function(i){ return i.id === id; });
+        if (!item) return;
+        item.folderId = fid;
+        item.folderPickerOpen = false;
+        item.folderSearch = '';
+        renderQueue();
+      });
+    });
+    qEl.querySelectorAll('[data-folder-toggle]').forEach(function(el){
+      el.addEventListener('click', function(){
+        const id = Number(el.getAttribute('data-folder-toggle'));
+        const item = _queue.find(function(i){ return i.id === id; });
+        if (!item) return;
+        item.folderPickerOpen = !item.folderPickerOpen;
+        renderQueue();
+        if (item.folderPickerOpen){
+          const inp = qEl.querySelector('input[data-folder-search="' + id + '"]');
+          if (inp) inp.focus();
+        }
+      });
+    });
+    qEl.querySelectorAll('input[data-folder-search]').forEach(function(el){
+      el.addEventListener('input', function(){
+        const id = Number(el.getAttribute('data-folder-search'));
+        const item = _queue.find(function(i){ return i.id === id; });
+        if (!item) return;
+        item.folderSearch = el.value;
+        const caret = el.selectionStart;
+        renderQueue();
+        const again = qEl.querySelector('input[data-folder-search="' + id + '"]');
+        if (again){ again.focus(); try { again.setSelectionRange(caret, caret); } catch(_){} }
+      });
+    });
+    qEl.querySelectorAll('select[data-field^="meta-"]').forEach(function(el){
+      el.addEventListener('change', function(){
+        const id = Number(el.getAttribute('data-id'));
+        const field = el.getAttribute('data-field').replace(/^meta-/,'');
+        const item = _queue.find(function(i){ return i.id === id; });
+        if (!item || METADATA_FIELDS.indexOf(field) < 0) return;
+        item.metadata[field] = el.value;
+        renderQueue();
+      });
+    });
+  }
+
+  function _renderFolderPicker(item, selectedFolder){
+    const hasChoice = !!selectedFolder;
+    const pickerOpen = item.folderPickerOpen || !hasChoice;
+    const currentBlock = hasChoice
+      ? '<div class="folder-current">'
+        + '<span class="path" title="' + escapeHtml(selectedFolder.path || selectedFolder.name) + '">' + escapeHtml(selectedFolder.path || selectedFolder.name) + '</span>'
+        + '<button type="button" class="change-btn" data-folder-toggle="' + item.id + '">' + (pickerOpen ? 'Verbergen' : '🖉 Wijzigen') + '</button>'
+      + '</div>'
+      : '';
+    if (hasChoice && !pickerOpen) return '<div class="folder-picker">' + currentBlock + '</div>';
+
+    // MVP: geen scoring/synoniemen — toon zoekveld + eerste 20 mappen als fallback
+    const searchResults = item.folderSearch ? _filterFolders(item.folderSearch) : [];
+    const fallback = (!item.folderSearch) ? _writableFolders.slice(0, Math.min(_writableFolders.length, 20)) : [];
+
+    let listBlock = '';
+    if (fallback.length){
+      const all = fallback.length >= _writableFolders.length;
+      listBlock = '<div class="folder-hint">' + (all ? 'Beschikbare mappen' : 'Eerste ' + fallback.length + ' mappen (gebruik zoekveld voor meer)') + ':</div>'
+        + '<div class="folder-list">'
+        + fallback.map(function(f){
+            return '<div class="folder-option ' + (f.id === item.folderId ? 'selected' : '') + '" data-folder-pick="' + f.id + '" data-id="' + item.id + '">'
+              + '<span>' + escapeHtml(f.path || f.name) + '</span>'
+              + '</div>';
+          }).join('')
+        + '</div>';
+    }
+
+    const showSearch = _writableFolders.length > 20 || item.folderSearch;
+    const searchBlock = showSearch
+      ? '<input type="text" class="folder-search" data-folder-search="' + item.id + '"'
+        + ' placeholder="Zoek in alle ' + _writableFolders.length + ' mappen…"'
+        + ' value="' + escapeHtml(item.folderSearch || '') + '">'
+        + (searchResults.length
+          ? '<div class="folder-list">'
+            + searchResults.map(function(f){
+                return '<div class="folder-option ' + (f.id === item.folderId ? 'selected' : '') + '" data-folder-pick="' + f.id + '" data-id="' + item.id + '">'
+                  + '<span>' + escapeHtml(f.path || f.name) + '</span>'
+                  + '</div>';
+              }).join('')
+            + '</div>'
+          : (item.folderSearch ? '<div class="folder-hint">Geen resultaten.</div>' : ''))
+      : '';
+
+    return '<div class="folder-picker">' + currentBlock + listBlock + searchBlock + '</div>';
+  }
+
+  function _renderMetaRow(item){
+    const parts = METADATA_FIELDS.map(function(field){
+      const val = item.metadata[field] || '';
+      const missing = !val;
+      const opts = ['<option value="">— kies —</option>'].concat(
+        (ENUM_VALUES[field] || []).map(function(v){
+          return '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+        })
+      ).join('');
+      const icon = missing ? '<span class="warn-icon" title="Verplicht">⚠</span>' : '';
+      const cls = missing ? 'warn-select' : '';
+      return ''
+        + '<div>'
+          + '<label>' + escapeHtml(FIELD_LABEL[field]) + ' ' + icon + '</label>'
+          + '<select class="' + cls + '" data-field="meta-' + field + '" data-id="' + item.id + '">' + opts + '</select>'
+        + '</div>';
+    }).join('');
+    return '<div class="meta-row">' + parts + '</div>';
+  }
+
+  // Upload één file: TC 3-staps (initiate → PUT → commit) + PSet voor metadata
+  async function uploadFile(item){
+    item.status = 'uploading';
+    item.progress = 3;
+    renderQueue();
+
+    const folder = _writableFolders.find(function(f){ return f.id === item.folderId; });
+    if (!folder) throw new Error('Geen map geselecteerd');
+
+    // Stap 1: initiate
+    const initResp = await _puFetch('/files/fs/initiate', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'x-trimbleconnect-client':'TCWEB' },
+      body: JSON.stringify({ parentId: folder.id, parentType: 'FOLDER', name: item.file.name }),
+    });
+    const uploadUrl = initResp.uploadURL || initResp.uploadUrl || initResp.url || initResp.signedUrl;
+    const uploadId = initResp.uploadId || initResp.id;
+    if (!uploadUrl) throw new Error('Geen uploadUrl in initiate-response');
+    if (!uploadId) throw new Error('Geen uploadId in initiate-response');
+    item.progress = 8; renderQueue();
+
+    // Stap 2: PUT bytes naar signed URL
+    await new Promise(function(resolve, reject){
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+      xhr.upload.onprogress = function(e){
+        if (e.lengthComputable){
+          item.progress = 8 + Math.round((e.loaded / e.total) * 82);
+          renderQueue();
+        }
+      };
+      xhr.onload = function(){
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error('PUT ' + xhr.status + ': ' + (xhr.responseText || '').slice(0,200)));
+      };
+      xhr.onerror = function(){ reject(new Error('Netwerkfout tijdens binary-upload')); };
+      xhr.send(item.file);
+    });
+    item.progress = 92; renderQueue();
+
+    // Stap 3: commit
+    const commitResp = await _puFetch('/files/fs/commit', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'x-trimbleconnect-client':'TCWEB' },
+      body: JSON.stringify({ uploadId: uploadId }),
+    });
+    item.progress = 100;
+    item.fileId = commitResp.id || commitResp.fileId || commitResp.versionId || uploadId;
+    console.log('[PU] upload klaar:', item.file.name, '| fileId:', item.fileId);
+
+    // PSet metadata (alleen als velden ingevuld)
+    const props = {};
+    for (const f of METADATA_FIELDS){
+      const v = item.metadata[f];
+      if (v && PROP_UUIDS[f]) props[PROP_UUIDS[f]] = v;
+    }
+    if (item.fileId && Object.keys(props).length){
+      item.status = 'saving-props';
+      renderQueue();
+      try {
+        await _puFetchPSet('/psets/changeset', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({
+            items: [{ link:'frn:tcfile:' + item.fileId, libId:'tcproject:prod:' + tcProject.id, defId:'tcfiles', props: props }],
+          }),
+        });
+        _psetStats.ok++;
+        item.status = 'done';
+      } catch(e){
+        console.warn('[PU] PSet save mislukt:', item.file.name, e.message);
+        _psetStats.fail++;
+        item.warn = 'metadata niet opgeslagen: ' + e.message.slice(0,120);
+        item.status = 'done-warn';
+      }
+      renderQueue();
+    } else {
+      item.status = 'done';
+      renderQueue();
+    }
+  }
+
+  async function uploadAll(){
+    const pending = _queue.filter(function(i){ return i.status === 'pending' && i.folderId; });
+    if (!pending.length) return;
+    const incomplete = pending.filter(_isMetaIncomplete);
+    if (incomplete.length){
+      const msg = (incomplete.length === 1
+        ? '1 bestand heeft geen volledige metadata (discipline/fase/status). Toch uploaden?'
+        : incomplete.length + ' bestanden hebben geen volledige metadata (discipline/fase/status). Toch uploaden?');
+      if (!confirm(msg)) return;
+    }
+    const root = getRoot();
+    const upBtn = root && root.querySelector('#pu-upload-btn');
+    if (upBtn) upBtn.disabled = true;
+    _psetStats = { ok:0, fail:0 };
+    let ok = 0, fail = 0, totalBytes = 0, metaComplete = 0, metaWarn = 0;
+
+    for (const item of pending){
+      const wasComplete = !_isMetaIncomplete(item);
+      try {
+        await uploadFile(item);
+        ok++;
+        totalBytes += item.file.size;
+        if (wasComplete) metaComplete++; else metaWarn++;
+      } catch(e){
+        console.error('[PU] failed', item.file.name, e);
+        item.status = 'error';
+        item.error = e.message;
+        fail++;
+        renderQueue();
+      }
+    }
+    if (upBtn) upBtn.disabled = false;
+
+    if (window.atfieltHub){
+      try {
+        window.atfieltHub.logEvent('feature', {
+          action: 'upload-batch',
+          source: 'cockpit-inline',
+          success: ok, failed: fail, bytes: totalBytes,
+          metadataComplete: metaComplete, metadataWarn: metaWarn,
+          psetOk: _psetStats.ok, psetFail: _psetStats.fail,
+        });
+      } catch(_){}
+    }
+  }
+
+  // Public API
+  return {
+    activate: function(){
+      // Hub-access respecteren (defense-in-depth bovenop tile/tab disable)
+      const ext = EXTENSIONS.find(function(e){ return e.key === 'project-upload'; });
+      if (ext && ext.allowed === false){
+        console.log('[PU] activate overgeslagen (geen hub-toegang)');
+        return;
+      }
+      injectHtml();
+      if (!_isLoaded && !_isLoading) loadFolders().then(_updateFolderHeader);
+    },
+    prefetchFolders: function(){
+      const ext = EXTENSIONS.find(function(e){ return e.key === 'project-upload'; });
+      if (ext && ext.allowed === false){
+        console.log('[Cockpit] PU prefetch overgeslagen (geen hub-toegang)');
+        return;
+      }
+      if (!_isLoaded && !_isLoading) loadFolders();
     }
   };
 })();
