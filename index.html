@@ -1224,16 +1224,17 @@ async function loadDashboard(){
   $('userEmail').textContent = currentUserEmail || 'Onbekend';
   $('st-region').textContent = tcRegion === 'north america' ? 'N-Amerika' : (tcRegion.charAt(0).toUpperCase()+tcRegion.slice(1));
 
-  // Bepaal toegang per extensie (parallel) via hub legacy auth() — geen blokkade-scherm.
-  // Fail-open: bij API-fout staat tegel klikbaar; de extensie zelf blokkeert dan via hub.check().
+  // Bepaal toegang per extensie (parallel) via hub auth() — geen blokkade-scherm in cockpit zelf.
+  // Fail-closed: license-strict — bij hub-fout geen extensie-toegang (voorkomt licentielek bij outage).
+  // Legacy hub-client zonder auth(): blijft soft-fail (toegang) — kort cache-window, breekt bestaande sessies niet.
   await Promise.all(EXTENSIONS.map(async function(e){
     try {
       if (typeof window.atfieltHub.auth !== 'function') { e.allowed = true; return; }
       const r = await window.atfieltHub.auth(e.key);
       e.allowed = (r && r.allowed === false) ? false : true;
     } catch (err) {
-      console.warn('[Cockpit] auth-check faalde voor', e.key, err.message);
-      e.allowed = true;
+      console.warn('[Cockpit] auth-check faalde voor', e.key, '— fail-closed:', err.message);
+      e.allowed = false;
     }
   }));
   console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', '));
