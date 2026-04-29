@@ -1206,6 +1206,13 @@ async function loadDashboard(){
   // PD heeft eigen _isLoading/_isLoaded guards → dubbele aanroep is veilig.
   function warmPD(){
     if (typeof PD === 'undefined') return;
+    // Hub-access respecteren: skip prefetch als user geen toegang heeft tot PD.
+    // PD heeft zelf geen access-guard, dus dit moet hier.
+    const pdExt = EXTENSIONS.find(function(e){ return e.key === 'project-dashboard'; });
+    if (pdExt && pdExt.allowed === false){
+      console.log('[Cockpit] PD prefetch overgeslagen (geen hub-toegang)');
+      return;
+    }
     try {
       PD.activate();
       console.log('[Cockpit] PD prefetch started (idle warming)');
