@@ -2165,17 +2165,82 @@ const PU = (function(){
       })
       .finally(function(){ clearTimeout(id); });
   }
+
+  // Token-refresh: parse JWT exp, refresh wanneer <60s te gaan. Hergebruikt cockpit's
+  // centrale tcToken; _puLastParsed cache vermijdt re-parsing bij elke call.
+  let _puTokenExp = null;
+  let _puLastParsed = null;
+  let _puRefreshInFlight = null;
+  function _parsePuTokenExp(t){
+    try {
+      const p = JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+      return p.exp || null;
+    } catch(_){ return null; }
+  }
+  function _isPuTokenExpired(){
+    if (tcToken !== _puLastParsed){ _puTokenExp = _parsePuTokenExp(tcToken); _puLastParsed = tcToken; }
+    if (!_puTokenExp) return false;
+    return Date.now() >= (_puTokenExp * 1000) - 60000;
+  }
+  async function _ensurePuTokenValid(){
+    if (!_isPuTokenExpired()) return;
+    if (_puRefreshInFlight) return _puRefreshInFlight;
+    _puRefreshInFlight = (async function(){
+      console.log('[PU] Token verlopen, vernieuwen...');
+      try {
+        if (tcAPI && tcAPI.extension){
+          let t = null;
+          if (tcAPI.extension.getAccessToken){
+            t = await Promise.race([tcAPI.extension.getAccessToken(), new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('timeout')); }, 5000); })]).catch(function(){ return null; });
+          }
+          if (!t && tcAPI.extension.requestPermission){
+            const r = await Promise.race([tcAPI.extension.requestPermission('accesstoken'), new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('timeout')); }, 5000); })]);
+            if (typeof r === 'string') t = r;
+            else if (r && typeof r === 'object') t = r.token || r.accessToken || r.value || null;
+          }
+          if (t && t.length > 20){ tcToken = t; _puLastParsed = null; console.log('[PU] Token vernieuwd'); return; }
+        }
+        throw new Error('Token verlopen — sluit de extensie en open opnieuw.');
+      } finally { _puRefreshInFlight = null; }
+    })();
+    return _puRefreshInFlight;
+  }
+
+  // Retry-helper: 429 respecteert Retry-After (max 30s); 5xx exponentiële backoff (1s, 4s).
+  async function _retryFetch(makeRequest, label){
+    let r = await makeRequest();
+    if (r.status === 429){
+      const ra = parseInt(r.headers.get('Retry-After'), 10);
+      const waitMs = (isNaN(ra) ? 2 : Math.min(ra, 30)) * 1000;
+      console.warn('[PU] 429 — wachten', waitMs, 'ms', label);
+      await new Promise(function(res){ setTimeout(res, waitMs); });
+      r = await makeRequest();
+    }
+    for (let i = 0; i < 2 && r.status >= 500 && r.status < 600; i++){
+      const ms = 1000 * Math.pow(4, i);
+      console.warn('[PU]', r.status, '— retry over', ms, 'ms', label);
+      await new Promise(function(res){ setTimeout(res, ms); });
+      r = await makeRequest();
+    }
+    return r;
+  }
+
   async function _puFetch(path, opts){
     opts = opts || {};
-    const headers = Object.assign({
-      Authorization: 'Bearer ' + tcToken,
-      Accept: 'application/json',
-    }, opts.headers || {});
-    const r = await _fetchTimeout(TC_API_BASE + path, {
-      method: opts.method || 'GET',
-      headers: headers,
-      body: opts.body,
-    }, opts.timeout);
+    await _ensurePuTokenValid();
+    const baseHeaders = Object.assign({ Accept: 'application/json' }, opts.headers || {});
+    const doFetch = function(){
+      return _fetchTimeout(TC_API_BASE + path, {
+        method: opts.method || 'GET',
+        headers: Object.assign({}, baseHeaders, { Authorization: 'Bearer ' + tcToken }),
+        body: opts.body,
+      }, opts.timeout);
+    };
+    let r = await doFetch();
+    if (r.status === 401){ await _ensurePuTokenValid(); r = await doFetch(); }
+    if (r.status === 429 || (r.status >= 500 && r.status < 600)){
+      r = await _retryFetch(doFetch, '_puFetch ' + path);
+    }
     if (!r.ok){
       const txt = await r.text().catch(function(){ return ''; });
       throw new Error('TC API ' + r.status + ' ' + path + ' — ' + txt.slice(0,200));
@@ -2185,15 +2250,20 @@ const PU = (function(){
   }
   async function _puFetchPSet(path, opts){
     opts = opts || {};
-    const headers = Object.assign({
-      Authorization: 'Bearer ' + tcToken,
-      Accept: 'application/json',
-    }, opts.headers || {});
-    const r = await _fetchTimeout(_getPsetBase() + path, {
-      method: opts.method || 'GET',
-      headers: headers,
-      body: opts.body,
-    }, opts.timeout);
+    await _ensurePuTokenValid();
+    const baseHeaders = Object.assign({ Accept: 'application/json' }, opts.headers || {});
+    const doFetch = function(){
+      return _fetchTimeout(_getPsetBase() + path, {
+        method: opts.method || 'GET',
+        headers: Object.assign({}, baseHeaders, { Authorization: 'Bearer ' + tcToken }),
+        body: opts.body,
+      }, opts.timeout);
+    };
+    let r = await doFetch();
+    if (r.status === 401){ await _ensurePuTokenValid(); r = await doFetch(); }
+    if (r.status === 429 || (r.status >= 500 && r.status < 600)){
+      r = await _retryFetch(doFetch, '_puFetchPSet ' + path);
+    }
     if (!r.ok){
       const txt = await r.text().catch(function(){ return ''; });
       throw new Error('PSet ' + r.status + ' ' + path + ' — ' + txt.slice(0,200));
