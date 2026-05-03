@@ -1093,7 +1093,11 @@ async function init(){
     }
   }, 15000);
 
-  tcProject = await tcAPI.project.getCurrentProject();
+  // getProject() is canoniek (Workspace API TypeDoc 2026-04). Fallback op getCurrentProject
+  // voor TC-versies die de nieuwe naam nog niet hebben.
+  tcProject = await (typeof tcAPI.project.getProject === 'function'
+    ? tcAPI.project.getProject()
+    : tcAPI.project.getCurrentProject());
   console.log('[TC] Project:', tcProject.name);
   setStep('tc','done');
 
@@ -3502,20 +3506,27 @@ const PU = (function(){
     _psetStats = { ok:0, fail:0 };
     let ok = 0, fail = 0, totalBytes = 0, metaComplete = 0, metaWarn = 0;
 
-    for (const item of pending){
-      const wasComplete = !_isMetaIncomplete(item);
-      try {
-        await uploadFile(item);
-        ok++;
-        totalBytes += item.file.size;
-        if (wasComplete) metaComplete++; else metaWarn++;
-      } catch(e){
-        console.error('[PU] failed', item.file.name, e);
-        item.status = 'error';
-        item.error = e.message;
-        fail++;
-        renderQueue();
-      }
+    // Parallel met concurrency 3 — TC verwerkt initiate-calls parallel; _retryFetch vangt
+    // 429 op als de server toch limiteert. Token-refresh-mutex (_puRefreshInFlight) zorgt
+    // dat parallel 401's niet meervoudig refreshen.
+    const CONCURRENCY = 3;
+    for (let i = 0; i < pending.length; i += CONCURRENCY){
+      const chunk = pending.slice(i, i + CONCURRENCY);
+      await Promise.all(chunk.map(async function(item){
+        const wasComplete = !_isMetaIncomplete(item);
+        try {
+          await uploadFile(item);
+          ok++;
+          totalBytes += item.file.size;
+          if (wasComplete) metaComplete++; else metaWarn++;
+        } catch(e){
+          console.error('[PU] failed', item.file.name, e);
+          item.status = 'error';
+          item.error = e.message;
+          fail++;
+          renderQueue();
+        }
+      }));
     }
     if (upBtn) upBtn.disabled = false;
 
