@@ -3693,10 +3693,14 @@ const DL = (function(){
   async function _fetchItemsRecursive(folderId, pad, result){
     let items;
     try {
-      // tcFetchAll volgt 206-cursors automatisch en retourneert flat array.
-      // Belangrijk: tcFetch alleen geeft een _partial wrapper bij Content-Range —
-      // dat gaf op groot project (>500 items) eerder 0 documenten terug.
-      items = await tcFetchAll('/folders/' + folderId + '/items');
+      // /folders/{id}/items retourneert alle items in één page (Trimble's HTTP
+      // Content-Range "items X-Y/Z" — geen echte cursor). tcFetchAll probeert
+      // pagination + spamt dan console.warn; tcFetch volstaat als we de _partial
+      // wrapper handmatig unwrappen. Voor toekomstige folders >500 items kan
+      // v2.1-skipToken-pagination later geport worden (zie standalone tc-viewer).
+      const data = await tcFetch('/folders/' + folderId + '/items');
+      const body = data && data._partial ? data._data : data;
+      items = Array.isArray(body) ? body : (body && body.items) || [];
     } catch(e){
       console.warn('[DL] folder items fail:', folderId, e.message);
       return;
