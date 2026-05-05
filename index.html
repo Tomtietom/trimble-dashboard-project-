@@ -508,6 +508,33 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .pu-modal .add-rule:hover{border-color:var(--af);color:var(--af)}
 .pu-modal .btn-ghost{padding:8px 18px;background:transparent;color:var(--g5);border:1px solid var(--hl);border-radius:var(--r-pill);font-family:'Poppins',sans-serif;font-weight:500;cursor:pointer;font-size:var(--fs-md);transition:all .15s}
 .pu-modal .btn-ghost:hover{background:var(--gr);color:var(--dk)}
+
+/* DL — Documentenlijst (Phase B-3 MVP) */
+.dl-app-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s4)}
+.dl-subtitle{margin:var(--s1) 0 0;color:var(--g5);font-size:var(--fs-sm)}
+.dl-search{padding:8px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;min-width:280px;background:#fff}
+.dl-search:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 3px var(--afl)}
+.dl-loading{padding:var(--s5);text-align:center;color:var(--g5);font-size:var(--fs-sm)}
+.dl-error{background:#fee;border-left:3px solid #d00;padding:var(--s3) var(--s4);border-radius:var(--r-sm);margin-bottom:var(--s4);font-size:var(--fs-sm);color:#7a0000}
+.dl-tbl-wrap{position:relative;overflow:auto;max-height:calc(100vh - 320px);border:1px solid var(--hl-light);border-radius:var(--r-md);background:#fff}
+.dl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.dl-tbl thead{position:sticky;top:0;background:var(--gr);z-index:1}
+.dl-tbl .dl-th{text-align:left;padding:10px 12px;font-weight:600;color:var(--dk);border-bottom:1px solid var(--hl);cursor:pointer;user-select:none;white-space:nowrap;font-family:'Poppins',sans-serif}
+.dl-tbl .dl-th:hover{background:var(--hl-light)}
+.dl-tbl .dl-th.sorted{color:var(--af)}
+.dl-tbl .dl-th .dl-sort-ind{display:inline-block;width:10px;font-size:9px;margin-left:4px;color:var(--af)}
+.dl-tbl .dl-th.sorted .dl-sort-ind::after{content:'▲'}
+.dl-tbl .dl-th.sorted.desc .dl-sort-ind::after{content:'▼'}
+.dl-tbl tbody tr{border-bottom:1px solid var(--hl-light)}
+.dl-tbl tbody tr:hover:not(.dl-group){background:var(--afl)}
+.dl-tbl tbody td{padding:8px 12px;vertical-align:top;color:var(--dk)}
+.dl-tbl tbody td.dl-cell-name{font-weight:500;word-break:break-word}
+.dl-tbl tbody td.dl-cell-folder{color:var(--g5);font-size:var(--fs-xs)}
+.dl-tbl tbody td.dl-cell-date{color:var(--g5);white-space:nowrap;font-variant-numeric:tabular-nums}
+.dl-tbl .dl-group td{background:var(--gr);font-weight:600;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;color:var(--g5);padding:6px 12px}
+.dl-group-count{opacity:.6;font-weight:normal;text-transform:none;letter-spacing:0;margin-left:6px}
+.dl-no-results{padding:var(--s5);text-align:center;color:var(--g4);font-size:var(--fs-sm)}
+
 .view-placeholder{
   background:#fff;border:1px solid var(--hl-light);
   border-radius:var(--r-lg);padding:48px var(--s5);
@@ -1332,6 +1359,15 @@ async function loadDashboard(){
   renderShares(shares);
   renderFavorites();
 
+  // Toggle todos-section zichtbaarheid op basis van gebruikersvoorkeur (configCommand setting)
+  if (typeof getSetting === 'function') {
+    const todosEl = document.getElementById('todos');
+    const todosCol = todosEl ? todosEl.closest('.ctx-col') : null;
+    if (todosCol) {
+      todosCol.style.display = (getSetting('showTodos') === false) ? 'none' : '';
+    }
+  }
+
   // Idle warming: PD's zware multi-region fetch alvast starten zodat de
   // Project Dashboard-view direct gevuld is wanneer gebruiker erop klikt.
   // PD heeft eigen _isLoading/_isLoaded guards → dubbele aanroep is veilig.
@@ -1685,6 +1721,9 @@ function showView(name){
   if (name === 'project-upload' && typeof PU !== 'undefined') {
     try { PU.activate(); } catch(e){ console.warn('[Cockpit] PU.activate fout:', e.message); }
   }
+  if (name === 'documentenlijst' && typeof DL !== 'undefined') {
+    try { DL.activate(); } catch(e){ console.warn('[Cockpit] DL.activate fout:', e.message); }
+  }
   // Hub-event voor analytics (welke views worden gebruikt)
   if (window.atfieltHub){
     try { window.atfieltHub.logEvent('feature', { action: 'view-switch', view: name }); } catch(e){}
@@ -1701,7 +1740,7 @@ function openExtension(key){
 // Renders placeholder-content in de extensie-views die nog geen inline UI hebben
 // Fase B: project-dashboard heeft een eigen module (PD) die zijn HTML zelf injecteert
 function renderPlaceholders(){
-  const INLINE_VIEWS = new Set(['project-dashboard', 'project-upload']); // skip placeholders voor views met inline UI
+  const INLINE_VIEWS = new Set(['project-dashboard', 'project-upload', 'documentenlijst']); // skip placeholders voor views met inline UI
   EXTENSIONS.forEach(function(ext){
     if (INLINE_VIEWS.has(ext.key)) return;
     const container = document.getElementById('view-' + ext.key);
@@ -3582,6 +3621,326 @@ const PU = (function(){
       // Parallel prefetch: folders (zwaar) + config (licht)
       if (!_isLoaded && !_isLoading) loadFolders();
       if (!_configLoaded && !_configLoading) _loadUploadConfig();
+    }
+  };
+})();
+
+// ============================================================
+//  DL — Documentenlijst module (Phase B-3 MVP, inline absorptie)
+//  Spiegelt PU/PD-pattern. MVP scope:
+//   - Recursief folder-walk via cockpit's tcFetch (v2.0, geen pagination)
+//   - Vaste kolom-set (geen profile-config)
+//   - Klik-header sorteren, debounced zoeken, groepering op file_location
+//   - Geen filters / detail-paneel / export / edit (volgen in iteratie A/B)
+//
+//  Constanten: eigen kopie van PROP_UUIDS/ENUM_VALUES (zie keuze: optie A —
+//  duplicatie aanvaarden boven refactor-risico van PU's net-stabiele code)
+// ============================================================
+const DL = (function(){
+  // PSet metadata-constanten (NIET gebruikt in MVP — komt in iter A wanneer we
+  // metadata-kolommen ophalen via PSet API. Behouden zodat de structuur er staat.)
+  const PROP_UUIDS = {
+    discipline:      '202e0b40-055c-11ea-9ee0-4f66993176e1',
+    project_fase:    'c83d7d90-055a-11ea-9ee0-4f66993176e1',
+    document_status: 'cbc46730-41af-11ea-9125-af458cfb61c4',
+  };
+  const ENUM_VALUES = {
+    discipline: ['Opdrachtgever','Architect','Constructeur','Installateur','Adviseur','Hoofdaannemer','Onderaannemer','Leverancier','Overheid','Nuts','Directievoering','Overig'],
+    project_fase: ['Initiatief','Project definitie','Structuur ontwerp','Voorlopig ontwerp','Definitief ontwerp','Technisch ontwerp','Prijs en contractvorming','Uitvoeringsgereed ontwerp','Realisatie','Gebruik en exploitatie','Project (alle fasen)'],
+    document_status: ['Concept','Voorlopig','Definitief','Vervallen','Voor ontwerp','Voor uitvoering','As built','Intern'],
+  };
+
+  // Vaste kolom-set voor MVP (geen toggle / profile)
+  const COLS = [
+    { k: 'bestandsnaam',  l: 'Bestandsnaam', w: '38%' },
+    { k: '_versie',       l: 'Versie',       w: '8%'  },
+    { k: '_modified',     l: 'Gewijzigd',    w: '14%' },
+    { k: '_created',      l: 'Toegevoegd',   w: '14%' },
+    { k: 'file_location', l: 'Map',          w: '26%' },
+  ];
+
+  // State
+  let _docs = [];
+  let _isLoaded = false;
+  let _isLoading = false;
+  let _isInjected = false;
+  let _sortK = 'bestandsnaam';
+  let _sortD = 'asc';
+  let _searchTimer = null;
+  let _searchQuery = '';
+
+  function getRoot(){ return document.getElementById('view-documentenlijst'); }
+
+  function _esc(s){
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  function _formatDate(s){
+    if (!s) return '';
+    try {
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return _esc(s);
+      return d.toLocaleDateString('nl-NL', { day:'2-digit', month:'short', year:'numeric' });
+    } catch(_){ return _esc(s); }
+  }
+
+  // Recursieve folder-walk. Gebruikt cockpit's centrale tcFetch (GET, direct + proxy fallback).
+  // MVP-vereenvoudiging: v2.0 endpoint, geen skipToken-pagination. Bij projecten met >500
+  // files per folder kan dit beperkend zijn — dan in iter A v2.1 + skipToken porten.
+  async function _fetchItemsRecursive(folderId, pad, result){
+    let items;
+    try {
+      const data = await tcFetch('/folders/' + folderId + '/items');
+      items = Array.isArray(data) ? data : (data && data.items) || [];
+    } catch(e){
+      console.warn('[DL] folder items fail:', folderId, e.message);
+      return;
+    }
+    const subFolders = [];
+    for (const item of items){
+      const naam = item.name || 'Naamloos';
+      const volledigPad = pad ? pad + '/' + naam : naam;
+      const itemType = String(item.type || item.itemType || '').toUpperCase();
+      const isFolder = itemType === 'FOLDER' || itemType === 'DIR';
+      if (isFolder){
+        subFolders.push({ id: item.id, pad: volledigPad });
+      } else {
+        result.push({
+          file_location: pad || '(projectroot)',
+          bestandsnaam:  naam,
+          _vid:          item.id || '',
+          _created:      item.createdOn || '',
+          _modified:     item.modifiedOn || item.createdOn || '',
+          _versie:       item.revision || item.version || '',
+        });
+      }
+    }
+    // Parallelle recursie (max 8 tegelijk) — zelfde aanpak als standalone tc-viewer
+    const PARALLEL = 8;
+    for (let i = 0; i < subFolders.length; i += PARALLEL){
+      const chunk = subFolders.slice(i, i + PARALLEL);
+      await Promise.all(chunk.map(function(f){
+        return _fetchItemsRecursive(f.id, f.pad, result);
+      }));
+    }
+  }
+
+  async function _loadDocs(){
+    if (_isLoaded || _isLoading) return;
+    _isLoading = true;
+    _renderLoading(true);
+    try {
+      // Root folder ID via project-info
+      let rootId = null;
+      try {
+        const proj = await tcFetch('/projects/' + tcProject.id);
+        rootId = proj.rootId || proj.rootFolderId
+          || (proj.rootFolder && proj.rootFolder.id)
+          || (proj.root && proj.root.id);
+      } catch(e){ console.warn('[DL] /projects/{id} mislukt:', e.message); }
+      if (!rootId) throw new Error('Root folder niet gevonden in project-info');
+
+      const result = [];
+      await _fetchItemsRecursive(rootId, '', result);
+      _docs = result;
+      _isLoaded = true;
+      console.log('[DL] geladen:', _docs.length, 'documenten');
+
+      if (window.atfieltHub){
+        try {
+          window.atfieltHub.logEvent('feature', {
+            action: 'data-loaded',
+            source: 'cockpit-inline',
+            module: 'documentenlijst',
+            count: _docs.length,
+          });
+        } catch(_){}
+      }
+
+      _renderTable();
+    } catch(e){
+      console.error('[DL] load failed:', e);
+      _renderError(e.message || String(e));
+    } finally {
+      _isLoading = false;
+      _renderLoading(false);
+    }
+  }
+
+  function _filt(){
+    const q = (_searchQuery || '').toLowerCase().trim();
+    let d = _docs;
+    if (q){
+      d = d.filter(function(doc){
+        const parts = [doc.bestandsnaam, doc.file_location, doc._versie].join(' ').toLowerCase();
+        return parts.indexOf(q) !== -1;
+      });
+    }
+    if (_sortK){
+      d = d.slice().sort(function(a,b){
+        const va = String(a[_sortK] == null ? '' : a[_sortK]).toLowerCase();
+        const vb = String(b[_sortK] == null ? '' : b[_sortK]).toLowerCase();
+        return _sortD === 'asc'
+          ? va.localeCompare(vb, 'nl', { numeric: true })
+          : vb.localeCompare(va, 'nl', { numeric: true });
+      });
+    }
+    return d;
+  }
+
+  function _renderRow(d){
+    let html = '<tr>';
+    for (const c of COLS){
+      let v = d[c.k];
+      let cls = '';
+      if (c.k === '_created' || c.k === '_modified'){ v = _formatDate(v); cls = 'dl-cell-date'; }
+      else if (c.k === 'bestandsnaam'){ v = _esc(v == null ? '' : v); cls = 'dl-cell-name'; }
+      else if (c.k === 'file_location'){ v = _esc(v == null ? '' : v); cls = 'dl-cell-folder'; }
+      else { v = _esc(v == null ? '' : v); }
+      html += '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</td>';
+    }
+    return html + '</tr>';
+  }
+
+  function _renderTable(){
+    const root = getRoot();
+    if (!root) return;
+    const tbody = root.querySelector('#dl-tbody');
+    const noR = root.querySelector('#dl-no-results');
+    const count = root.querySelector('#dl-count');
+    if (!tbody || !count) return;
+
+    const filtered = _filt();
+    count.textContent = filtered.length + ' bestand' + (filtered.length === 1 ? '' : 'en');
+
+    // Sort-indicators bijwerken
+    root.querySelectorAll('.dl-th').forEach(function(th){
+      const k = th.getAttribute('data-sort');
+      th.classList.toggle('sorted', k === _sortK);
+      th.classList.toggle('desc', k === _sortK && _sortD === 'desc');
+    });
+
+    if (!filtered.length){
+      tbody.innerHTML = '';
+      if (noR) noR.style.display = '';
+      return;
+    }
+    if (noR) noR.style.display = 'none';
+
+    // Groepering op file_location (vast voor MVP)
+    const groups = {};
+    const groupOrder = [];
+    filtered.forEach(function(d){
+      const g = d.file_location || '(geen)';
+      if (!groups[g]){ groups[g] = []; groupOrder.push(g); }
+      groups[g].push(d);
+    });
+    groupOrder.sort(function(a,b){ return a.localeCompare(b, 'nl'); });
+
+    let html = '';
+    for (const g of groupOrder){
+      html += '<tr class="dl-group"><td colspan="' + COLS.length + '">'
+        + '📁 ' + _esc(g)
+        + '<span class="dl-group-count">(' + groups[g].length + ')</span>'
+        + '</td></tr>';
+      for (const d of groups[g]){
+        html += _renderRow(d);
+      }
+    }
+    tbody.innerHTML = html;
+  }
+
+  function _renderLoading(show){
+    const root = getRoot();
+    if (!root) return;
+    const ld = root.querySelector('#dl-loading');
+    if (ld) ld.style.display = show ? '' : 'none';
+  }
+
+  function _renderError(msg){
+    const root = getRoot();
+    if (!root) return;
+    const err = root.querySelector('#dl-error');
+    if (err){
+      err.style.display = '';
+      err.innerHTML = '<strong>Fout bij laden documentenlijst</strong><br>' + _esc(msg);
+    }
+  }
+
+  function injectHtml(){
+    if (_isInjected) return;
+    const root = getRoot();
+    if (!root) return;
+    const colHtml = COLS.map(function(c){ return '<col style="width:' + c.w + '">'; }).join('');
+    const thHtml = COLS.map(function(c){
+      return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
+        + '<span class="dl-sort-ind"></span></th>';
+    }).join('');
+    root.innerHTML =
+      '<section class="sec">' +
+        '<div class="dl-app-head">' +
+          '<div>' +
+            '<div class="overline">Documentenlijst</div>' +
+            '<p class="dl-subtitle"><span id="dl-count">–</span> in <strong>' + _esc(tcProject.name || '–') + '</strong></p>' +
+          '</div>' +
+          '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
+        '</div>' +
+        '<div id="dl-error" class="dl-error" style="display:none"></div>' +
+        '<div id="dl-loading" class="dl-loading" style="display:none">Documenten laden…</div>' +
+        '<div class="dl-tbl-wrap">' +
+          '<table class="dl-tbl">' +
+            '<colgroup>' + colHtml + '</colgroup>' +
+            '<thead><tr>' + thHtml + '</tr></thead>' +
+            '<tbody id="dl-tbody"></tbody>' +
+          '</table>' +
+          '<div id="dl-no-results" class="dl-no-results" style="display:none">Geen documenten gevonden</div>' +
+        '</div>' +
+      '</section>';
+    _bindEvents();
+    _isInjected = true;
+  }
+
+  function _bindEvents(){
+    const root = getRoot();
+    const search = root.querySelector('#dl-search');
+    if (search){
+      search.addEventListener('input', function(){
+        if (_searchTimer) clearTimeout(_searchTimer);
+        _searchTimer = setTimeout(function(){
+          _searchQuery = search.value || '';
+          _renderTable();
+        }, 80);
+      });
+    }
+    root.querySelectorAll('.dl-th').forEach(function(th){
+      th.addEventListener('click', function(){
+        const k = th.getAttribute('data-sort');
+        if (!k) return;
+        if (_sortK === k){ _sortD = _sortD === 'asc' ? 'desc' : 'asc'; }
+        else { _sortK = k; _sortD = 'asc'; }
+        _renderTable();
+      });
+    });
+  }
+
+  // Public API
+  return {
+    activate: function(){
+      const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
+      if (ext && ext.allowed === false){
+        console.log('[DL] activate overgeslagen (geen hub-toegang)');
+        return;
+      }
+      injectHtml();
+      if (!_isLoaded && !_isLoading) _loadDocs();
+    },
+    prefetchDocs: function(){
+      const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
+      if (ext && ext.allowed === false) return;
+      if (!_isLoaded && !_isLoading) _loadDocs();
     }
   };
 })();
