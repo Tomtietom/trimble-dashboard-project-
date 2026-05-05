@@ -672,6 +672,21 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   .load-card h2{font-size:26px}
   .view-placeholder{padding:var(--s5) var(--s4)}
 }
+
+/* Settings-modal — hergebruikt pu-modal stijl met visible-toggle */
+.settings-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:40px var(--s4);z-index:1000;backdrop-filter:blur(2px)}
+.settings-overlay.vis{display:flex}
+.settings-overlay .pu-modal{max-width:480px}
+.settings-overlay label{display:block;font-size:11px;font-weight:700;color:var(--g4);margin:16px 0 6px;text-transform:uppercase;letter-spacing:.3px}
+.settings-overlay label.checkbox-row{display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:normal;font-weight:500;color:var(--dk);font-size:13px;margin-top:14px}
+.settings-overlay select{width:100%;padding:8px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font-size:13px;font-family:'Poppins',sans-serif;outline:none;transition:border-color .15s;box-sizing:border-box;background:#fff}
+.settings-overlay select:focus{border-color:var(--af)}
+.settings-overlay input[type=checkbox]{width:auto;margin:0;flex-shrink:0;accent-color:var(--af);cursor:pointer}
+.settings-overlay .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:24px}
+.settings-overlay .btn-primary{padding:8px 16px;background:var(--af);color:#fff;border:none;border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;font-family:'Poppins',sans-serif;transition:background .15s}
+.settings-overlay .btn-primary:hover{background:var(--af2)}
+.settings-overlay .btn-secondary{padding:8px 16px;background:transparent;color:var(--g5);border:1px solid var(--hl);border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;font-family:'Poppins',sans-serif;transition:border-color .15s}
+.settings-overlay .btn-secondary:hover{border-color:var(--g3)}
 </style>
 </head>
 <body>
@@ -1050,10 +1065,12 @@ async function init(){
     // TC zijbalk klik → 'extension.command' met data.data === '<command>'.
     // Submenu is gereduceerd tot 1 item; alleen 'open_cockpit' verwacht.
     // 'open_dashboard' blijft als alias voor TC-clients die de oude menu nog cachen.
-    if (event === 'extension.command' && data && typeof data.data === 'string') {
-      const cmd = data.data;
-      if (cmd === 'open_cockpit' || cmd === 'open_dashboard') { showView('dashboard'); return; }
-      console.log('[TC-event] Onbekend command (stale menu cache?):', cmd);
+    // configCommand uit manifest komt ook hier binnen — kan zowel data.data als data direct zijn afhankelijk van TC-versie.
+    if (event === 'extension.command') {
+      const cmdString = (typeof data === 'string') ? data : (data && typeof data.data === 'string' ? data.data : null);
+      if (cmdString === 'open_cockpit' || cmdString === 'open_dashboard') { showView('dashboard'); return; }
+      if (cmdString === 'open_settings') { openSettingsModal(); return; }
+      if (cmdString) console.log('[TC-event] Onbekend command (stale menu cache?):', cmdString);
       return;
     }
 
@@ -3570,9 +3587,55 @@ const PU = (function(){
 })();
 
 // ============================================================
+//  Settings (configCommand: open_settings)
+// ============================================================
+const SETTINGS_PREFIX = 'atfielt_dash_';
+const SETTINGS_DEFAULTS = {
+  period: '30',          // '7' | '30' | '90' (dagen)
+  recentCount: '10',     // '5' | '10' | '20'
+  showTodos: true        // todo's prominent tonen
+};
+function getSetting(key){
+  const raw = localStorage.getItem(SETTINGS_PREFIX + key);
+  if (raw === null) return SETTINGS_DEFAULTS[key];
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return raw;
+}
+function setSetting(key, value){
+  localStorage.setItem(SETTINGS_PREFIX + key, String(value));
+}
+function openSettingsModal(){
+  document.getElementById('setting-period').value = getSetting('period');
+  document.getElementById('setting-recent-count').value = getSetting('recentCount');
+  document.getElementById('setting-show-todos').checked = getSetting('showTodos') === true;
+  document.getElementById('settingsOverlay').classList.add('vis');
+}
+function closeSettingsModal(){
+  document.getElementById('settingsOverlay').classList.remove('vis');
+}
+function saveSettingsModal(){
+  setSetting('period', document.getElementById('setting-period').value);
+  setSetting('recentCount', document.getElementById('setting-recent-count').value);
+  setSetting('showTodos', document.getElementById('setting-show-todos').checked);
+  closeSettingsModal();
+  console.log('[Settings] Opgeslagen:', {
+    period: getSetting('period'),
+    recentCount: getSetting('recentCount'),
+    showTodos: getSetting('showTodos')
+  });
+}
+
+// ============================================================
 //  Start
 // ============================================================
 document.addEventListener('DOMContentLoaded', function(){
+  // Sluit settings-modal bij klik op overlay-backdrop
+  const settingsBg = document.getElementById('settingsOverlay');
+  if (settingsBg) settingsBg.addEventListener('click', function(e){
+    if (e.target === settingsBg) closeSettingsModal();
+  });
+
   init().catch(function(e){
     console.error('[Cockpit] Init fout:', e);
     // Markeer welke stap nog active was als err
@@ -3582,5 +3645,37 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 });
 </script>
+
+<!-- Settings modal (configCommand: open_settings — tandwiel-icoon in TC extensies-instellingen) -->
+<div id="settingsOverlay" class="settings-overlay">
+  <div class="pu-modal">
+    <h2>Instellingen — Cockpit</h2>
+    <p class="sub">Persoonlijke voorkeuren voor jouw cockpit-weergave.</p>
+
+    <label for="setting-period">Default tijdperiode voor activity</label>
+    <select id="setting-period">
+      <option value="7">Laatste 7 dagen</option>
+      <option value="30">Laatste 30 dagen</option>
+      <option value="90">Laatste 90 dagen</option>
+    </select>
+
+    <label for="setting-recent-count">Aantal recente uploads tonen</label>
+    <select id="setting-recent-count">
+      <option value="5">5</option>
+      <option value="10">10</option>
+      <option value="20">20</option>
+    </select>
+
+    <label class="checkbox-row">
+      <input type="checkbox" id="setting-show-todos">
+      <span>Todo's prominent tonen</span>
+    </label>
+
+    <div class="actions">
+      <button class="btn-secondary" onclick="closeSettingsModal()">Annuleren</button>
+      <button class="btn-primary" onclick="saveSettingsModal()">Opslaan</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

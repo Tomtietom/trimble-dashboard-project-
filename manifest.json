@@ -1,10 +1,11 @@
 {
   "title": "At Fielt Cockpit",
   "url": "https://tomtietom.github.io/trimble-dashboard-project-/",
-  "icon": "https://tomtietom.github.io/trimble-dashboard-project-/icon.png",
-  "description": "Dashboard en entry-point voor alle At Fielt extensies - projectoverzicht met snelle doorstart naar Project Dashboard, Upload, Rechten Viewer en Documentenlijst",
+  "icon": "https://tomtietom.github.io/trimble-dashboard-project-/icon.svg",
+  "description": "Alle At Fielt extensies in één dashboard — projectoverzicht, upload, rechten en documentenlijst.",
   "enabled": true,
   "extensionType": [
     "project"
-  ]
+  ],
+  "configCommand": "open_settings"
 }
