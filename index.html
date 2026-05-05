@@ -539,6 +539,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-filter:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 2px var(--afl)}
 .dl-filter-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 13px 'Poppins',sans-serif;color:var(--g5);transition:all .15s}
 .dl-filter-reset:hover{background:var(--af);color:#fff;border-color:var(--af)}
+.dl-deep-scan{padding:8px 12px;margin-bottom:var(--s3);background:#fff8e1;border:1px solid #f0c040;border-radius:var(--r-sm);font-size:13px;color:#7a5c00;display:flex;align-items:center;gap:8px}
+.dl-deep-scan.scanning{animation:dl-pulse 1.6s ease-in-out infinite}
+@keyframes dl-pulse{0%,100%{opacity:.85}50%{opacity:1}}
 
 /* RV — Rechten Viewer (Phase B-2 MVP) */
 .rv-app-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s4)}
@@ -3753,6 +3756,7 @@ const DL = (function(){
   let _searchQuery = '';
   let _filters = { document_status: '', discipline: '', project_fase: '' };
   let _hasMetaSchema = false; // wordt true zodra we minstens 1 metadata-match krijgen
+  let _deepScanState = null; // { totaal, gedaan, actief } tijdens per-file metadata-fetch
 
   function getRoot(){ return document.getElementById('view-documentenlijst'); }
 
@@ -3894,7 +3898,107 @@ const DL = (function(){
       }
     }
     _hasMetaSchema = matched > 0;
-    console.log('[DL] metadata gematcht:', matched, '/', _docs.length, 'documenten (' + (_docs.length ? Math.round(matched/_docs.length*100) : 0) + '%)');
+    console.log('[DL] bulk metadata gematcht:', matched, '/', _docs.length, 'documenten (' + (_docs.length ? Math.round(matched/_docs.length*100) : 0) + '%)');
+    // Markeer welke docs al via bulk metadata hebben gekregen (voor deep-scan filter)
+    for (const d of _docs){
+      if (d.document_status || d.discipline || d.project_fase || d.bedrijf || d.titel || d.document_nummer){
+        d._matchedFromBulk = true;
+      }
+    }
+  }
+
+  // Deep-scan: per-file PSet fetch voor docs zonder bulk-match. TC's bulk-endpoint
+  // geeft max 100 instances per project — voor groot project nodig om de rest aan
+  // te vullen. Endpoint: /psets/{frn}/{libId}/tcfiles/versions → items[0].props.
+  // Achtergrond-fetch met concurrency 6, periodieke re-render elke 50 docs.
+  async function _deepScanMetadata(){
+    const libId = 'tcproject:prod:' + tcProject.id;
+    const todo = _docs.filter(function(d){ return !d._matchedFromBulk && d._vid; });
+    if (!todo.length){
+      console.log('[DL] deep-scan: niets te doen — alle docs via bulk gematcht');
+      return;
+    }
+    console.log('[DL] deep-scan start:', todo.length, 'docs (per-file PSet)');
+    _deepScanState = { totaal: todo.length, gedaan: 0, succes: 0, leeg: 0, fout: 0, actief: true, startTs: Date.now() };
+    _renderDeepScanIndicator();
+
+    const CONCURRENCY = 6;
+    const RERENDER_EVERY = 50;
+    let idx = 0;
+    let sinceLastRender = 0;
+
+    async function worker(){
+      while (idx < todo.length){
+        const myIdx = idx++;
+        const doc = todo[myIdx];
+        const link = 'frn:tcfile:' + doc._vid;
+        const path = '/psets/' + encodeURIComponent(link) + '/' + encodeURIComponent(libId) + '/tcfiles/versions';
+        try {
+          const r = await _dlFetchPSet(path);
+          const items = r && Array.isArray(r.items) ? r.items : [];
+          const inst = items[0];
+          if (inst && inst.props){
+            for (const propId in inst.props){
+              const veld = PROP_MAP[propId];
+              const val = inst.props[propId];
+              if (veld && val && val !== '--') doc[veld] = String(val).trim();
+            }
+            _deepScanState.succes++;
+            _hasMetaSchema = true;
+          } else {
+            _deepScanState.leeg++;
+          }
+        } catch(e){
+          // 404 = bestand heeft geen PSet, niet erg. Andere errors: skip dit doc.
+          _deepScanState.fout++;
+        }
+        _deepScanState.gedaan++;
+        sinceLastRender++;
+        if (sinceLastRender >= RERENDER_EVERY){
+          sinceLastRender = 0;
+          try { _renderTable(); } catch(_){}
+        }
+        _renderDeepScanIndicator();
+      }
+    }
+
+    const workers = [];
+    for (let w = 0; w < Math.min(CONCURRENCY, todo.length); w++) workers.push(worker());
+    await Promise.all(workers);
+
+    _deepScanState.actief = false;
+    const dur = Math.round((Date.now() - _deepScanState.startTs) / 1000);
+    console.log('[DL] deep-scan klaar in', dur, 's:', _deepScanState.succes, 'metadata,', _deepScanState.leeg, 'leeg,', _deepScanState.fout, 'fout');
+    _renderTable();
+    _renderDeepScanIndicator();
+  }
+
+  function _renderDeepScanIndicator(){
+    const root = getRoot();
+    if (!root) return;
+    let ind = root.querySelector('#dl-deep-scan');
+    const bar = root.querySelector('#dl-filter-bar');
+    if (!_deepScanState){
+      if (ind) ind.remove();
+      return;
+    }
+    if (!ind){
+      ind = document.createElement('div');
+      ind.id = 'dl-deep-scan';
+      ind.className = 'dl-deep-scan';
+      if (bar && bar.parentNode) bar.parentNode.insertBefore(ind, bar.nextSibling);
+      else root.querySelector('section').appendChild(ind);
+    }
+    if (_deepScanState.actief){
+      const pct = Math.round(_deepScanState.gedaan / _deepScanState.totaal * 100);
+      ind.innerHTML = '⏳ Metadata aanvullen voor overige documenten… ' + _deepScanState.gedaan + ' / ' + _deepScanState.totaal + ' (' + pct + '%)';
+      ind.classList.add('scanning');
+    } else {
+      ind.innerHTML = '✓ Metadata compleet (' + _deepScanState.succes + ' aanvullingen via deep-scan)';
+      ind.classList.remove('scanning');
+      // Verberg na 4s
+      setTimeout(function(){ if (ind && ind.parentNode) ind.remove(); }, 4000);
+    }
   }
 
   async function _loadDocs(){
@@ -3921,6 +4025,11 @@ const DL = (function(){
       // Metadata na docs binnen — niet-blokkerend voor lijst-render
       _renderTable();
       try { await _loadMetadata(); } catch(e){ console.warn('[DL] metadata-load fout:', e.message); }
+      _renderTable(); // bulk binnen, eerste 100 docs hebben metadata
+      // Deep-scan voor de rest (bulk geeft max 100/project) — async, niet awaiten
+      if (_docs.length > 0){
+        _deepScanMetadata().catch(function(e){ console.warn('[DL] deep-scan fout:', e.message); });
+      }
 
       if (window.atfieltHub){
         try {
