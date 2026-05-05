@@ -535,6 +535,48 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-group-count{opacity:.6;font-weight:normal;text-transform:none;letter-spacing:0;margin-left:6px}
 .dl-no-results{padding:var(--s5);text-align:center;color:var(--g4);font-size:var(--fs-sm)}
 
+/* RV — Rechten Viewer (Phase B-2 MVP) */
+.rv-app-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s4)}
+.rv-subtitle{margin:var(--s1) 0 0;color:var(--g5);font-size:var(--fs-sm)}
+.rv-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.rv-tab{padding:8px 16px;border:1px solid var(--hl);background:#fff;border-radius:var(--r-pill);font:500 13px 'Poppins',sans-serif;cursor:pointer;color:var(--dk);transition:all .15s}
+.rv-tab:hover{background:var(--gr)}
+.rv-tab.active{background:var(--af);color:#fff;border-color:var(--af)}
+.rv-loading{padding:var(--s5);text-align:center;color:var(--g5);font-size:var(--fs-sm)}
+.rv-error{background:#fee;border-left:3px solid #d00;padding:var(--s3) var(--s4);border-radius:var(--r-sm);margin-bottom:var(--s4);font-size:var(--fs-sm);color:#7a0000}
+.rv-split{display:flex;gap:var(--s4);min-height:400px}
+.rv-sidebar{flex:0 0 280px;display:flex;flex-direction:column;gap:8px}
+.rv-sidebar input[type=search]{padding:8px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;background:#fff}
+.rv-sidebar input[type=search]:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 3px var(--afl)}
+.rv-list{flex:1;overflow:auto;max-height:65vh;border:1px solid var(--hl-light);border-radius:var(--r-sm);background:#fff}
+.rv-item{padding:8px 12px;border-bottom:1px solid var(--hl-light);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rv-item:last-child{border-bottom:none}
+.rv-item:hover{background:var(--afl)}
+.rv-item.active{background:var(--af);color:#fff}
+.rv-item.active .rv-tag{background:rgba(255,255,255,.25);color:#fff}
+.rv-tag{font-size:11px;background:rgba(34,34,34,.12);padding:1px 7px;border-radius:8px;color:var(--g5);text-transform:uppercase;letter-spacing:.05em;font-weight:500}
+.rv-main{flex:1;background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-sm);padding:var(--s3);overflow:auto;max-height:75vh}
+.rv-tree-row{padding:6px 10px;border-bottom:1px solid var(--hl-light);font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rv-tree-row:last-child{border-bottom:none}
+.rv-tree-row.rv-full{background:#e8f5e9}
+.rv-tree-row.rv-read{background:#fff8e1}
+.rv-tree-row.rv-none{color:#aaa}
+.rv-tree-row .rv-pad{flex:1;word-break:break-word}
+.rv-badge{font-size:11px;padding:2px 8px;border-radius:8px;font-weight:500;white-space:nowrap}
+.rv-badge.full{background:#2e7d32;color:#fff}
+.rv-badge.read{background:#f57c00;color:#fff}
+.rv-placeholder{padding:var(--s5);text-align:center;color:var(--g4);font-style:italic;font-size:var(--fs-sm)}
+.rv-dashboard{padding:var(--s2)}
+.rv-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s3);margin:var(--s3) 0}
+.rv-stat{background:var(--gr);padding:var(--s4);border-radius:var(--r-md);text-align:center;border:1px solid var(--hl-light)}
+.rv-stat .num{font-size:32px;font-weight:800;color:var(--af);font-family:'Montserrat',sans-serif;line-height:1}
+.rv-stat .lbl{font-size:12px;color:var(--g5);margin-top:6px;text-transform:uppercase;letter-spacing:.05em}
+.rv-admin-list{list-style:none;padding:0;margin:8px 0;background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-sm)}
+.rv-admin-list li{padding:8px 12px;border-bottom:1px solid var(--hl-light);font-size:13px}
+.rv-admin-list li:last-child{border-bottom:none}
+.rv-email{color:var(--g4);font-size:12px;margin-left:8px}
+@media(max-width:720px){.rv-stats{grid-template-columns:repeat(2,1fr)}.rv-split{flex-direction:column}.rv-sidebar{flex:0 0 auto}}
+
 .view-placeholder{
   background:#fff;border:1px solid var(--hl-light);
   border-radius:var(--r-lg);padding:48px var(--s5);
@@ -1724,6 +1766,9 @@ function showView(name){
   if (name === 'documentenlijst' && typeof DL !== 'undefined') {
     try { DL.activate(); } catch(e){ console.warn('[Cockpit] DL.activate fout:', e.message); }
   }
+  if (name === 'rechten-viewer' && typeof RV !== 'undefined') {
+    try { RV.activate(); } catch(e){ console.warn('[Cockpit] RV.activate fout:', e.message); }
+  }
   // Hub-event voor analytics (welke views worden gebruikt)
   if (window.atfieltHub){
     try { window.atfieltHub.logEvent('feature', { action: 'view-switch', view: name }); } catch(e){}
@@ -1740,7 +1785,7 @@ function openExtension(key){
 // Renders placeholder-content in de extensie-views die nog geen inline UI hebben
 // Fase B: project-dashboard heeft een eigen module (PD) die zijn HTML zelf injecteert
 function renderPlaceholders(){
-  const INLINE_VIEWS = new Set(['project-dashboard', 'project-upload', 'documentenlijst']); // skip placeholders voor views met inline UI
+  const INLINE_VIEWS = new Set(['project-dashboard', 'project-upload', 'documentenlijst', 'rechten-viewer']); // skip placeholders voor views met inline UI
   EXTENSIONS.forEach(function(ext){
     if (INLINE_VIEWS.has(ext.key)) return;
     const container = document.getElementById('view-' + ext.key);
@@ -3947,6 +3992,480 @@ const DL = (function(){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
       if (ext && ext.allowed === false) return;
       if (!_isLoaded && !_isLoading) _loadDocs();
+    }
+  };
+})();
+
+// ============================================================
+//  RV — Rechten Viewer module (Phase B-2 MVP, inline absorptie)
+//  Toont wie wat mag in een TC-project. MVP scope:
+//   - Dashboard (stats + admin-lijst)
+//   - Groepen-tab (klik groep → effective access per map)
+//   - Gebruikers-tab (klik user → effective access via zijn groepen)
+//   - Geen mappen-browse-tree, geen export, geen detail-paneel (iter A/B)
+// ============================================================
+const RV = (function(){
+  // State
+  let _data = null; // { csvData, allGroups, allUsers, groups }
+  let _isLoaded = false;
+  let _isLoading = false;
+  let _isInjected = false;
+  let _currentView = 'groepen'; // 'dashboard' | 'groepen' | 'gebruikers'
+  let _selectedGroup = null;
+  let _selectedUser = null;
+  let _searchQuery = '';
+
+  function getRoot(){ return document.getElementById('view-rechten-viewer'); }
+
+  function _esc(s){
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  // === Fetch helpers ===
+  // Hergebruik cockpit's centrale tcFetch + handmatige unwrap (zelfde patroon als DL)
+  async function _fetchUnwrapped(path){
+    const data = await tcFetch(path);
+    const body = data && data._partial ? data._data : data;
+    return body;
+  }
+  async function _fetchList(path){
+    const body = await _fetchUnwrapped(path);
+    return Array.isArray(body) ? body : (body && body.items) || [];
+  }
+
+  async function _fetchFoldersRecursive(rootId, projectName){
+    const result = [];
+    const queue = [{ id: rootId, path: '' }];
+    const PARALLEL = 8;
+    while (queue.length){
+      const batch = queue.splice(0, PARALLEL);
+      const results = await Promise.all(batch.map(async function(b){
+        try {
+          const items = await _fetchList('/folders/' + b.id + '/items');
+          return { path: b.path, items };
+        } catch(e){
+          console.warn('[RV] folder items fail:', b.id, e.message);
+          return { path: b.path, items: [] };
+        }
+      }));
+      for (const { path, items } of results){
+        for (const item of items){
+          const itemType = String(item.type || item.itemType || '').toUpperCase();
+          if (itemType === 'FOLDER' || itemType === 'DIR'){
+            const folderPath = path ? path + '/' + item.name : item.name;
+            const fullPath = projectName + '/' + folderPath;
+            result.push({ id: item.id, name: item.name, path: fullPath });
+            queue.push({ id: item.id, path: folderPath });
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  async function _fetchPermissions(folders){
+    const out = [];
+    const BATCH = 20;
+    for (let i = 0; i < folders.length; i += BATCH){
+      const batch = folders.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(async function(f){
+        try {
+          const perms = await _fetchUnwrapped('/folders/fs/' + f.id + '/permissions');
+          return { folder: f, permissions: perms };
+        } catch(e){
+          return { folder: f, permissions: null };
+        }
+      }));
+      out.push.apply(out, results);
+    }
+    return out;
+  }
+
+  async function _fetchTeam(){
+    let users = [];
+    try { users = await _fetchList('/projects/' + tcProject.id + '/users'); }
+    catch(e){ console.warn('[RV] users fout:', e.message); }
+
+    let groups = [];
+    for (const ep of ['/groups?projectId=' + tcProject.id, '/projects/' + tcProject.id + '/groups']){
+      try {
+        const r = await _fetchList(ep);
+        if (Array.isArray(r) && r.length > 0){ groups = r; break; }
+      } catch(_){}
+    }
+
+    // Members per groep, parallel batches van 20
+    const BATCH = 20;
+    for (let i = 0; i < groups.length; i += BATCH){
+      const batch = groups.slice(i, i + BATCH);
+      await Promise.all(batch.map(async function(g){
+        try {
+          const members = await _fetchList('/groups/' + g.id + '/users');
+          g.memberIds = members.map(function(m){ return m.id || m.userId; }).filter(Boolean);
+        } catch(_){ g.memberIds = []; }
+      }));
+    }
+    return { users, groups };
+  }
+
+  // === Data conversie (gebaseerd op standalone rechten-viewer regel 1672+) ===
+  function _convertData(folders, permsData, users, groups, projectName){
+    const groupById = {};
+    for (const g of groups) if (g.id) groupById[g.id] = g.name || g.displayName || g.id;
+    const userById = {};
+    for (const u of users){
+      const uid = u.id || u.userId;
+      userById[uid] = u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || uid;
+    }
+
+    function resolveSubject(s){
+      if (s === '*') return 'Alle projectleden';
+      if (typeof s !== 'string') return String(s || '');
+      if (s.startsWith('tc-groups:')) return groupById[s.replace('tc-groups:','')] || s;
+      if (s.startsWith('tc-users:')) return userById[s.replace('tc-users:','')] || s;
+      return groupById[s] || userById[s] || s;
+    }
+
+    function levelToAccess(l){
+      const u = String(l || '').toUpperCase();
+      if (u === 'FULL' || u === 'FULL_ACCESS' || u === 'WRITE' || u === 'ADMIN') return 'full';
+      if (u === 'READ' || u === 'READ_ACCESS' || u === 'VIEWER') return 'read';
+      if (u === 'NO_ACCESS' || u === 'NONE') return 'none';
+      return null;
+    }
+
+    const allGroupsSet = new Set();
+    const csvData = [{ pad: projectName, read: [], full: [], inherited: false }];
+
+    for (const { folder, permissions } of permsData){
+      const subjectAccess = {};
+      let hasDirect = false, hasInherited = false;
+
+      function applySubject(name, access, isDirect){
+        if (!access || !name) return;
+        const existing = subjectAccess[name];
+        if (isDirect) subjectAccess[name] = access;
+        else if (!existing || access === 'full') subjectAccess[name] = access;
+        if (access !== 'none') allGroupsSet.add(name);
+      }
+
+      function processAcl(acl, isDirect){
+        for (const level in acl){
+          const subjects = acl[level];
+          if (!Array.isArray(subjects)) continue;
+          const access = levelToAccess(level);
+          if (!access) continue;
+          for (const s of subjects) applySubject(resolveSubject(s), access, isDirect);
+        }
+      }
+
+      if (permissions){
+        const inh = permissions.inheritedPermissions;
+        if (inh){
+          if (inh.acl){ hasInherited = true; processAcl(inh.acl, false); }
+          if (inh.defaultAccess){
+            hasInherited = true;
+            applySubject('Alle projectleden', levelToAccess(inh.defaultAccess), false);
+          }
+        }
+        const dir = permissions.directPermissions;
+        if (dir){
+          if (dir.acl){ hasDirect = true; processAcl(dir.acl, true); }
+          if (dir.defaultAccess){
+            hasDirect = true;
+            applySubject('Alle projectleden', levelToAccess(dir.defaultAccess), true);
+          }
+        }
+        if (!dir && !inh && permissions.acl){
+          hasDirect = true; processAcl(permissions.acl, true);
+        }
+      }
+
+      const read = [], full = [];
+      for (const name in subjectAccess){
+        const lvl = subjectAccess[name];
+        if (lvl === 'full') full.push(name);
+        else if (lvl === 'read') read.push(name);
+      }
+
+      csvData.push({
+        pad: folder.path,
+        read, full,
+        inherited: !hasDirect && hasInherited,
+      });
+    }
+
+    // Users-data
+    const teamUsers = users.map(function(u){
+      const uid = u.id || u.userId;
+      const name = u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || 'Onbekend';
+      const userGroups = groups
+        .filter(function(g){ return g.memberIds && g.memberIds.indexOf(uid) >= 0; })
+        .map(function(g){ return g.name || g.displayName; })
+        .filter(Boolean);
+      const role = String(u.role || u.access || u.permission || u.projectRole || 'USER').toUpperCase();
+      return {
+        id: uid,
+        name: (name || '').trim(),
+        email: u.email || '',
+        role,
+        groups: userGroups,
+        status: u.status || 'Active',
+      };
+    }).sort(function(a,b){ return a.name.localeCompare(b.name, 'nl'); });
+
+    // Voeg groepsnamen uit users toe (mocht een groep niet in ACL voorkomen)
+    for (const u of teamUsers){
+      for (const g of u.groups) allGroupsSet.add(g);
+    }
+
+    return {
+      csvData,
+      allGroups: [...allGroupsSet].sort(function(a,b){ return a.localeCompare(b, 'nl'); }),
+      allUsers: teamUsers,
+      groups,
+    };
+  }
+
+  // === Effective access ===
+  function _getEffectiveAccessForGroup(groupName){
+    const out = {};
+    if (!_data) return out;
+    for (const row of _data.csvData){
+      let lvl = null;
+      if (row.full && row.full.indexOf(groupName) >= 0) lvl = 'full';
+      else if (row.read && row.read.indexOf(groupName) >= 0) lvl = 'read';
+      else if (row.full && row.full.indexOf('Alle projectleden') >= 0) lvl = 'full';
+      else if (row.read && row.read.indexOf('Alle projectleden') >= 0) lvl = 'read';
+      if (lvl) out[row.pad] = lvl;
+    }
+    return out;
+  }
+
+  function _getEffectiveAccessForUser(user){
+    const out = {};
+    if (!_data || !user) return out;
+    const userGroups = ['Alle projectleden'].concat(user.groups || []);
+    const isAdmin = user.role === 'ADMIN' || user.role === 'PROJECT_ADMIN';
+    for (const row of _data.csvData){
+      if (isAdmin){ out[row.pad] = 'full'; continue; }
+      let lvl = null;
+      for (const ug of userGroups){
+        if (row.full && row.full.indexOf(ug) >= 0){ lvl = 'full'; break; }
+        if (row.read && row.read.indexOf(ug) >= 0 && lvl !== 'full') lvl = 'read';
+      }
+      if (lvl) out[row.pad] = lvl;
+    }
+    return out;
+  }
+
+  // === Render ===
+  function _renderRows(access){
+    if (!access) return '<div class="rv-placeholder">Selecteer links een groep of gebruiker om mappen te tonen.</div>';
+    const rows = _data.csvData.map(function(row){
+      const lvl = access[row.pad];
+      const cls = lvl === 'full' ? 'rv-full' : lvl === 'read' ? 'rv-read' : 'rv-none';
+      const badge = lvl === 'full' ? '<span class="rv-badge full">Volledig</span>'
+                  : lvl === 'read' ? '<span class="rv-badge read">Lezen</span>'
+                  : '<span class="rv-badge" style="background:#ddd;color:#666">Geen</span>';
+      return '<div class="rv-tree-row ' + cls + '"><span class="rv-pad">' + _esc(row.pad) + '</span>' + badge + '</div>';
+    }).join('');
+    return rows || '<div class="rv-placeholder">Geen mappen gevonden.</div>';
+  }
+
+  function _renderDashboard(){
+    const adminCount = _data.allUsers.filter(function(u){ return u.role === 'ADMIN' || u.role === 'PROJECT_ADMIN'; }).length;
+    const folderCount = Math.max(_data.csvData.length - 1, 0);
+    const adminList = _data.allUsers
+      .filter(function(u){ return u.role === 'ADMIN' || u.role === 'PROJECT_ADMIN'; })
+      .map(function(u){
+        return '<li>' + _esc(u.name)
+          + (u.email ? '<span class="rv-email">' + _esc(u.email) + '</span>' : '')
+          + '</li>';
+      }).join('');
+    return '<div class="rv-dashboard">'
+      + '<div class="rv-stats">'
+      +   '<div class="rv-stat"><div class="num">' + folderCount + '</div><div class="lbl">Mappen</div></div>'
+      +   '<div class="rv-stat"><div class="num">' + _data.allGroups.length + '</div><div class="lbl">Groepen</div></div>'
+      +   '<div class="rv-stat"><div class="num">' + _data.allUsers.length + '</div><div class="lbl">Gebruikers</div></div>'
+      +   '<div class="rv-stat"><div class="num">' + adminCount + '</div><div class="lbl">Beheerders</div></div>'
+      + '</div>'
+      + (adminList ? '<h3 style="margin:18px 0 8px;font-size:14px;font-family:\'Montserrat\',sans-serif">Beheerders</h3>'
+          + '<ul class="rv-admin-list">' + adminList + '</ul>' : '')
+      + '</div>';
+  }
+
+  function _renderGroepen(){
+    const q = _searchQuery.toLowerCase();
+    const sidebar = _data.allGroups
+      .filter(function(g){ return !q || g.toLowerCase().indexOf(q) >= 0; })
+      .map(function(g){
+        const cls = g === _selectedGroup ? 'rv-item active' : 'rv-item';
+        return '<div class="' + cls + '" data-rv-group="' + _esc(g) + '">' + _esc(g) + '</div>';
+      }).join('');
+    const access = _selectedGroup ? _getEffectiveAccessForGroup(_selectedGroup) : null;
+    return '<div class="rv-split">'
+      +   '<div class="rv-sidebar">'
+      +     '<input type="search" id="rv-search" placeholder="Zoek groep…" value="' + _esc(_searchQuery) + '" autocomplete="off">'
+      +     '<div class="rv-list">' + (sidebar || '<div class="rv-placeholder">Geen groepen gevonden.</div>') + '</div>'
+      +   '</div>'
+      +   '<div class="rv-main">' + _renderRows(access) + '</div>'
+      + '</div>';
+  }
+
+  function _renderGebruikers(){
+    const q = _searchQuery.toLowerCase();
+    const sidebar = _data.allUsers
+      .filter(function(u){ return !q || u.name.toLowerCase().indexOf(q) >= 0 || (u.email||'').toLowerCase().indexOf(q) >= 0; })
+      .map(function(u){
+        const cls = (_selectedUser && u.id === _selectedUser.id) ? 'rv-item active' : 'rv-item';
+        const tag = (u.role === 'ADMIN' || u.role === 'PROJECT_ADMIN') ? '<span class="rv-tag">admin</span>' : '';
+        return '<div class="' + cls + '" data-rv-user="' + _esc(u.id) + '"><span>' + _esc(u.name) + '</span>' + tag + '</div>';
+      }).join('');
+    const access = _selectedUser ? _getEffectiveAccessForUser(_selectedUser) : null;
+    return '<div class="rv-split">'
+      +   '<div class="rv-sidebar">'
+      +     '<input type="search" id="rv-search" placeholder="Zoek gebruiker…" value="' + _esc(_searchQuery) + '" autocomplete="off">'
+      +     '<div class="rv-list">' + (sidebar || '<div class="rv-placeholder">Geen gebruikers gevonden.</div>') + '</div>'
+      +   '</div>'
+      +   '<div class="rv-main">' + _renderRows(access) + '</div>'
+      + '</div>';
+  }
+
+  function _render(){
+    const root = getRoot();
+    if (!root || !_data) return;
+    const main = root.querySelector('#rv-content');
+    if (!main) return;
+    if (_currentView === 'dashboard') main.innerHTML = _renderDashboard();
+    else if (_currentView === 'groepen') main.innerHTML = _renderGroepen();
+    else if (_currentView === 'gebruikers') main.innerHTML = _renderGebruikers();
+
+    root.querySelectorAll('.rv-tab').forEach(function(t){
+      t.classList.toggle('active', t.getAttribute('data-rv-view') === _currentView);
+    });
+    _bindContentEvents();
+  }
+
+  function _bindContentEvents(){
+    const root = getRoot();
+    if (!root) return;
+    root.querySelectorAll('[data-rv-group]').forEach(function(el){
+      el.addEventListener('click', function(){
+        _selectedGroup = el.getAttribute('data-rv-group');
+        _render();
+      });
+    });
+    root.querySelectorAll('[data-rv-user]').forEach(function(el){
+      el.addEventListener('click', function(){
+        const id = el.getAttribute('data-rv-user');
+        _selectedUser = _data.allUsers.find(function(u){ return u.id === id; }) || null;
+        _render();
+      });
+    });
+    const search = root.querySelector('#rv-search');
+    if (search){
+      let timer = null;
+      search.addEventListener('input', function(){
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function(){
+          _searchQuery = search.value || '';
+          _render();
+        }, 80);
+      });
+    }
+  }
+
+  function injectHtml(){
+    if (_isInjected) return;
+    const root = getRoot();
+    if (!root) return;
+    root.innerHTML =
+      '<section class="sec">' +
+        '<div class="rv-app-head">' +
+          '<div>' +
+            '<div class="overline">Rechten Viewer</div>' +
+            '<p class="rv-subtitle">Wie heeft toegang tot welke mappen in <strong>' + _esc(tcProject.name || '–') + '</strong></p>' +
+          '</div>' +
+          '<div class="rv-tabs">' +
+            '<button class="rv-tab" type="button" data-rv-view="dashboard">Dashboard</button>' +
+            '<button class="rv-tab active" type="button" data-rv-view="groepen">Groepen</button>' +
+            '<button class="rv-tab" type="button" data-rv-view="gebruikers">Gebruikers</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="rv-error" class="rv-error" style="display:none"></div>' +
+        '<div id="rv-loading" class="rv-loading">Rechten en mappen laden… (kan tot 30s duren bij grote projecten)</div>' +
+        '<div id="rv-content"></div>' +
+      '</section>';
+    root.querySelectorAll('.rv-tab').forEach(function(t){
+      t.addEventListener('click', function(){
+        _currentView = t.getAttribute('data-rv-view');
+        _searchQuery = '';
+        _render();
+      });
+    });
+    _isInjected = true;
+  }
+
+  async function _loadData(){
+    if (_isLoaded || _isLoading) return;
+    _isLoading = true;
+    try {
+      let rootId = null;
+      try {
+        const proj = await tcFetch('/projects/' + tcProject.id);
+        const p = proj && proj._partial ? proj._data : proj;
+        rootId = p.rootId || p.rootFolderId || (p.rootFolder && p.rootFolder.id) || (p.root && p.root.id);
+      } catch(e){ console.warn('[RV] /projects/{id} mislukt:', e.message); }
+      if (!rootId) throw new Error('Root folder niet gevonden');
+
+      const folders = await _fetchFoldersRecursive(rootId, tcProject.name || '–');
+      console.log('[RV] folders gevonden:', folders.length);
+      const permsData = await _fetchPermissions(folders);
+      const team = await _fetchTeam();
+      _data = _convertData(folders, permsData, team.users, team.groups, tcProject.name || '–');
+      _isLoaded = true;
+      console.log('[RV] geladen:', _data.csvData.length - 1, 'mappen,', _data.allGroups.length, 'groepen,', _data.allUsers.length, 'gebruikers');
+
+      if (window.atfieltHub){
+        try {
+          window.atfieltHub.logEvent('feature', {
+            action: 'data-loaded',
+            source: 'cockpit-inline',
+            module: 'rechten-viewer',
+            folders: folders.length,
+            groups: _data.allGroups.length,
+            users: _data.allUsers.length,
+          });
+        } catch(_){}
+      }
+
+      const ld = getRoot().querySelector('#rv-loading');
+      if (ld) ld.style.display = 'none';
+      _render();
+    } catch(e){
+      console.error('[RV] load failed:', e);
+      const errEl = getRoot().querySelector('#rv-error');
+      const ld = getRoot().querySelector('#rv-loading');
+      if (ld) ld.style.display = 'none';
+      if (errEl){
+        errEl.style.display = '';
+        errEl.innerHTML = '<strong>Fout bij laden rechten</strong><br>' + _esc(e.message);
+      }
+    } finally { _isLoading = false; }
+  }
+
+  return {
+    activate: function(){
+      const ext = EXTENSIONS.find(function(e){ return e.key === 'rechten-viewer'; });
+      if (ext && ext.allowed === false){
+        console.log('[RV] activate overgeslagen (geen hub-toegang)');
+        return;
+      }
+      injectHtml();
+      if (!_isLoaded && !_isLoading) _loadData();
     }
   };
 })();
