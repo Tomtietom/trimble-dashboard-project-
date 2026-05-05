@@ -3693,8 +3693,10 @@ const DL = (function(){
   async function _fetchItemsRecursive(folderId, pad, result){
     let items;
     try {
-      const data = await tcFetch('/folders/' + folderId + '/items');
-      items = Array.isArray(data) ? data : (data && data.items) || [];
+      // tcFetchAll volgt 206-cursors automatisch en retourneert flat array.
+      // Belangrijk: tcFetch alleen geeft een _partial wrapper bij Content-Range —
+      // dat gaf op groot project (>500 items) eerder 0 documenten terug.
+      items = await tcFetchAll('/folders/' + folderId + '/items');
     } catch(e){
       console.warn('[DL] folder items fail:', folderId, e.message);
       return;
