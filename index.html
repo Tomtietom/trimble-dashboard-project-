@@ -534,6 +534,11 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl .dl-group td{background:var(--gr);font-weight:600;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;color:var(--g5);padding:6px 12px}
 .dl-group-count{opacity:.6;font-weight:normal;text-transform:none;letter-spacing:0;margin-left:6px}
 .dl-no-results{padding:var(--s5);text-align:center;color:var(--g4);font-size:var(--fs-sm)}
+.dl-filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:var(--s3);padding:10px var(--s3);background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm)}
+.dl-filter{padding:6px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;background:#fff;cursor:pointer;min-width:140px}
+.dl-filter:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 2px var(--afl)}
+.dl-filter-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 13px 'Poppins',sans-serif;color:var(--g5);transition:all .15s}
+.dl-filter-reset:hover{background:var(--af);color:#fff;border-color:var(--af)}
 
 /* RV — Rechten Viewer (Phase B-2 MVP) */
 .rv-app-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s4)}
@@ -3682,27 +3687,60 @@ const PU = (function(){
 //  duplicatie aanvaarden boven refactor-risico van PU's net-stabiele code)
 // ============================================================
 const DL = (function(){
-  // PSet metadata-constanten (NIET gebruikt in MVP — komt in iter A wanneer we
-  // metadata-kolommen ophalen via PSet API. Behouden zodat de structuur er staat.)
-  const PROP_UUIDS = {
-    discipline:      '202e0b40-055c-11ea-9ee0-4f66993176e1',
-    project_fase:    'c83d7d90-055a-11ea-9ee0-4f66993176e1',
-    document_status: 'cbc46730-41af-11ea-9125-af458cfb61c4',
+  // PSet metadata: UUID → veldnaam mapping (VW BVGO schema, hardcoded fallback uit
+  // standalone tc-viewer regel 1753). Voor projecten zonder dit schema blijven
+  // metadata-velden gewoon leeg en filters tonen geen opties.
+  const PROP_MAP = {
+    'cbc46730-41af-11ea-9125-af458cfb61c4': 'document_status',
+    'c83d7d90-055a-11ea-9ee0-4f66993176e1': 'project_fase',
+    '202e0b40-055c-11ea-9ee0-4f66993176e1': 'discipline',
+    '79715f10-055a-11ea-9ee0-4f66993176e1': 'document_datum',
+    'a442e490-d47a-11ee-8133-af31c2576a74': 'revisie',
+    '27e4c520-6f6b-11eb-84a6-c3eae4856606': 'document_nummer',
+    '502b6300-b19b-11eb-a211-dbedff274ddf': 'titel',
+    '33075090-c1a7-11ed-a3ee-5d6c31021d9f': 'bedrijf',
   };
   const ENUM_VALUES = {
     discipline: ['Opdrachtgever','Architect','Constructeur','Installateur','Adviseur','Hoofdaannemer','Onderaannemer','Leverancier','Overheid','Nuts','Directievoering','Overig'],
     project_fase: ['Initiatief','Project definitie','Structuur ontwerp','Voorlopig ontwerp','Definitief ontwerp','Technisch ontwerp','Prijs en contractvorming','Uitvoeringsgereed ontwerp','Realisatie','Gebruik en exploitatie','Project (alle fasen)'],
     document_status: ['Concept','Voorlopig','Definitief','Vervallen','Voor ontwerp','Voor uitvoering','As built','Intern'],
   };
+  const FILTER_FIELDS = ['document_status', 'discipline', 'project_fase'];
+  const FIELD_LABEL = {
+    document_status: 'Status',
+    discipline: 'Discipline',
+    project_fase: 'Fase',
+    document_nummer: 'Doc.nr',
+    titel: 'Omschrijving',
+    revisie: 'Rev.',
+    document_datum: 'Datum',
+    bedrijf: 'Bedrijf',
+  };
 
-  // Vaste kolom-set voor MVP (geen toggle / profile)
+  // Vaste kolom-set: technische velden + 3 metadata-kolommen (iter A)
   const COLS = [
-    { k: 'bestandsnaam',  l: 'Bestandsnaam', w: '38%' },
-    { k: '_versie',       l: 'Versie',       w: '8%'  },
-    { k: '_modified',     l: 'Gewijzigd',    w: '14%' },
-    { k: '_created',      l: 'Toegevoegd',   w: '14%' },
-    { k: 'file_location', l: 'Map',          w: '26%' },
+    { k: 'bestandsnaam',     l: 'Bestandsnaam', w: '28%' },
+    { k: 'document_status',  l: 'Status',       w: '10%' },
+    { k: 'discipline',       l: 'Discipline',   w: '10%' },
+    { k: 'project_fase',     l: 'Fase',         w: '12%' },
+    { k: '_versie',          l: 'Versie',       w: '6%'  },
+    { k: '_modified',        l: 'Gewijzigd',    w: '12%' },
+    { k: 'file_location',    l: 'Map',          w: '22%' },
   ];
+
+  // PSet base — region-aware via cockpit's tc-proxy (zelfde patroon als PU)
+  const DL_PROXY_BASE = 'https://tc-proxy.tom-da0.workers.dev';
+  const DL_PSET_REGIONS = {
+    'europe':        DL_PROXY_BASE + '/pset/eu',
+    'north america': DL_PROXY_BASE + '/pset/us',
+    'asia':          DL_PROXY_BASE + '/pset/ap',
+  };
+  function _getPsetBase(){
+    const loc = ((tcProject && tcProject.location) || 'europe').toLowerCase();
+    if (loc.includes('america') || loc.includes('north')) return DL_PSET_REGIONS['north america'];
+    if (loc.includes('asia')) return DL_PSET_REGIONS.asia;
+    return DL_PSET_REGIONS.europe;
+  }
 
   // State
   let _docs = [];
@@ -3713,6 +3751,8 @@ const DL = (function(){
   let _sortD = 'asc';
   let _searchTimer = null;
   let _searchQuery = '';
+  let _filters = { document_status: '', discipline: '', project_fase: '' };
+  let _hasMetaSchema = false; // wordt true zodra we minstens 1 metadata-match krijgen
 
   function getRoot(){ return document.getElementById('view-documentenlijst'); }
 
@@ -3779,6 +3819,84 @@ const DL = (function(){
     }
   }
 
+  // === PSet metadata-loader (iter A) ===
+  // Bulk-fetch via /libs/{libId}/psets met cursor-pagination (zelfde patroon als
+  // standalone tc-viewer regel 1693-1740). Match instances op _vid en update _docs.
+  async function _dlFetchPSet(path){
+    const headers = { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' };
+    const r = await fetch(_getPsetBase() + path, { headers: headers });
+    if (!r.ok){
+      const txt = await r.text().catch(function(){ return ''; });
+      throw new Error('PSet ' + r.status + ' ' + path + ' — ' + txt.slice(0, 200));
+    }
+    if (r.status === 204) return null;
+    const txt = await r.text();
+    if (!txt) return null;
+    try { return JSON.parse(txt); } catch(_){ return txt; }
+  }
+
+  async function _loadMetadata(){
+    const libId = 'tcproject:prod:' + tcProject.id;
+    let allInstances = [];
+    let skiptoken = null;
+    let pages = 0;
+    const seenLinks = {};
+    try {
+      while (true){
+        let qp = '?top=500';
+        if (skiptoken) qp += '&skiptoken=' + encodeURIComponent(skiptoken);
+        const r = await _dlFetchPSet('/libs/' + encodeURIComponent(libId) + '/psets' + qp);
+        const items = (r && r.items) || (Array.isArray(r) ? r : []);
+        pages++;
+        if (!items.length) break;
+        let nieuwe = 0;
+        for (const it of items){
+          const link = it && it.link;
+          if (link && !seenLinks[link]){
+            seenLinks[link] = true;
+            allInstances.push(it);
+            nieuwe++;
+          }
+        }
+        let nextToken = null;
+        if (r && r.links && r.links.next) nextToken = r.links.next.skiptoken || r.links.next.skipToken || r.links.next;
+        if (!nextToken && r && r.skiptoken) nextToken = r.skiptoken;
+        if (!nextToken && r && r.skipToken) nextToken = r.skipToken;
+        if (!nextToken && r && r.nextPageToken) nextToken = r.nextPageToken;
+        if (!nextToken || nieuwe === 0) break;
+        skiptoken = String(nextToken);
+        if (pages > 100) { console.warn('[DL] PSet pagination stop na 100 pages (safety)'); break; }
+      }
+      console.log('[DL] PSet instances:', allInstances.length, 'in', pages, 'pages');
+    } catch(e){
+      console.warn('[DL] PSet fetch mislukt:', e.message, '— project heeft mogelijk geen metadata-schema');
+      return; // niet kritiek — UI werkt zonder metadata
+    }
+
+    // Match instances → docs via _vid (frn:tcfile:{VID}@{versie} → VID)
+    const lookup = {};
+    for (const d of _docs) if (d._vid) lookup[d._vid] = d;
+    let matched = 0;
+    for (const inst of allInstances){
+      const link = inst.link || '';
+      if (!/^frn:tcfile:/.test(link)) continue;
+      const vid = link.replace(/^frn:tcfile:/, '').split('@')[0];
+      const doc = lookup[vid];
+      if (!doc) continue;
+      matched++;
+      const props = inst.props || {};
+      for (const propId in props){
+        const veld = PROP_MAP[propId];
+        const val = props[propId];
+        if (veld && val && val !== '--'){
+          doc[veld] = String(val).trim();
+        }
+      }
+    }
+    _hasMetaSchema = matched > 0;
+    console.log('[DL] metadata gematcht:', matched, '/', _docs.length, 'documenten (' + (_docs.length ? Math.round(matched/_docs.length*100) : 0) + '%)');
+  }
+
   async function _loadDocs(){
     if (_isLoaded || _isLoading) return;
     _isLoading = true;
@@ -3799,6 +3917,10 @@ const DL = (function(){
       _docs = result;
       _isLoaded = true;
       console.log('[DL] geladen:', _docs.length, 'documenten');
+
+      // Metadata na docs binnen — niet-blokkerend voor lijst-render
+      _renderTable();
+      try { await _loadMetadata(); } catch(e){ console.warn('[DL] metadata-load fout:', e.message); }
 
       if (window.atfieltHub){
         try {
@@ -3824,9 +3946,23 @@ const DL = (function(){
   function _filt(){
     const q = (_searchQuery || '').toLowerCase().trim();
     let d = _docs;
+    // Metadata-filters: dropdown-state per FILTER_FIELDS
+    const activeFilters = FILTER_FIELDS.filter(function(f){ return _filters[f]; });
+    if (activeFilters.length){
+      d = d.filter(function(doc){
+        for (const f of activeFilters){
+          if ((doc[f] || '') !== _filters[f]) return false;
+        }
+        return true;
+      });
+    }
     if (q){
       d = d.filter(function(doc){
-        const parts = [doc.bestandsnaam, doc.file_location, doc._versie].join(' ').toLowerCase();
+        const parts = [
+          doc.bestandsnaam, doc.file_location, doc._versie,
+          doc.document_status, doc.discipline, doc.project_fase,
+          doc.titel, doc.document_nummer, doc.bedrijf,
+        ].join(' ').toLowerCase();
         return parts.indexOf(q) !== -1;
       });
     }
@@ -3840,6 +3976,59 @@ const DL = (function(){
       });
     }
     return d;
+  }
+
+  // Verzamel waarden uit _docs per filter-veld + ENUM_VALUES als basis. Toont
+  // alleen waarden die in deze project-data daadwerkelijk voorkomen of in de enum.
+  function _filterOptions(field){
+    const present = new Set();
+    for (const d of _docs){
+      const v = d[field];
+      if (v && v !== '--') present.add(String(v).trim());
+    }
+    // Combineer enum-volgorde + extra waarden uit data (alfabetisch)
+    const enumList = ENUM_VALUES[field] || [];
+    const inEnum = enumList.filter(function(v){ return present.has(v); });
+    const extra = [...present].filter(function(v){ return enumList.indexOf(v) < 0; }).sort(function(a,b){ return a.localeCompare(b, 'nl'); });
+    return inEnum.concat(extra);
+  }
+
+  function _renderFilterBar(){
+    const root = getRoot();
+    if (!root) return;
+    const bar = root.querySelector('#dl-filter-bar');
+    if (!bar) return;
+    if (!_hasMetaSchema){
+      bar.style.display = 'none';
+      return;
+    }
+    bar.style.display = '';
+    bar.innerHTML = FILTER_FIELDS.map(function(f){
+      const opts = _filterOptions(f);
+      const cur = _filters[f] || '';
+      const optHtml = '<option value="">Alle ' + _esc(FIELD_LABEL[f].toLowerCase()) + '…</option>'
+        + opts.map(function(v){
+            return '<option value="' + _esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + _esc(v) + '</option>';
+          }).join('');
+      return '<select class="dl-filter" data-dl-filter="' + f + '">' + optHtml + '</select>';
+    }).join('');
+    // Reset-knop alleen als er een filter actief is
+    const anyActive = FILTER_FIELDS.some(function(f){ return _filters[f]; });
+    if (anyActive){
+      bar.innerHTML += '<button class="dl-filter-reset" type="button" id="dl-filter-reset" title="Filters wissen">×</button>';
+    }
+    // Bind events op nieuwe selects
+    bar.querySelectorAll('.dl-filter').forEach(function(sel){
+      sel.addEventListener('change', function(){
+        _filters[sel.getAttribute('data-dl-filter')] = sel.value || '';
+        _renderTable();
+      });
+    });
+    const resetBtn = bar.querySelector('#dl-filter-reset');
+    if (resetBtn) resetBtn.addEventListener('click', function(){
+      for (const f of FILTER_FIELDS) _filters[f] = '';
+      _renderTable();
+    });
   }
 
   function _renderRow(d){
@@ -3864,6 +4053,7 @@ const DL = (function(){
     const count = root.querySelector('#dl-count');
     if (!tbody || !count) return;
 
+    _renderFilterBar();
     const filtered = _filt();
     count.textContent = filtered.length + ' bestand' + (filtered.length === 1 ? '' : 'en');
 
@@ -3941,6 +4131,7 @@ const DL = (function(){
         '</div>' +
         '<div id="dl-error" class="dl-error" style="display:none"></div>' +
         '<div id="dl-loading" class="dl-loading" style="display:none">Documenten laden…</div>' +
+        '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
         '<div class="dl-tbl-wrap">' +
           '<table class="dl-tbl">' +
             '<colgroup>' + colHtml + '</colgroup>' +
