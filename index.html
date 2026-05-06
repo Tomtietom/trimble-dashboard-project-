@@ -3757,6 +3757,54 @@ const DL = (function(){
   let _filters = { document_status: '', discipline: '', project_fase: '' };
   let _hasMetaSchema = false; // wordt true zodra we minstens 1 metadata-match krijgen
   let _deepScanState = null; // { totaal, gedaan, actief } tijdens per-file metadata-fetch
+  // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
+  // 24u TTL — voorkomt 13s wachten op deep-scan bij elk her-openen van de tab.
+  const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  function _cacheKey(){ return 'dl-pset-' + (tcProject && tcProject.id || 'unknown'); }
+  function _readCache(){
+    try {
+      const raw = localStorage.getItem(_cacheKey());
+      if (!raw) return null;
+      const c = JSON.parse(raw);
+      if (!c || !c.ts || !c.byVid) return null;
+      if (Date.now() - c.ts > _CACHE_TTL_MS) return null;
+      return c;
+    } catch(_){ return null; }
+  }
+  function _writeCache(byVid){
+    try {
+      localStorage.setItem(_cacheKey(), JSON.stringify({ ts: Date.now(), byVid: byVid }));
+    } catch(e){ console.warn('[DL] cache write fout (mogelijk te groot voor localStorage):', e.message); }
+  }
+  function _buildCacheFromDocs(){
+    const byVid = {};
+    const metaFields = Object.values(PROP_MAP); // alle velden die we mappen
+    for (const d of _docs){
+      if (!d._vid) continue;
+      const meta = {};
+      let any = false;
+      for (const f of metaFields){
+        if (d[f]){ meta[f] = d[f]; any = true; }
+      }
+      byVid[d._vid] = any ? meta : null; // null = leeg PSet (skip bij volgende load)
+    }
+    return byVid;
+  }
+  function _applyCacheToDocs(cache){
+    let hits = 0, withMeta = 0;
+    for (const d of _docs){
+      if (!d._vid) continue;
+      const entry = cache.byVid[d._vid];
+      if (entry === undefined) continue; // niet in cache — moet fetched worden
+      hits++;
+      d._matchedFromBulk = true; // signal: skip bulk + deep-scan
+      if (entry){
+        Object.assign(d, entry);
+        withMeta++;
+      }
+    }
+    return { hits, withMeta };
+  }
 
   function getRoot(){ return document.getElementById('view-documentenlijst'); }
 
@@ -4024,11 +4072,38 @@ const DL = (function(){
 
       // Metadata na docs binnen — niet-blokkerend voor lijst-render
       _renderTable();
+
+      // Cache-check: als geldig (≤24u oud), direct toepassen en bulk+deep-scan skippen
+      const cache = _readCache();
+      if (cache){
+        const { hits, withMeta } = _applyCacheToDocs(cache);
+        if (hits / _docs.length >= 0.5){
+          // ≥50% in cache → vertrouw cache, skip nieuwe fetch (geen 13s wacht)
+          _hasMetaSchema = withMeta > 0;
+          console.log('[DL] cache hit:', hits, '/', _docs.length, 'docs (' + withMeta + ' met metadata) — bulk + deep-scan overgeslagen');
+          _renderTable();
+          // Schedule background revalidate van NIEUWE docs (sinds cache) als die er zijn
+          const newDocs = _docs.filter(function(d){ return !d._matchedFromBulk; });
+          if (newDocs.length > 0){
+            console.log('[DL] cache revalidate: ' + newDocs.length + ' nieuwe docs ophalen');
+            _deepScanMetadata().then(function(){ _writeCache(_buildCacheFromDocs()); }).catch(function(e){ console.warn('[DL] cache revalidate fout:', e.message); });
+          }
+          return; // klaar — cache flow stopt hier
+        } else {
+          // Cache te oud/incompleet — reset markers en doe normale flow
+          for (const d of _docs) delete d._matchedFromBulk;
+          console.log('[DL] cache te incompleet (' + hits + '/' + _docs.length + ') — volledige scan');
+        }
+      }
+
       try { await _loadMetadata(); } catch(e){ console.warn('[DL] metadata-load fout:', e.message); }
       _renderTable(); // bulk binnen, eerste 100 docs hebben metadata
       // Deep-scan voor de rest (bulk geeft max 100/project) — async, niet awaiten
       if (_docs.length > 0){
-        _deepScanMetadata().catch(function(e){ console.warn('[DL] deep-scan fout:', e.message); });
+        _deepScanMetadata().then(function(){
+          _writeCache(_buildCacheFromDocs());
+          console.log('[DL] cache geschreven voor', _docs.length, 'docs (24u TTL)');
+        }).catch(function(e){ console.warn('[DL] deep-scan fout:', e.message); });
       }
 
       if (window.atfieltHub){
