@@ -3763,6 +3763,8 @@ const DL = (function(){
   ];
 
   // Vaste kolom-set: technische velden + 3 metadata-kolommen (iter A)
+  // Bij project zonder metadata-schema (_hasMetaSchema=false) worden de 3 metadata
+  // kolommen weggelaten en widths herschaald — zie _getActiveCols().
   const COLS = [
     { k: 'bestandsnaam',     l: 'Bestandsnaam', w: '28%' },
     { k: 'document_status',  l: 'Status',       w: '10%' },
@@ -3772,6 +3774,17 @@ const DL = (function(){
     { k: '_modified',        l: 'Gewijzigd',    w: '12%' },
     { k: 'file_location',    l: 'Map',          w: '22%' },
   ];
+  const META_COL_KEYS = new Set(['document_status', 'discipline', 'project_fase']);
+  function _getActiveCols(){
+    if (_hasMetaSchema) return COLS;
+    // Geen metadata → laat de 3 kolommen weg, herschaal de rest naar 100%
+    const filtered = COLS.filter(function(c){ return !META_COL_KEYS.has(c.k); });
+    const total = filtered.reduce(function(s, c){ return s + parseFloat(c.w); }, 0);
+    const factor = 100 / total;
+    return filtered.map(function(c){
+      return { k: c.k, l: c.l, w: Math.round(parseFloat(c.w) * factor) + '%' };
+    });
+  }
 
   // PSet base — region-aware via cockpit's tc-proxy (zelfde patroon als PU)
   const DL_PROXY_BASE = 'https://tc-proxy.tom-da0.workers.dev';
@@ -4341,7 +4354,7 @@ const DL = (function(){
 
   function _renderRow(d){
     let html = '<tr class="dl-row" data-dl-vid="' + _esc(d._vid || '') + '">';
-    for (const c of COLS){
+    for (const c of _getActiveCols()){
       let v = d[c.k];
       let cls = '';
       if (c.k === '_created' || c.k === '_modified'){ v = _formatDate(v); cls = 'dl-cell-date'; }
@@ -4353,6 +4366,35 @@ const DL = (function(){
     return html + '</tr>';
   }
 
+  // Update tabel-header (thead + colgroup) op basis van actieve kolommen.
+  // Aangeroepen elke render — bij wisseling _hasMetaSchema worden 3 cols toegevoegd/verwijderd.
+  function _renderTableHeader(){
+    const root = getRoot();
+    if (!root) return;
+    const tbl = root.querySelector('.dl-tbl');
+    if (!tbl) return;
+    const cols = _getActiveCols();
+    const colgroup = tbl.querySelector('colgroup');
+    if (colgroup) colgroup.innerHTML = cols.map(function(c){ return '<col style="width:' + c.w + '">'; }).join('');
+    const headRow = tbl.querySelector('thead tr');
+    if (headRow){
+      headRow.innerHTML = cols.map(function(c){
+        return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
+          + '<span class="dl-sort-ind"></span></th>';
+      }).join('');
+      // Re-bind sort-events op nieuwe th's
+      headRow.querySelectorAll('.dl-th').forEach(function(th){
+        th.addEventListener('click', function(){
+          const k = th.getAttribute('data-sort');
+          if (!k) return;
+          if (_sortK === k){ _sortD = _sortD === 'asc' ? 'desc' : 'asc'; }
+          else { _sortK = k; _sortD = 'asc'; }
+          _renderTable();
+        });
+      });
+    }
+  }
+
   function _renderTable(){
     const root = getRoot();
     if (!root) return;
@@ -4362,10 +4404,11 @@ const DL = (function(){
     if (!tbody || !count) return;
 
     _renderFilterBar();
+    _renderTableHeader();
     const filtered = _filt();
     count.textContent = filtered.length + ' bestand' + (filtered.length === 1 ? '' : 'en');
 
-    // Sort-indicators bijwerken
+    // Sort-indicators bijwerken (na _renderTableHeader die thead opnieuw bouwt)
     root.querySelectorAll('.dl-th').forEach(function(th){
       const k = th.getAttribute('data-sort');
       th.classList.toggle('sorted', k === _sortK);
@@ -4389,9 +4432,10 @@ const DL = (function(){
     });
     groupOrder.sort(function(a,b){ return a.localeCompare(b, 'nl'); });
 
+    const colspan = _getActiveCols().length;
     let html = '';
     for (const g of groupOrder){
-      html += '<tr class="dl-group"><td colspan="' + COLS.length + '">'
+      html += '<tr class="dl-group"><td colspan="' + colspan + '">'
         + '📁 ' + _esc(g)
         + '<span class="dl-group-count">(' + groups[g].length + ')</span>'
         + '</td></tr>';
@@ -4433,8 +4477,11 @@ const DL = (function(){
     if (_isInjected) return;
     const root = getRoot();
     if (!root) return;
-    const colHtml = COLS.map(function(c){ return '<col style="width:' + c.w + '">'; }).join('');
-    const thHtml = COLS.map(function(c){
+    // Initiële render: gebruik _getActiveCols() zodat we direct de juiste kolom-set
+    // tonen. Bij verandering van _hasMetaSchema later updateert _renderTableHeader().
+    const initialCols = _getActiveCols();
+    const colHtml = initialCols.map(function(c){ return '<col style="width:' + c.w + '">'; }).join('');
+    const thHtml = initialCols.map(function(c){
       return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
         + '<span class="dl-sort-ind"></span></th>';
     }).join('');
