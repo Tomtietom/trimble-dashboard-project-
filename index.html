@@ -526,6 +526,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl .dl-th.sorted .dl-sort-ind::after{content:'▲'}
 .dl-tbl .dl-th.sorted.desc .dl-sort-ind::after{content:'▼'}
 .dl-tbl tbody tr{border-bottom:1px solid var(--hl-light)}
+.dl-tbl tbody tr.dl-row{cursor:pointer}
 .dl-tbl tbody tr:hover:not(.dl-group){background:var(--afl)}
 .dl-tbl tbody td{padding:8px 12px;vertical-align:top;color:var(--dk)}
 .dl-tbl tbody td.dl-cell-name{font-weight:500;word-break:break-word}
@@ -542,6 +543,24 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-deep-scan{padding:8px 12px;margin-bottom:var(--s3);background:#fff8e1;border:1px solid #f0c040;border-radius:var(--r-sm);font-size:13px;color:#7a5c00;display:flex;align-items:center;gap:8px}
 .dl-deep-scan.scanning{animation:dl-pulse 1.6s ease-in-out infinite}
 @keyframes dl-pulse{0%,100%{opacity:.85}50%{opacity:1}}
+
+/* DL — Detail-paneel (rechts overlay) */
+.dl-detail-overlay{position:fixed;inset:0;background:rgba(34,34,34,.35);z-index:100;display:flex;justify-content:flex-end;animation:dl-fade-in .15s ease-out}
+@keyframes dl-fade-in{from{opacity:0}to{opacity:1}}
+.dl-detail-panel{width:480px;max-width:90vw;height:100%;background:#fff;display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(0,0,0,.15);animation:dl-slide-in .2s ease-out}
+@keyframes dl-slide-in{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.dl-detail-head{display:flex;align-items:flex-start;gap:var(--s3);padding:var(--s4);border-bottom:1px solid var(--hl-light);background:var(--gr)}
+.dl-detail-title{flex:1;font-family:'Montserrat',sans-serif;font-weight:700;font-size:16px;color:var(--dk);word-break:break-word;line-height:1.35}
+.dl-detail-close{width:32px;height:32px;border:none;background:transparent;border-radius:50%;font-size:24px;line-height:1;cursor:pointer;color:var(--g5);flex-shrink:0;transition:all .15s}
+.dl-detail-close:hover{background:var(--hl);color:var(--dk)}
+.dl-detail-body{flex:1;overflow:auto;padding:var(--s4)}
+.dl-detail-section{font-family:'Poppins',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--af);margin:var(--s3) 0 8px;padding-bottom:4px;border-bottom:1px solid var(--hl-light)}
+.dl-detail-section:first-child{margin-top:0}
+.dl-detail-table{width:100%;border-collapse:collapse;font-size:13px}
+.dl-detail-table th{text-align:left;padding:6px 12px 6px 0;color:var(--g5);font-weight:500;width:40%;vertical-align:top}
+.dl-detail-table td{padding:6px 0;color:var(--dk);word-break:break-word}
+.dl-detail-empty{padding:var(--s3);background:var(--gr);border-radius:var(--r-sm);font-size:13px;color:var(--g4);font-style:italic}
+@media(max-width:720px){.dl-detail-panel{width:100%;max-width:100vw}}
 
 /* RV — Rechten Viewer (Phase B-2 MVP) */
 .rv-app-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s4)}
@@ -3690,18 +3709,25 @@ const PU = (function(){
 //  duplicatie aanvaarden boven refactor-risico van PU's net-stabiele code)
 // ============================================================
 const DL = (function(){
-  // PSet metadata: UUID → veldnaam mapping (VW BVGO schema, hardcoded fallback uit
-  // standalone tc-viewer regel 1753). Voor projecten zonder dit schema blijven
-  // metadata-velden gewoon leeg en filters tonen geen opties.
+  // PSet metadata: UUID → veldnaam mapping (VW BVGO schema, volledige set uit
+  // standalone tc-viewer regel 1753). Detail-paneel toont alle gevulde velden.
   const PROP_MAP = {
+    '79715f10-055a-11ea-9ee0-4f66993176e1': 'document_datum',
+    '3d82d630-c1a6-11ed-a3ee-5d6c31021d9f': 'document_aanmaak_datum',
+    'a442e490-d47a-11ee-8133-af31c2576a74': 'revisie',
     'cbc46730-41af-11ea-9125-af458cfb61c4': 'document_status',
     'c83d7d90-055a-11ea-9ee0-4f66993176e1': 'project_fase',
     '202e0b40-055c-11ea-9ee0-4f66993176e1': 'discipline',
-    '79715f10-055a-11ea-9ee0-4f66993176e1': 'document_datum',
-    'a442e490-d47a-11ee-8133-af31c2576a74': 'revisie',
     '27e4c520-6f6b-11eb-84a6-c3eae4856606': 'document_nummer',
     '502b6300-b19b-11eb-a211-dbedff274ddf': 'titel',
+    '6d83dfb0-41b0-11ea-9125-af458cfb61c4': 'controleverzoek',
+    '91ed02a0-41b0-11ea-9125-af458cfb61c4': 'controlestatus',
+    'd3ffaee0-41b0-11ea-9125-af458cfb61c4': 'contract_status',
+    'd9938cf0-055b-11ea-9ee0-4f66993176e1': 'document_soort',
+    'b6f71e70-9d38-11eb-bebe-b5fce10145cf': 'bouwdeel',
+    '15369030-c1a7-11ed-a3ee-5d6c31021d9f': 'bouwnummer',
     '33075090-c1a7-11ed-a3ee-5d6c31021d9f': 'bedrijf',
+    'f9961070-6f6a-11eb-84a6-c3eae4856606': 'ifc_timestamp',
   };
   const ENUM_VALUES = {
     discipline: ['Opdrachtgever','Architect','Constructeur','Installateur','Adviseur','Hoofdaannemer','Onderaannemer','Leverancier','Overheid','Nuts','Directievoering','Overig'],
@@ -3713,12 +3739,28 @@ const DL = (function(){
     document_status: 'Status',
     discipline: 'Discipline',
     project_fase: 'Fase',
-    document_nummer: 'Doc.nr',
+    document_nummer: 'Documentnummer',
     titel: 'Omschrijving',
-    revisie: 'Rev.',
-    document_datum: 'Datum',
+    revisie: 'Revisie',
+    document_datum: 'Document datum',
+    document_aanmaak_datum: 'Aanmaakdatum',
     bedrijf: 'Bedrijf',
+    bouwdeel: 'Bouwdeel',
+    bouwnummer: 'Bouwnummer',
+    document_soort: 'Document soort',
+    contract_status: 'Contract status',
+    controlestatus: 'Controlestatus',
+    controleverzoek: 'Controleverzoek',
+    ifc_timestamp: 'IFC timestamp',
   };
+  // Volgorde voor detail-paneel — meest interessante eerst
+  const DETAIL_ORDER = [
+    'document_nummer','revisie','titel',
+    'document_status','project_fase','discipline','bedrijf',
+    'document_datum','document_aanmaak_datum',
+    'bouwdeel','bouwnummer','document_soort',
+    'contract_status','controlestatus','controleverzoek','ifc_timestamp',
+  ];
 
   // Vaste kolom-set: technische velden + 3 metadata-kolommen (iter A)
   const COLS = [
@@ -3757,6 +3799,8 @@ const DL = (function(){
   let _filters = { document_status: '', discipline: '', project_fase: '' };
   let _hasMetaSchema = false; // wordt true zodra we minstens 1 metadata-match krijgen
   let _deepScanState = null; // { totaal, gedaan, actief } tijdens per-file metadata-fetch
+  let _selectedDoc = null;   // huidige doc in detail-paneel ('_vid' van geselecteerde rij)
+  let _escListener = null;   // escape-key handler tijdens panel open
   // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
   // 24u TTL — voorkomt 13s wachten op deep-scan bij elk her-openen van de tab.
   const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -4049,6 +4093,86 @@ const DL = (function(){
     }
   }
 
+  // === Detail-paneel (iter B) ===
+  function _openDetail(doc){
+    _selectedDoc = doc;
+    _renderDetailPanel();
+    // Esc-key sluit panel
+    if (!_escListener){
+      _escListener = function(e){ if (e.key === 'Escape') _closeDetail(); };
+      document.addEventListener('keydown', _escListener);
+    }
+  }
+
+  function _closeDetail(){
+    _selectedDoc = null;
+    _renderDetailPanel();
+    if (_escListener){
+      document.removeEventListener('keydown', _escListener);
+      _escListener = null;
+    }
+  }
+
+  function _renderDetailPanel(){
+    const root = getRoot();
+    if (!root) return;
+    let overlay = root.querySelector('#dl-detail-overlay');
+    if (!_selectedDoc){
+      if (overlay) overlay.remove();
+      return;
+    }
+    if (!overlay){
+      overlay = document.createElement('div');
+      overlay.id = 'dl-detail-overlay';
+      overlay.className = 'dl-detail-overlay';
+      root.appendChild(overlay);
+      overlay.addEventListener('click', function(e){
+        if (e.target === overlay) _closeDetail();
+      });
+    }
+    const d = _selectedDoc;
+    // Splits velden: technisch + metadata (alleen niet-leeg)
+    const techRows = [
+      { l: 'Map', v: d.file_location || '–' },
+      { l: 'Versie', v: d._versie || '–' },
+      { l: 'Toegevoegd', v: _formatDate(d._created) || '–' },
+      { l: 'Gewijzigd', v: _formatDate(d._modified) || '–' },
+    ];
+    const metaRows = DETAIL_ORDER
+      .map(function(f){
+        const v = d[f];
+        if (!v || v === '--') return null;
+        let label = FIELD_LABEL[f] || f;
+        let val = v;
+        if (f === 'document_datum' || f === 'document_aanmaak_datum'){
+          val = _formatDate(v) || v;
+        }
+        return { l: label, v: val };
+      })
+      .filter(Boolean);
+
+    function rowHtml(r){
+      return '<tr><th>' + _esc(r.l) + '</th><td>' + _esc(r.v) + '</td></tr>';
+    }
+
+    overlay.innerHTML =
+      '<div class="dl-detail-panel" role="dialog" aria-label="Bestandsdetails">' +
+        '<div class="dl-detail-head">' +
+          '<div class="dl-detail-title" title="' + _esc(d.bestandsnaam || '') + '">' + _esc(d.bestandsnaam || '–') + '</div>' +
+          '<button class="dl-detail-close" type="button" aria-label="Sluiten" id="dl-detail-close">×</button>' +
+        '</div>' +
+        '<div class="dl-detail-body">' +
+          '<h4 class="dl-detail-section">Bestand</h4>' +
+          '<table class="dl-detail-table">' + techRows.map(rowHtml).join('') + '</table>' +
+          (metaRows.length
+            ? '<h4 class="dl-detail-section">Metadata</h4><table class="dl-detail-table">' + metaRows.map(rowHtml).join('') + '</table>'
+            : '<h4 class="dl-detail-section">Metadata</h4><div class="dl-detail-empty">Geen metadata ingevuld voor dit bestand.</div>') +
+        '</div>' +
+      '</div>';
+
+    overlay.querySelector('#dl-detail-close').addEventListener('click', _closeDetail);
+  }
+
   async function _loadDocs(){
     if (_isLoaded || _isLoading) return;
     _isLoading = true;
@@ -4216,7 +4340,7 @@ const DL = (function(){
   }
 
   function _renderRow(d){
-    let html = '<tr>';
+    let html = '<tr class="dl-row" data-dl-vid="' + _esc(d._vid || '') + '">';
     for (const c of COLS){
       let v = d[c.k];
       let cls = '';
@@ -4276,6 +4400,16 @@ const DL = (function(){
       }
     }
     tbody.innerHTML = html;
+
+    // Klik op rij → detail-paneel openen (filter group-rows uit)
+    tbody.querySelectorAll('tr.dl-row').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        const vid = tr.getAttribute('data-dl-vid');
+        if (!vid) return;
+        const doc = _docs.find(function(x){ return x._vid === vid; });
+        if (doc) _openDetail(doc);
+      });
+    });
   }
 
   function _renderLoading(show){
