@@ -540,6 +540,15 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-filter:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 2px var(--afl)}
 .dl-filter-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 13px 'Poppins',sans-serif;color:var(--g5);transition:all .15s}
 .dl-filter-reset:hover{background:var(--af);color:#fff;border-color:var(--af)}
+.dl-ext-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:var(--s3);padding:8px var(--s3);background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-sm)}
+.dl-ext-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 11px 'Poppins',sans-serif;letter-spacing:.04em;color:var(--g5);text-transform:uppercase;transition:all .15s}
+.dl-ext-chip:hover{border-color:var(--af);color:var(--af)}
+.dl-ext-chip.active{background:var(--af);border-color:var(--af);color:#fff}
+.dl-ext-chip.active:hover{background:var(--af);color:#fff;opacity:.9}
+.dl-ext-count{font-size:10px;font-weight:500;opacity:.75;font-variant-numeric:tabular-nums}
+.dl-ext-chip.active .dl-ext-count{opacity:.95}
+.dl-ext-reset{padding:4px 10px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 12px 'Poppins',sans-serif;color:var(--g5);transition:all .15s;margin-left:4px}
+.dl-ext-reset:hover{background:var(--af);color:#fff;border-color:var(--af)}
 .dl-deep-scan{padding:8px 12px;margin-bottom:var(--s3);background:#fff8e1;border:1px solid #f0c040;border-radius:var(--r-sm);font-size:13px;color:#7a5c00;display:flex;align-items:center;gap:8px}
 .dl-deep-scan.scanning{animation:dl-pulse 1.6s ease-in-out infinite}
 @keyframes dl-pulse{0%,100%{opacity:.85}50%{opacity:1}}
@@ -3810,6 +3819,7 @@ const DL = (function(){
   let _searchTimer = null;
   let _searchQuery = '';
   let _filters = { document_status: '', discipline: '', project_fase: '' };
+  let _filterExts = new Set(); // bestandstype-chips: leeg = alle, anders alleen geselecteerde extensies
   let _hasMetaSchema = false; // wordt true zodra we minstens 1 metadata-match krijgen
   let _deepScanState = null; // { totaal, gedaan, actief } tijdens per-file metadata-fetch
   let _selectedDoc = null;   // huidige doc in detail-paneel ('_vid' van geselecteerde rij)
@@ -4106,6 +4116,64 @@ const DL = (function(){
     }
   }
 
+  // === CSV-export (iter B) ===
+  // Respecteert actieve filters + zoek. Bevat alle tech-velden + metadata-velden
+  // die voor minstens 1 gefilterd document gevuld zijn (geen lege kolommen).
+  function _csvEscape(v){
+    if (v == null) return '';
+    const s = String(v);
+    return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function _exportCsv(){
+    const filtered = _filt();
+    if (!filtered.length){
+      alert('Geen documenten om te exporteren — pas filters of zoekterm aan.');
+      return;
+    }
+    const TECH = [
+      { k: 'bestandsnaam',  l: 'Bestandsnaam' },
+      { k: 'file_location', l: 'Map' },
+      { k: '_versie',       l: 'Versie' },
+      { k: '_modified',     l: 'Gewijzigd' },
+      { k: '_created',      l: 'Toegevoegd' },
+    ];
+    const allMetaFields = Object.values(PROP_MAP);
+    // Alleen metadata-kolommen meenemen die ergens gevuld zijn — geen lege kolommen in output
+    const usedMeta = allMetaFields.filter(function(f){
+      return filtered.some(function(d){ return d[f]; });
+    });
+    const headers = TECH.map(function(c){ return c.l; })
+      .concat(usedMeta.map(function(f){ return FIELD_LABEL[f] || f; }));
+    const rows = [headers.map(_csvEscape).join(';')];
+    for (const d of filtered){
+      const techVals = TECH.map(function(c){ return d[c.k] == null ? '' : d[c.k]; });
+      const metaVals = usedMeta.map(function(f){ return d[f] == null ? '' : d[f]; });
+      rows.push(techVals.concat(metaVals).map(_csvEscape).join(';'));
+    }
+    const csv = '﻿' + rows.join('\n'); // BOM zodat Excel UTF-8 correct leest
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = ((tcProject && tcProject.name) || 'project').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = 'documentenlijst_' + safeName + '_' + date + '.csv';
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    if (window.atfieltHub){
+      try {
+        window.atfieltHub.logEvent('feature', {
+          action: 'csv-export',
+          source: 'cockpit-inline',
+          module: 'documentenlijst',
+          rows: filtered.length,
+          totalDocs: _docs.length,
+          metaCols: usedMeta.length,
+        });
+      } catch(_){}
+    }
+  }
+
   // === Detail-paneel (iter B) ===
   function _openDetail(doc){
     _selectedDoc = doc;
@@ -4264,9 +4332,39 @@ const DL = (function(){
     }
   }
 
+  // Bestandsextensie uit naam halen — lowercase, zonder punt. Bestanden zonder ext
+  // krijgen '' (en worden gegroepeerd onder de "(geen)"-chip in _collectExts).
+  function _getExt(filename){
+    const s = String(filename || '').trim();
+    if (!s) return '';
+    const i = s.lastIndexOf('.');
+    if (i <= 0 || i === s.length - 1) return '';
+    return s.slice(i + 1).toLowerCase();
+  }
+
+  // Verzamel alle voorkomende extensies uit _docs, met count per extensie. Sorteert
+  // alfabetisch zodat de chips-rij stabiel blijft tussen renders.
+  function _collectExts(){
+    const counts = {};
+    for (const d of _docs){
+      const e = _getExt(d.bestandsnaam);
+      const k = e || '(geen)';
+      counts[k] = (counts[k] || 0) + 1;
+    }
+    return Object.keys(counts).sort(function(a,b){ return a.localeCompare(b, 'nl'); })
+      .map(function(k){ return { ext: k, count: counts[k] }; });
+  }
+
   function _filt(){
     const q = (_searchQuery || '').toLowerCase().trim();
     let d = _docs;
+    // Bestandstype-chips: leeg = alle, anders alleen geselecteerde extensies
+    if (_filterExts && _filterExts.size){
+      d = d.filter(function(doc){
+        const e = _getExt(doc.bestandsnaam) || '(geen)';
+        return _filterExts.has(e);
+      });
+    }
     // Metadata-filters: dropdown-state per FILTER_FIELDS
     const activeFilters = FILTER_FIELDS.filter(function(f){ return _filters[f]; });
     if (activeFilters.length){
@@ -4352,6 +4450,42 @@ const DL = (function(){
     });
   }
 
+  // Render de bestandstype-chips-rij. Toont alleen als er meer dan 1 extensie is —
+  // bij projecten met enkel PDF's voegt de rij niets toe. Klik op chip = toggle in Set.
+  function _renderExtChips(){
+    const root = getRoot();
+    if (!root) return;
+    const wrap = root.querySelector('#dl-ext-chips');
+    if (!wrap) return;
+    const exts = _collectExts();
+    if (exts.length < 2){
+      wrap.style.display = 'none';
+      wrap.innerHTML = '';
+      return;
+    }
+    wrap.style.display = '';
+    const chips = exts.map(function(e){
+      const active = _filterExts.has(e.ext);
+      const lbl = e.ext === '(geen)' ? 'geen ext' : e.ext.toUpperCase();
+      return '<button type="button" class="dl-ext-chip' + (active ? ' active' : '') + '" '
+        + 'data-dl-ext="' + _esc(e.ext) + '" title="' + e.count + ' bestand' + (e.count === 1 ? '' : 'en') + '">'
+        + _esc(lbl) + '<span class="dl-ext-count">' + e.count + '</span></button>';
+    }).join('');
+    const resetBtn = _filterExts.size
+      ? '<button type="button" class="dl-ext-reset" id="dl-ext-reset" title="Bestandstype-filter wissen">×</button>'
+      : '';
+    wrap.innerHTML = chips + resetBtn;
+    wrap.querySelectorAll('.dl-ext-chip').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        const e = btn.getAttribute('data-dl-ext');
+        if (_filterExts.has(e)) _filterExts.delete(e); else _filterExts.add(e);
+        _renderTable();
+      });
+    });
+    const rb = wrap.querySelector('#dl-ext-reset');
+    if (rb) rb.addEventListener('click', function(){ _filterExts.clear(); _renderTable(); });
+  }
+
   function _renderRow(d){
     let html = '<tr class="dl-row" data-dl-vid="' + _esc(d._vid || '') + '">';
     for (const c of _getActiveCols()){
@@ -4404,6 +4538,7 @@ const DL = (function(){
     if (!tbody || !count) return;
 
     _renderFilterBar();
+    _renderExtChips();
     _renderTableHeader();
     const filtered = _filt();
     count.textContent = filtered.length + ' bestand' + (filtered.length === 1 ? '' : 'en');
@@ -4497,6 +4632,7 @@ const DL = (function(){
         '<div id="dl-error" class="dl-error" style="display:none"></div>' +
         '<div id="dl-loading" class="dl-loading" style="display:none">Documenten laden…</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
+        '<div id="dl-ext-chips" class="dl-ext-chips" style="display:none"></div>' +
         '<div class="dl-tbl-wrap">' +
           '<table class="dl-tbl">' +
             '<colgroup>' + colHtml + '</colgroup>' +
