@@ -549,6 +549,30 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-ext-chip.active .dl-ext-count{opacity:.95}
 .dl-ext-reset{padding:4px 10px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 12px 'Poppins',sans-serif;color:var(--g5);transition:all .15s;margin-left:4px}
 .dl-ext-reset:hover{background:var(--af);color:#fff;border-color:var(--af)}
+/* DL — view-toggle (Lijst | Mappen) */
+.dl-app-head-right{display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap}
+.dl-view-toggle{display:inline-flex;border:1px solid var(--hl);border-radius:var(--r-sm);overflow:hidden;background:#fff}
+.dl-view-btn{padding:6px 14px;border:none;background:#fff;cursor:pointer;font:600 12px 'Poppins',sans-serif;color:var(--g5);text-transform:uppercase;letter-spacing:.04em;transition:all .15s}
+.dl-view-btn:hover{background:var(--gr);color:var(--af)}
+.dl-view-btn.active{background:var(--af);color:#fff}
+.dl-view-btn.active:hover{background:var(--af);color:#fff;opacity:.9}
+.dl-view-btn + .dl-view-btn{border-left:1px solid var(--hl)}
+/* DL — split layout (sidebar + tabel) in tree-mode */
+.dl-main{display:block}
+.dl-main-tree{display:grid;grid-template-columns:280px 1fr;gap:var(--s3);align-items:start}
+.dl-tree{background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-sm);padding:8px 0;max-height:70vh;overflow:auto;font-family:'Poppins',sans-serif}
+.dl-tree-node{display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;font-size:13px;color:var(--dk);user-select:none;border-left:3px solid transparent;transition:background .12s}
+.dl-tree-node:hover{background:var(--gr)}
+.dl-tree-node.selected{background:var(--afl);border-left-color:var(--af);color:var(--af);font-weight:600}
+.dl-tree-arrow{display:inline-flex;align-items:center;justify-content:center;width:14px;font-size:10px;color:var(--g4);transition:transform .15s;flex-shrink:0}
+.dl-tree-arrow:hover{color:var(--af)}
+.dl-tree-arrow.collapsed{transform:rotate(-90deg)}
+.dl-tree-arrow-empty{cursor:default}
+.dl-tree-icon{font-size:13px;flex-shrink:0}
+.dl-tree-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl-tree-count{font-size:11px;color:var(--g4);font-variant-numeric:tabular-nums;background:var(--gr);padding:1px 6px;border-radius:var(--r-pill);font-weight:500;flex-shrink:0}
+.dl-tree-node.selected .dl-tree-count{background:var(--af);color:#fff}
+@media(max-width:720px){.dl-main-tree{grid-template-columns:1fr}.dl-tree{max-height:240px}}
 .dl-deep-scan{padding:8px 12px;margin-bottom:var(--s3);background:#fff8e1;border:1px solid #f0c040;border-radius:var(--r-sm);font-size:13px;color:#7a5c00;display:flex;align-items:center;gap:8px}
 .dl-deep-scan.scanning{animation:dl-pulse 1.6s ease-in-out infinite}
 @keyframes dl-pulse{0%,100%{opacity:.85}50%{opacity:1}}
@@ -3820,6 +3844,9 @@ const DL = (function(){
   let _searchQuery = '';
   let _filters = { document_status: '', discipline: '', project_fase: '' };
   let _filterExts = new Set(); // bestandstype-chips: leeg = alle, anders alleen geselecteerde extensies
+  let _viewMode = 'list';       // 'list' = vlakke tabel met groep-headers; 'tree' = split met mappen-sidebar
+  let _selectedFolder = '';     // pad-prefix in tree-mode; leeg = root (alle docs)
+  let _treeCollapsed = new Set(); // ingeklapte tree-paths
   let _hasMetaSchema = false; // wordt true zodra we minstens 1 metadata-match krijgen
   let _deepScanState = null; // { totaal, gedaan, actief } tijdens per-file metadata-fetch
   let _selectedDoc = null;   // huidige doc in detail-paneel ('_vid' van geselecteerde rij)
@@ -4358,6 +4385,14 @@ const DL = (function(){
   function _filt(){
     const q = (_searchQuery || '').toLowerCase().trim();
     let d = _docs;
+    // Tree-mode: filter op geselecteerde map-prefix (incl. submappen)
+    if (_viewMode === 'tree' && _selectedFolder){
+      const pre = _selectedFolder;
+      d = d.filter(function(doc){
+        const loc = doc.file_location || '';
+        return loc === pre || loc.indexOf(pre + '/') === 0;
+      });
+    }
     // Bestandstype-chips: leeg = alle, anders alleen geselecteerde extensies
     if (_filterExts && _filterExts.size){
       d = d.filter(function(doc){
@@ -4486,6 +4521,106 @@ const DL = (function(){
     if (rb) rb.addEventListener('click', function(){ _filterExts.clear(); _renderTable(); });
   }
 
+  // Bouw boom-structuur uit alle file_location-paden in _docs.
+  // Returnt root-node {name:'', path:'', children:[], count:0}; count = totaal aantal
+  // docs in deze node + alle nakomelingen.
+  function _buildFolderTree(){
+    const root = { name: '', path: '', children: {}, count: 0 };
+    for (const d of _docs){
+      root.count++;
+      const loc = (d.file_location || '').trim();
+      if (!loc) continue;
+      const parts = loc.split('/').filter(Boolean);
+      let node = root;
+      let path = '';
+      for (const p of parts){
+        path = path ? path + '/' + p : p;
+        if (!node.children[p]) node.children[p] = { name: p, path: path, children: {}, count: 0 };
+        node = node.children[p];
+        node.count++;
+      }
+    }
+    // Convert children-object naar gesorteerde array, recursief
+    function toArr(node){
+      const arr = Object.keys(node.children).map(function(k){ return toArr(node.children[k]); });
+      arr.sort(function(a,b){ return a.name.localeCompare(b.name, 'nl'); });
+      return { name: node.name, path: node.path, count: node.count, children: arr };
+    }
+    return toArr(root);
+  }
+
+  // Render één tree-node + recursief kinderen. Indent op basis van depth.
+  function _renderTreeNode(node, depth){
+    const isRoot = node.path === '';
+    const isSel = (_selectedFolder || '') === node.path;
+    const hasKids = node.children.length > 0;
+    const collapsed = _treeCollapsed.has(node.path);
+    const lbl = isRoot ? 'Alle mappen' : node.name;
+    const arrow = hasKids
+      ? '<span class="dl-tree-arrow' + (collapsed ? ' collapsed' : '') + '" data-dl-tree-toggle="' + _esc(node.path) + '">▾</span>'
+      : '<span class="dl-tree-arrow dl-tree-arrow-empty"></span>';
+    let html = '<div class="dl-tree-node' + (isSel ? ' selected' : '') + '" '
+      + 'data-dl-tree-path="' + _esc(node.path) + '" '
+      + 'style="padding-left:' + (8 + depth * 14) + 'px">'
+      + arrow
+      + '<span class="dl-tree-icon">' + (isRoot ? '🏠' : '📁') + '</span>'
+      + '<span class="dl-tree-label">' + _esc(lbl) + '</span>'
+      + '<span class="dl-tree-count">' + node.count + '</span>'
+      + '</div>';
+    if (hasKids && !collapsed){
+      for (const k of node.children) html += _renderTreeNode(k, depth + 1);
+    }
+    return html;
+  }
+
+  function _renderFolderTree(){
+    const root = getRoot();
+    if (!root) return;
+    const wrap = root.querySelector('#dl-tree');
+    if (!wrap) return;
+    if (_viewMode !== 'tree'){ wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    const tree = _buildFolderTree();
+    wrap.innerHTML = _renderTreeNode(tree, 0);
+    wrap.querySelectorAll('.dl-tree-node').forEach(function(el){
+      el.addEventListener('click', function(ev){
+        if (ev.target && ev.target.classList && ev.target.classList.contains('dl-tree-arrow')) return;
+        _selectedFolder = el.getAttribute('data-dl-tree-path') || '';
+        _renderTable();
+      });
+    });
+    wrap.querySelectorAll('[data-dl-tree-toggle]').forEach(function(el){
+      el.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        const p = el.getAttribute('data-dl-tree-toggle') || '';
+        if (_treeCollapsed.has(p)) _treeCollapsed.delete(p); else _treeCollapsed.add(p);
+        _renderFolderTree();
+      });
+    });
+  }
+
+  // View-toggle: "Lijst | Mappen". Schakelt tussen tabel-only en split-layout met sidebar.
+  function _renderViewToggle(){
+    const root = getRoot();
+    if (!root) return;
+    const tg = root.querySelector('#dl-view-toggle');
+    if (!tg) return;
+    tg.innerHTML = ''
+      + '<button type="button" class="dl-view-btn' + (_viewMode === 'list' ? ' active' : '') + '" data-dl-view="list">Lijst</button>'
+      + '<button type="button" class="dl-view-btn' + (_viewMode === 'tree' ? ' active' : '') + '" data-dl-view="tree">Mappen</button>';
+    tg.querySelectorAll('[data-dl-view]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        const m = btn.getAttribute('data-dl-view');
+        if (m === _viewMode) return;
+        _viewMode = m;
+        if (m === 'list') _selectedFolder = '';
+        const main = root.querySelector('#dl-main');
+        if (main) main.classList.toggle('dl-main-tree', m === 'tree');
+        _renderTable();
+      });
+    });
+  }
+
   function _renderRow(d){
     let html = '<tr class="dl-row" data-dl-vid="' + _esc(d._vid || '') + '">';
     for (const c of _getActiveCols()){
@@ -4537,8 +4672,10 @@ const DL = (function(){
     const count = root.querySelector('#dl-count');
     if (!tbody || !count) return;
 
+    _renderViewToggle();
     _renderFilterBar();
     _renderExtChips();
+    _renderFolderTree();
     _renderTableHeader();
     const filtered = _filt();
     count.textContent = filtered.length + ' bestand' + (filtered.length === 1 ? '' : 'en');
@@ -4557,11 +4694,18 @@ const DL = (function(){
     }
     if (noR) noR.style.display = 'none';
 
-    // Groepering op file_location (vast voor MVP)
+    // Groepering op file_location. In tree-mode strippen we de geselecteerde
+    // map-prefix uit de groep-naam, zodat je relatieve sub-paden ziet (i.p.v.
+    // dat elk groep-label opent met de map die in de sidebar al actief is).
+    const pre = (_viewMode === 'tree' && _selectedFolder) ? _selectedFolder : '';
     const groups = {};
     const groupOrder = [];
     filtered.forEach(function(d){
-      const g = d.file_location || '(geen)';
+      let g = d.file_location || '(geen)';
+      if (pre){
+        if (g === pre) g = '.';
+        else if (g.indexOf(pre + '/') === 0) g = g.slice(pre.length + 1);
+      }
       if (!groups[g]){ groups[g] = []; groupOrder.push(g); }
       groups[g].push(d);
     });
@@ -4570,8 +4714,9 @@ const DL = (function(){
     const colspan = _getActiveCols().length;
     let html = '';
     for (const g of groupOrder){
+      const lbl = g === '.' ? '(deze map)' : g;
       html += '<tr class="dl-group"><td colspan="' + colspan + '">'
-        + '📁 ' + _esc(g)
+        + '📁 ' + _esc(lbl)
         + '<span class="dl-group-count">(' + groups[g].length + ')</span>'
         + '</td></tr>';
       for (const d of groups[g]){
@@ -4627,19 +4772,25 @@ const DL = (function(){
             '<div class="overline">Documentenlijst</div>' +
             '<p class="dl-subtitle"><span id="dl-count">–</span> in <strong>' + _esc(tcProject.name || '–') + '</strong></p>' +
           '</div>' +
-          '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
+          '<div class="dl-app-head-right">' +
+            '<div id="dl-view-toggle" class="dl-view-toggle"></div>' +
+            '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
+          '</div>' +
         '</div>' +
         '<div id="dl-error" class="dl-error" style="display:none"></div>' +
         '<div id="dl-loading" class="dl-loading" style="display:none">Documenten laden…</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
         '<div id="dl-ext-chips" class="dl-ext-chips" style="display:none"></div>' +
-        '<div class="dl-tbl-wrap">' +
-          '<table class="dl-tbl">' +
-            '<colgroup>' + colHtml + '</colgroup>' +
-            '<thead><tr>' + thHtml + '</tr></thead>' +
-            '<tbody id="dl-tbody"></tbody>' +
-          '</table>' +
-          '<div id="dl-no-results" class="dl-no-results" style="display:none">Geen documenten gevonden</div>' +
+        '<div id="dl-main" class="dl-main">' +
+          '<aside id="dl-tree" class="dl-tree" style="display:none"></aside>' +
+          '<div class="dl-tbl-wrap">' +
+            '<table class="dl-tbl">' +
+              '<colgroup>' + colHtml + '</colgroup>' +
+              '<thead><tr>' + thHtml + '</tr></thead>' +
+              '<tbody id="dl-tbody"></tbody>' +
+            '</table>' +
+            '<div id="dl-no-results" class="dl-no-results" style="display:none">Geen documenten gevonden</div>' +
+          '</div>' +
         '</div>' +
       '</section>';
     _bindEvents();
