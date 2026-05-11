@@ -644,7 +644,10 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .rv-placeholder{padding:var(--s5);text-align:center;color:var(--g4);font-style:italic;font-size:var(--fs-sm)}
 .rv-dashboard{padding:var(--s2)}
 .rv-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s3);margin:var(--s3) 0}
-.rv-stat{background:var(--gr);padding:var(--s4);border-radius:var(--r-md);text-align:center;border:1px solid var(--hl-light)}
+.rv-stat{background:var(--gr);padding:var(--s4);border-radius:var(--r-md);text-align:center;border:1px solid var(--hl-light);transition:all .15s}
+.rv-stat.clickable{cursor:pointer}
+.rv-stat.clickable:hover{background:var(--afl);border-color:var(--af);transform:translateY(-1px);box-shadow:0 3px 8px rgba(212,130,26,.15)}
+.rv-stat.clickable:focus{outline:2px solid var(--af);outline-offset:2px}
 .rv-stat .num{font-size:32px;font-weight:800;color:var(--af);font-family:'Montserrat',sans-serif;line-height:1}
 .rv-stat .lbl{font-size:12px;color:var(--g5);margin-top:6px;text-transform:uppercase;letter-spacing:.05em}
 .rv-admin-list{list-style:none;padding:0;margin:8px 0;background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-sm)}
@@ -1220,6 +1223,47 @@ async function tcFetchAll(path, maxPages){
   return allItems;
 }
 
+// v2.1+skipToken folder-items pagination. Fallback naar v2.0 als v2.1 ontbreekt (legacy projects).
+async function tcFetchFolderItems(folderId){
+  const base21 = TC_API_BASE.replace(/\/2\.0$/, '/2.1');
+  const headers = { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' };
+  const all = [];
+  let skipToken = null;
+  let safety = 0;
+  while (safety++ < 50){
+    const qp = '?pageSize=500' + (skipToken ? '&skipToken=' + encodeURIComponent(skipToken) : '');
+    const url = base21 + '/folders/' + folderId + '/items' + qp;
+    let resp = null;
+    try {
+      const r = await fetch(url, { headers: headers });
+      if (r.ok) {
+        resp = await r.json();
+      } else if ((r.status === 404 || r.status === 400) && safety === 1) {
+        const data = await tcFetch('/folders/' + folderId + '/items');
+        const body = data && data._partial ? data._data : data;
+        return Array.isArray(body) ? body : (body && body.items) || [];
+      } else {
+        throw new Error('HTTP ' + r.status);
+      }
+    } catch(e){
+      if (safety === 1){
+        const data = await tcFetch('/folders/' + folderId + '/items');
+        const body = data && data._partial ? data._data : data;
+        return Array.isArray(body) ? body : (body && body.items) || [];
+      }
+      throw e;
+    }
+    const items = (resp && Array.isArray(resp.items)) ? resp.items : [];
+    if (items.length) all.push.apply(all, items);
+    const nextHref = resp && resp.links && resp.links.next && resp.links.next.href;
+    if (!nextHref) break;
+    const m = /[?&]skipToken=([^&]+)/.exec(nextHref);
+    skipToken = m ? decodeURIComponent(m[1]) : null;
+    if (!skipToken) break;
+  }
+  return all;
+}
+
 function formatDate(iso){
   if (!iso) return '';
   try {
@@ -1458,7 +1502,7 @@ async function loadDashboard(){
   const [users, groups, rootItems, allProjects, releases, todos, shares] = await Promise.all([
     tcFetchSafe('/projects/'+pid+'/users', []),
     tcFetchSafe('/groups?projectId='+pid, []),
-    rootId ? tcFetchSafe('/folders/'+rootId+'/items?pageSize=500', {items:[]}) : Promise.resolve({items:[]}),
+    rootId ? tcFetchFolderItems(rootId).catch(function(e){ console.warn('[Cockpit] root items fout:', e.message); return []; }) : Promise.resolve([]),
     // /projects: Range-header pagination (v2.0 spec) i.p.v. niet-bestaande pageSize/showSubProjects query
     tcFetchRange('/projects', 500).catch(function(e){ console.warn('[Cockpit] projects fetch fout:', e.message); return []; }),
     tcFetchSafe('/releases?projectId='+pid+'&pageSize=10', []),
@@ -1470,7 +1514,7 @@ async function loadDashboard(){
 
   const membersCount = Array.isArray(users) ? users.length : (users?.items?.length || 0);
   const groupsCount  = Array.isArray(groups)  ? groups.length  : (groups?.items?.length  || 0);
-  const rootList = Array.isArray(rootItems) ? rootItems : (rootItems.items || []);
+  const rootList = rootItems;
   const foldersCount = rootList.filter(function(it){ return it.type === 'FOLDER'; }).length;
   const filesInRoot  = rootList.filter(function(it){ return it.type === 'FILE'; }).length;
   const projectsCount = Array.isArray(allProjects) ? allProjects.length : (allProjects?.items?.length || 0);
@@ -2468,7 +2512,7 @@ const PU = (function(){
     await _ensurePuTokenValid();
     const baseHeaders = Object.assign({ Accept: 'application/json' }, opts.headers || {});
     const doFetch = function(){
-      return _fetchTimeout(TC_API_BASE + path, {
+      return _fetchTimeout((opts._baseOverride || TC_API_BASE) + path, {
         method: opts.method || 'GET',
         headers: Object.assign({}, baseHeaders, { Authorization: 'Bearer ' + tcToken }),
         body: opts.body,
@@ -2512,6 +2556,35 @@ const PU = (function(){
     try { return JSON.parse(txt); } catch(_){ return txt; }
   }
 
+  // v2.1+skipToken folder-items via _puFetch (behoudt PU's token-refresh + retry); valt terug op v2.0.
+  async function _puFetchFolderItemsAll(folderId){
+    const base21 = TC_API_BASE.replace(/\/2\.0$/, '/2.1');
+    const all = [];
+    let skipToken = null;
+    let safety = 0;
+    while (safety++ < 50){
+      const qp = '?pageSize=500' + (skipToken ? '&skipToken=' + encodeURIComponent(skipToken) : '');
+      let resp;
+      try {
+        resp = await _puFetch('/folders/' + folderId + '/items' + qp, { _baseOverride: base21 });
+      } catch(e){
+        if (safety === 1){
+          const items = await _puFetch('/folders/' + folderId + '/items');
+          return Array.isArray(items) ? items : (items && items.items) || [];
+        }
+        throw e;
+      }
+      const items = (resp && Array.isArray(resp.items)) ? resp.items : (Array.isArray(resp) ? resp : []);
+      if (items.length) all.push.apply(all, items);
+      const nextHref = resp && resp.links && resp.links.next && resp.links.next.href;
+      if (!nextHref) break;
+      const m = /[?&]skipToken=([^&]+)/.exec(nextHref);
+      skipToken = m ? decodeURIComponent(m[1]) : null;
+      if (!skipToken) break;
+    }
+    return all;
+  }
+
   // Folder tree → schrijfbare mappen
   async function loadFolders(){
     if (_isLoading || _isLoaded) return;
@@ -2531,8 +2604,8 @@ const PU = (function(){
         const batch = queueList.splice(0, PARALLEL);
         const batchResults = await Promise.all(batch.map(async function(b){
           try {
-            const items = await _puFetch('/folders/' + b.id + '/items');
-            return { path: b.path, items: Array.isArray(items) ? items : (items.items || []) };
+            const items = await _puFetchFolderItemsAll(b.id);
+            return { path: b.path, items };
           } catch(e){ return { path: b.path, items: [] }; }
         }));
         for (const br of batchResults){
@@ -4370,20 +4443,11 @@ const DL = (function(){
     } catch(_){ return _esc(s); }
   }
 
-  // Recursieve folder-walk. Gebruikt cockpit's centrale tcFetch (GET, direct + proxy fallback).
-  // MVP-vereenvoudiging: v2.0 endpoint, geen skipToken-pagination. Bij projecten met >500
-  // files per folder kan dit beperkend zijn — dan in iter A v2.1 + skipToken porten.
+  // Recursieve folder-walk via v2.1+skipToken (tcFetchFolderItems); valt terug op v2.0 voor legacy projecten.
   async function _fetchItemsRecursive(folderId, pad, result){
     let items;
     try {
-      // /folders/{id}/items retourneert alle items in één page (Trimble's HTTP
-      // Content-Range "items X-Y/Z" — geen echte cursor). tcFetchAll probeert
-      // pagination + spamt dan console.warn; tcFetch volstaat als we de _partial
-      // wrapper handmatig unwrappen. Voor toekomstige folders >500 items kan
-      // v2.1-skipToken-pagination later geport worden (zie standalone tc-viewer).
-      const data = await tcFetch('/folders/' + folderId + '/items');
-      const body = data && data._partial ? data._data : data;
-      items = Array.isArray(body) ? body : (body && body.items) || [];
+      items = await tcFetchFolderItems(folderId);
     } catch(e){
       console.warn('[DL] folder items fail:', folderId, e.message);
       return;
@@ -5305,7 +5369,7 @@ const RV = (function(){
   let _isLoaded = false;
   let _isLoading = false;
   let _isInjected = false;
-  let _currentView = 'groepen'; // 'dashboard' | 'groepen' | 'gebruikers'
+  let _currentView = 'dashboard'; // 'dashboard' | 'mappen' | 'groepen' | 'gebruikers'
   let _selectedGroup = null;
   let _selectedUser = null;
   let _searchQuery = '';
@@ -5338,7 +5402,7 @@ const RV = (function(){
       const batch = queue.splice(0, PARALLEL);
       const results = await Promise.all(batch.map(async function(b){
         try {
-          const items = await _fetchList('/folders/' + b.id + '/items');
+          const items = await tcFetchFolderItems(b.id);
           return { path: b.path, items };
         } catch(e){
           console.warn('[RV] folder items fail:', b.id, e.message);
@@ -5665,13 +5729,43 @@ const RV = (function(){
       }).join('');
     return '<div class="rv-dashboard">'
       + '<div class="rv-stats">'
-      +   '<div class="rv-stat"><div class="num">' + folderCount + '</div><div class="lbl">Mappen</div></div>'
-      +   '<div class="rv-stat"><div class="num">' + _data.allGroups.length + '</div><div class="lbl">Groepen</div></div>'
-      +   '<div class="rv-stat"><div class="num">' + _data.allUsers.length + '</div><div class="lbl">Gebruikers</div></div>'
+      +   '<div class="rv-stat clickable" data-rv-view="mappen" role="button" tabindex="0" title="Bekijk de mappenstructuur"><div class="num">' + folderCount + '</div><div class="lbl">Mappen</div></div>'
+      +   '<div class="rv-stat clickable" data-rv-view="groepen" role="button" tabindex="0" title="Bekijk per groep"><div class="num">' + _data.allGroups.length + '</div><div class="lbl">Groepen</div></div>'
+      +   '<div class="rv-stat clickable" data-rv-view="gebruikers" role="button" tabindex="0" title="Bekijk per gebruiker"><div class="num">' + _data.allUsers.length + '</div><div class="lbl">Gebruikers</div></div>'
       +   '<div class="rv-stat"><div class="num">' + adminCount + '</div><div class="lbl">Beheerders</div></div>'
       + '</div>'
       + (adminList ? '<h3 style="margin:18px 0 8px;font-size:14px;font-family:\'Montserrat\',sans-serif">Beheerders</h3>'
           + '<ul class="rv-admin-list">' + adminList + '</ul>' : '')
+      + '</div>';
+  }
+
+  function _renderMappen(){
+    const q = _searchQuery.toLowerCase();
+    const rootRow = _data.csvData[0];
+    const rootPath = (rootRow && rootRow.pad) || (tcProject.name || 'Project');
+    const rootDepth = rootPath.split('/').length;
+    const rows = _data.csvData
+      .filter(function(row, i){ return i > 0; })
+      .filter(function(row){ return !q || row.pad.toLowerCase().indexOf(q) >= 0; })
+      .map(function(row){
+        const depth = Math.max(row.pad.split('/').length - rootDepth, 0);
+        const name = row.pad.split('/').pop();
+        const fullCount = (row.full || []).length;
+        const readCount = (row.read || []).length;
+        const inhCls = row.inherited ? ' rv-inherited' : '';
+        const inhTitle = row.inherited ? ' title="Rechten overgenomen van bovenliggende map"' : '';
+        const fullBadge = fullCount ? '<span class="rv-badge full">' + fullCount + ' volledig</span>' : '';
+        const readBadge = readCount ? '<span class="rv-badge read">' + readCount + ' lezen</span>' : '';
+        const empty = (!fullCount && !readCount) ? '<span class="rv-badge" style="background:#ddd;color:#666">geen rechten</span>' : '';
+        return '<div class="rv-tree-row' + inhCls + '" style="padding-left:' + (10 + depth * 18) + 'px"' + inhTitle + '>'
+          + '<span class="rv-pad">📁 ' + _esc(name) + '</span>'
+          + fullBadge + readBadge + empty
+          + '</div>';
+      }).join('');
+    const rootEl = '<div class="rv-tree-row" style="font-weight:600;background:var(--gr)"><span class="rv-pad">📂 ' + _esc(rootPath) + '</span></div>';
+    return '<div class="rv-mappen">'
+      + '<input type="search" id="rv-search" placeholder="Zoek map…" value="' + _esc(_searchQuery) + '" autocomplete="off" style="width:100%;padding:8px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px \'Poppins\',sans-serif;margin-bottom:var(--s3)">'
+      + '<div class="rv-main" style="padding:0">' + rootEl + (rows || '<div class="rv-placeholder">Geen mappen gevonden.</div>') + '</div>'
       + '</div>';
   }
 
@@ -5732,6 +5826,7 @@ const RV = (function(){
     const main = root.querySelector('#rv-content');
     if (!main) return;
     if (_currentView === 'dashboard') main.innerHTML = _renderDashboard();
+    else if (_currentView === 'mappen') main.innerHTML = _renderMappen();
     else if (_currentView === 'groepen') main.innerHTML = _renderGroepen();
     else if (_currentView === 'gebruikers') main.innerHTML = _renderGebruikers();
 
@@ -5744,6 +5839,16 @@ const RV = (function(){
   function _bindContentEvents(){
     const root = getRoot();
     if (!root) return;
+    // Klikbare dashboard-tegels → switch naar de respectievelijke tab
+    root.querySelectorAll('.rv-stat.clickable[data-rv-view]').forEach(function(el){
+      function go(){
+        _currentView = el.getAttribute('data-rv-view');
+        _searchQuery = '';
+        _render();
+      }
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', function(ev){ if (ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); go(); } });
+    });
     root.querySelectorAll('[data-rv-group]').forEach(function(el){
       el.addEventListener('click', function(){
         _selectedGroup = el.getAttribute('data-rv-group');
@@ -5782,8 +5887,9 @@ const RV = (function(){
             '<p class="rv-subtitle">Wie heeft toegang tot welke mappen in <strong>' + _esc(tcProject.name || '–') + '</strong></p>' +
           '</div>' +
           '<div class="rv-tabs">' +
-            '<button class="rv-tab" type="button" data-rv-view="dashboard">Dashboard</button>' +
-            '<button class="rv-tab active" type="button" data-rv-view="groepen">Groepen</button>' +
+            '<button class="rv-tab active" type="button" data-rv-view="dashboard">Dashboard</button>' +
+            '<button class="rv-tab" type="button" data-rv-view="mappen">Mappen</button>' +
+            '<button class="rv-tab" type="button" data-rv-view="groepen">Groepen</button>' +
             '<button class="rv-tab" type="button" data-rv-view="gebruikers">Gebruikers</button>' +
           '</div>' +
         '</div>' +
