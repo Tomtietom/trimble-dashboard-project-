@@ -567,6 +567,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-cols-picker-head{padding:10px 14px;border-bottom:1px solid var(--hl-light);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--g5)}
 .dl-cols-picker-body{padding:6px 0;overflow:auto;flex:1}
 .dl-cols-row{display:flex;align-items:center;gap:8px;padding:6px 14px;cursor:pointer;transition:background .1s}
+.dl-col-move{display:flex;flex-direction:column;line-height:1;gap:1px}
+.dl-col-move-btn{background:transparent;border:none;padding:1px 3px;cursor:pointer;font-size:9px;color:var(--g4);line-height:1;border-radius:2px}
+.dl-col-move-btn:hover{background:rgba(0,0,0,.06);color:var(--af)}
 .dl-cols-row:hover{background:var(--afl)}
 .dl-cols-row input{cursor:pointer;margin:0}
 .dl-cols-row input:disabled{cursor:not-allowed}
@@ -580,7 +583,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl-wrap{position:relative;overflow:auto;max-height:calc(100vh - 320px);border:1px solid var(--hl-light);border-radius:var(--r-md);background:#fff}
 .dl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
 .dl-tbl thead{position:sticky;top:0;background:var(--gr);z-index:1}
-.dl-tbl .dl-th{text-align:left;padding:10px 12px;font-weight:600;color:var(--dk);border-bottom:1px solid var(--hl);cursor:pointer;user-select:none;white-space:nowrap;font-family:'Poppins',sans-serif}
+.dl-tbl .dl-th{position:relative;text-align:left;padding:10px 12px;font-weight:600;color:var(--dk);border-bottom:1px solid var(--hl);cursor:pointer;user-select:none;white-space:nowrap;font-family:'Poppins',sans-serif}
+.dl-resizer{position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize;user-select:none;z-index:2}
+.dl-resizer:hover,.dl-resizer.active{background:var(--af);opacity:.4}
 .dl-tbl .dl-th:hover{background:var(--hl-light)}
 .dl-tbl .dl-th.sorted{color:var(--af)}
 .dl-tbl .dl-th .dl-sort-ind{display:inline-block;width:10px;font-size:9px;margin-left:4px;color:var(--af)}
@@ -4537,7 +4542,20 @@ const DL = (function(){
     if (!_hasMetaSchema){
       visible = visible.filter(function(c){ return !_isMetaCol(c.k); });
     }
-    return visible;
+    // Custom volgorde toepassen (uit _colOrder)
+    if (_colOrder.length){
+      const orderMap = {};
+      _colOrder.forEach(function(k, i){ orderMap[k] = i; });
+      visible.sort(function(a, b){
+        const ia = orderMap[a.k] !== undefined ? orderMap[a.k] : 999;
+        const ib = orderMap[b.k] !== undefined ? orderMap[b.k] : 999;
+        return ia - ib;
+      });
+    }
+    // Width-overrides toepassen
+    return visible.map(function(c){
+      return _colWidths[c.k] ? Object.assign({}, c, { w: _colWidths[c.k] }) : c;
+    });
   }
   function _filterableVisibleCols(){
     return _getActiveCols().filter(function(c){ return !SKIP_FILTER.has(c.k); });
@@ -4552,11 +4570,19 @@ const DL = (function(){
         _visibleColKeys = new Set(cfg.visible);
         _visibleColKeys.add('bestandsnaam');
       }
+      if (cfg && cfg.order && Array.isArray(cfg.order)) _colOrder = cfg.order;
+      if (cfg && cfg.widths && typeof cfg.widths === 'object' && !Array.isArray(cfg.widths)) _colWidths = cfg.widths;
+      if (cfg && typeof cfg.groupBy === 'string') _groupBy = cfg.groupBy;
     } catch(_){}
   }
   function _saveColsConfig(){
     try {
-      localStorage.setItem(_colsConfigKey(), JSON.stringify({ visible: Array.from(_visibleColKeys) }));
+      localStorage.setItem(_colsConfigKey(), JSON.stringify({
+        visible: Array.from(_visibleColKeys),
+        order:   _colOrder,
+        widths:  _colWidths,
+        groupBy: _groupBy,
+      }));
     } catch(_){}
   }
 
@@ -4585,6 +4611,9 @@ const DL = (function(){
   let _searchQuery = '';
   let _filters = {};                          // dynamisch: { kolomKey: 'gekozen waarde', ... }
   let _visibleColKeys = new Set(DEFAULT_VISIBLE);
+  let _colOrder = [];                         // [] = default volgorde uit ALL_COLS; anders keys in custom volgorde
+  let _colWidths = {};                        // { key: '120px' } overrides van default percentages
+  let _groupBy = 'file_location';             // '' = geen, 'file_location' = op map, of metadata-kolom key
   let _filterExts = new Set(); // bestandstype-chips: leeg = alle, anders alleen geselecteerde extensies
   let _viewMode = 'list';       // 'list' = vlakke tabel met groep-headers; 'tree' = split met mappen-sidebar
   let _selectedFolder = '';     // pad-prefix in tree-mode; leeg = root (alle docs)
@@ -5218,17 +5247,25 @@ const DL = (function(){
     if (!root) return;
     const bar = root.querySelector('#dl-filter-bar');
     if (!bar) return;
-    if (!_hasMetaSchema){
-      bar.style.display = 'none';
-      return;
-    }
-    const filterCols = _filterableVisibleCols();
-    if (!filterCols.length){
-      bar.style.display = 'none';
-      return;
-    }
-    bar.style.display = '';
-    bar.innerHTML = filterCols.map(function(c){
+    // Filter-selects alleen bij metadata-schema. Group-dropdown is altijd zichtbaar.
+    const filterCols = _hasMetaSchema ? _filterableVisibleCols() : [];
+
+    // Group-dropdown opties: Geen + Map + elke filterable kolom (alleen bij metadata)
+    const groupOpts = [
+      { v: '',              l: 'Geen groepering' },
+      { v: 'file_location', l: 'Groepeer: Map' },
+    ];
+    filterCols.forEach(function(c){
+      groupOpts.push({ v: c.k, l: 'Groepeer: ' + c.l });
+    });
+    let html = '<select class="dl-filter dl-filter-group" data-dl-group="1">'
+      + groupOpts.map(function(o){
+          return '<option value="' + _esc(o.v) + '"' + (o.v === _groupBy ? ' selected' : '') + '>' + _esc(o.l) + '</option>';
+        }).join('')
+      + '</select>';
+
+    // Filter-dropdowns per zichtbare kolom (alleen bij metadata)
+    html += filterCols.map(function(c){
       const opts = _filterOptions(c.k);
       const cur = _filters[c.k] || '';
       const lbl = (FIELD_LABEL[c.k] || c.l).toLowerCase();
@@ -5238,13 +5275,25 @@ const DL = (function(){
           }).join('');
       return '<select class="dl-filter" data-dl-filter="' + _esc(c.k) + '">' + optHtml + '</select>';
     }).join('');
+
     // Reset-knop alleen als er een filter actief is
     const anyActive = Object.keys(_filters).some(function(k){ return _filters[k]; });
     if (anyActive){
-      bar.innerHTML += '<button class="dl-filter-reset" type="button" id="dl-filter-reset" title="Filters wissen">×</button>';
+      html += '<button class="dl-filter-reset" type="button" id="dl-filter-reset" title="Filters wissen">×</button>';
     }
+    bar.innerHTML = html;
+    bar.style.display = '';
+
     // Bind events op nieuwe selects
-    bar.querySelectorAll('.dl-filter').forEach(function(sel){
+    const groupSel = bar.querySelector('.dl-filter-group');
+    if (groupSel){
+      groupSel.addEventListener('change', function(){
+        _groupBy = groupSel.value || '';
+        _saveColsConfig();
+        _renderTable();
+      });
+    }
+    bar.querySelectorAll('.dl-filter:not(.dl-filter-group)').forEach(function(sel){
       sel.addEventListener('change', function(){
         const k = sel.getAttribute('data-dl-filter');
         if (sel.value) _filters[k] = sel.value;
@@ -5433,11 +5482,13 @@ const DL = (function(){
     if (headRow){
       headRow.innerHTML = cols.map(function(c){
         return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
-          + '<span class="dl-sort-ind"></span></th>';
+          + '<span class="dl-sort-ind"></span>'
+          + '<span class="dl-resizer" data-resize="' + _esc(c.k) + '"></span></th>';
       }).join('');
-      // Re-bind sort-events op nieuwe th's
+      // Re-bind sort-events op nieuwe th's (negeer clicks op resizer)
       headRow.querySelectorAll('.dl-th').forEach(function(th){
-        th.addEventListener('click', function(){
+        th.addEventListener('click', function(e){
+          if (e.target.closest('.dl-resizer')) return;
           const k = th.getAttribute('data-sort');
           if (!k) return;
           if (_sortK === k){ _sortD = _sortD === 'asc' ? 'desc' : 'asc'; }
@@ -5479,34 +5530,37 @@ const DL = (function(){
     }
     if (noR) noR.style.display = 'none';
 
-    // Groepering op file_location. In tree-mode strippen we de geselecteerde
-    // map-prefix uit de groep-naam, zodat je relatieve sub-paden ziet (i.p.v.
-    // dat elk groep-label opent met de map die in de sidebar al actief is).
-    const pre = (_viewMode === 'tree' && _selectedFolder) ? _selectedFolder : '';
-    const groups = {};
-    const groupOrder = [];
-    filtered.forEach(function(d){
-      let g = d.file_location || '(geen)';
-      if (pre){
-        if (g === pre) g = '.';
-        else if (g.indexOf(pre + '/') === 0) g = g.slice(pre.length + 1);
-      }
-      if (!groups[g]){ groups[g] = []; groupOrder.push(g); }
-      groups[g].push(d);
-    });
-    groupOrder.sort(function(a,b){ return a.localeCompare(b, 'nl'); });
-
-    const colspan = _getActiveCols().length;
+    // Groepering: configurabel via _groupBy ('' = geen, 'file_location' = map, of metadata-kolom)
+    // Bij tree-mode + file_location: strip de geselecteerde map-prefix uit de groep-naam.
     let html = '';
-    for (const g of groupOrder){
-      const lbl = g === '.' ? '(deze map)' : g;
-      html += '<tr class="dl-group"><td colspan="' + colspan + '">'
-        + '📁 ' + _esc(lbl)
-        + '<span class="dl-group-count">(' + groups[g].length + ')</span>'
-        + '</td></tr>';
-      for (const d of groups[g]){
-        html += _renderRow(d);
+    if (_groupBy){
+      const pre = (_viewMode === 'tree' && _selectedFolder && _groupBy === 'file_location') ? _selectedFolder : '';
+      const groups = {};
+      const groupOrder = [];
+      filtered.forEach(function(d){
+        let g = d[_groupBy] || '(geen)';
+        if (pre){
+          if (g === pre) g = '.';
+          else if (g.indexOf(pre + '/') === 0) g = g.slice(pre.length + 1);
+        }
+        if (!groups[g]){ groups[g] = []; groupOrder.push(g); }
+        groups[g].push(d);
+      });
+      groupOrder.sort(function(a,b){ return a.localeCompare(b, 'nl'); });
+      const colspan = _getActiveCols().length;
+      const icon = _groupBy === 'file_location' ? '📁' : '🏷️';
+      for (const g of groupOrder){
+        const lbl = g === '.' ? '(deze map)' : g;
+        html += '<tr class="dl-group"><td colspan="' + colspan + '">'
+          + icon + ' ' + _esc(lbl)
+          + '<span class="dl-group-count">(' + groups[g].length + ')</span>'
+          + '</td></tr>';
+        for (const d of groups[g]){
+          html += _renderRow(d);
+        }
       }
+    } else {
+      for (const d of filtered){ html += _renderRow(d); }
     }
     tbody.innerHTML = html;
 
@@ -5550,7 +5604,8 @@ const DL = (function(){
     const colHtml = initialCols.map(function(c){ return '<col style="width:' + c.w + '">'; }).join('');
     const thHtml = initialCols.map(function(c){
       return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
-        + '<span class="dl-sort-ind"></span></th>';
+        + '<span class="dl-sort-ind"></span>'
+        + '<span class="dl-resizer" data-resize="' + _esc(c.k) + '"></span></th>';
     }).join('');
     root.innerHTML =
       '<section class="sec">' +
@@ -5594,16 +5649,31 @@ const DL = (function(){
     _isInjected = true;
   }
 
-  // Kolom-picker: render checkboxes voor alle kolommen, mark checked op basis van _visibleColKeys.
+  // Kolom-picker: render rijen met up/down arrows + checkboxes.
   function _renderColPicker(){
     const body = document.getElementById('dl-cols-picker-body');
     if (!body) return;
-    body.innerHTML = ALL_COLS.map(function(c){
+    // Render in volgorde van _colOrder (indien gezet), anders ALL_COLS volgorde.
+    let cols = ALL_COLS.slice();
+    if (_colOrder.length){
+      const orderMap = {};
+      _colOrder.forEach(function(k, i){ orderMap[k] = i; });
+      cols.sort(function(a, b){
+        const ia = orderMap[a.k] !== undefined ? orderMap[a.k] : 999;
+        const ib = orderMap[b.k] !== undefined ? orderMap[b.k] : 999;
+        return ia - ib;
+      });
+    }
+    body.innerHTML = cols.map(function(c){
       if (!_hasMetaSchema && _isMetaCol(c.k)) return ''; // verberg metadata-kolommen bij projecten zonder schema
       const checked = _visibleColKeys.has(c.k) ? ' checked' : '';
       const disabled = c.fixed ? ' disabled' : '';
       const k = _esc(c.k);
       return '<div class="dl-cols-row" data-colkey="' + k + '">'
+        + '<span class="dl-col-move">'
+        +   '<button type="button" class="dl-col-move-btn" data-dir="-1" title="Omhoog">▲</button>'
+        +   '<button type="button" class="dl-col-move-btn" data-dir="1" title="Omlaag">▼</button>'
+        + '</span>'
         + '<input type="checkbox" id="dl-col-' + k + '"' + checked + disabled + '>'
         + '<label for="dl-col-' + k + '">' + _esc(c.l) + '</label>'
         + '</div>';
@@ -5615,7 +5685,6 @@ const DL = (function(){
         if (!k) return;
         if (cb.checked) _visibleColKeys.add(k); else _visibleColKeys.delete(k);
         _saveColsConfig();
-        // Clear filters voor kolommen die nu verborgen zijn
         Object.keys(_filters).forEach(function(fk){
           if (!_visibleColKeys.has(fk)) delete _filters[fk];
         });
@@ -5624,6 +5693,31 @@ const DL = (function(){
         _renderTable();
       });
     });
+    body.querySelectorAll('.dl-col-move-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        const row = btn.closest('.dl-cols-row');
+        const k = row && row.getAttribute('data-colkey');
+        const dir = parseInt(btn.getAttribute('data-dir'), 10);
+        if (k && (dir === -1 || dir === 1)) _moveCol(k, dir);
+      });
+    });
+  }
+
+  function _moveCol(key, dir){
+    if (!_colOrder.length){
+      _colOrder = ALL_COLS.map(function(c){ return c.k; });
+    }
+    // Voeg ontbrekende key alsnog toe (defensief; ALL_COLS-keys moeten erin staan)
+    if (_colOrder.indexOf(key) < 0) _colOrder.push(key);
+    const idx = _colOrder.indexOf(key);
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= _colOrder.length) return;
+    _colOrder.splice(idx, 1);
+    _colOrder.splice(newIdx, 0, key);
+    _saveColsConfig();
+    _renderColPicker();
+    _renderTableHeader();
+    _renderTable();
   }
 
   // Force refresh: wis cache + reset state + herlaad. Triggert nieuwe bulk+deep-scan.
@@ -5706,13 +5800,58 @@ const DL = (function(){
       }
     }
     root.querySelectorAll('.dl-th').forEach(function(th){
-      th.addEventListener('click', function(){
+      th.addEventListener('click', function(e){
+        if (e.target.closest('.dl-resizer')) return;
         const k = th.getAttribute('data-sort');
         if (!k) return;
         if (_sortK === k){ _sortD = _sortD === 'asc' ? 'desc' : 'asc'; }
         else { _sortK = k; _sortD = 'asc'; }
         _renderTable();
       });
+    });
+
+    // Kolom-resize: mousedown op grip start drag; mousemove update kolombreedte live;
+    // mouseup persisteert. Document-level handlers zodat slepen werkt over hele viewport.
+    let _resizeState = null;
+    root.addEventListener('mousedown', function(e){
+      const grip = e.target.closest('.dl-resizer');
+      if (!grip) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const th = grip.closest('.dl-th');
+      if (!th) return;
+      _resizeState = {
+        key: grip.getAttribute('data-resize'),
+        startX: e.clientX,
+        startWidth: th.offsetWidth,
+        grip: grip,
+      };
+      grip.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+    document.addEventListener('mousemove', function(e){
+      if (!_resizeState) return;
+      const dx = e.clientX - _resizeState.startX;
+      const w = Math.max(40, _resizeState.startWidth + dx);
+      _colWidths[_resizeState.key] = w + 'px';
+      // Live update: zoek de col-index in actieve kolommen en pas style toe
+      const tbl = root.querySelector('.dl-tbl');
+      const colgroup = tbl && tbl.querySelector('colgroup');
+      if (!colgroup) return;
+      const cols = _getActiveCols();
+      const colEls = colgroup.querySelectorAll('col');
+      cols.forEach(function(c, i){
+        if (colEls[i]) colEls[i].style.width = c.w;
+      });
+    });
+    document.addEventListener('mouseup', function(){
+      if (!_resizeState) return;
+      _resizeState.grip.classList.remove('active');
+      _resizeState = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      _saveColsConfig();
     });
   }
 

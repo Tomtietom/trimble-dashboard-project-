@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<title>Cockpit — mockup nieuwe indeling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --af:#D4821A;--af2:#8a5410;--afl:#F5E6D6;
+  --dk:#222;--gr:#F5F0EA;
+  --g1:#F9F9F9;--g2:#F5F0EA;--g3:#b8b5ad;--g4:#7F8C8D;--g5:#555555;
+  --hl-light:#e8e2d8;--hl:#d6cdc0;
+  --warn:#c84a2f;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;--r-pill:999px;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;
+  --fs-xs:11px;--fs-sm:12px;--fs-md:13px;--fs-lg:15px;--fs-xl:18px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--gr);font-family:'Poppins',sans-serif;color:var(--dk)}
+h1,h2,h3{font-family:'Montserrat',sans-serif;margin:0}
+h2{font-size:22px;font-weight:700;letter-spacing:-0.02em}
+em{font-style:normal;color:var(--af)}
+.overline{font-family:'Poppins',sans-serif;font-size:var(--fs-sm);font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--af);margin-bottom:var(--s3)}
+
+/* Header */
+.topbar{background:var(--dk);color:#fff;padding:var(--s3) var(--s5);display:flex;align-items:center;gap:var(--s3)}
+.brand{font-family:'Montserrat',sans-serif;font-size:var(--fs-lg);font-weight:700;display:flex;align-items:center;gap:var(--s2)}
+.brand .sub{font-weight:500;font-size:var(--fs-sm);color:rgba(255,255,255,.7);padding-left:var(--s3);border-left:1px solid rgba(255,255,255,.2)}
+.pill{padding:4px 10px;border-radius:var(--r-pill);font-size:var(--fs-sm);font-weight:600;background:var(--af);color:#fff;margin-left:auto}
+.user-info{display:flex;align-items:center;gap:var(--s3);font-size:var(--fs-sm);color:rgba(255,255,255,.85)}
+
+/* Wrap + sec */
+.wrap{max-width:1100px;margin:0 auto;padding:var(--s5)}
+.sec{margin-bottom:var(--s6)}
+.sec-head{margin-bottom:var(--s4)}
+
+/* Cockpit-tabs (top-bar nav) */
+.cp-tabs{display:flex;gap:var(--s2);background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);padding:var(--s2);margin-bottom:var(--s5)}
+.cp-tab{flex:1;padding:10px 14px;border:0;background:transparent;border-radius:var(--r-sm);font:600 var(--fs-md) 'Poppins',sans-serif;color:var(--g5);cursor:pointer;transition:background .15s,color .15s}
+.cp-tab:hover{background:var(--gr);color:var(--dk)}
+.cp-tab.active{background:var(--af);color:#fff}
+
+/* COMPACTE STATS — minder dominant dan voor */
+.compact-stats{display:flex;gap:var(--s5);background:#fff;border-radius:var(--r-lg);padding:var(--s4) var(--s5);margin-bottom:var(--s5);box-shadow:0 4px 20px rgba(34,34,34,.04)}
+.compact-stat{display:flex;flex-direction:column;gap:2px}
+.compact-stat .v{font-family:'Montserrat',sans-serif;font-size:24px;font-weight:700;color:var(--dk);line-height:1}
+.compact-stat .l{font-size:var(--fs-sm);color:var(--g4);font-weight:500}
+.compact-stat.region .v{font-size:16px;padding-top:6px}
+
+/* Werk-data: 2-koloms grid, nu BOVEN tegels */
+.ctx-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s5);margin-bottom:var(--s5)}
+.ctx-col{background:#fff;border-radius:var(--r-lg);padding:var(--s5);box-shadow:0 4px 20px rgba(34,34,34,.04)}
+.ctx-col .overline{margin-bottom:var(--s2)}
+.ctx-col h2{font-size:var(--fs-xl);margin-bottom:var(--s3)}
+
+/* Lijsten in widgets */
+.activity-item,.todo-item,.release-item{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--hl-light);font-size:var(--fs-md)}
+.activity-item:last-child,.todo-item:last-child,.release-item:last-child{border-bottom:none}
+.ac-ico{font-size:18px;width:24px;text-align:center;color:var(--af)}
+.name{flex:1;color:var(--dk);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{color:var(--g4);font-size:var(--fs-sm);white-space:nowrap}
+.tag{background:var(--afl);color:var(--af2);padding:2px 8px;border-radius:var(--r-sm);font-size:var(--fs-xs);font-weight:600}
+.activity-empty{color:var(--g4);font-style:italic;padding:var(--s3) 0;font-size:var(--fs-md)}
+
+/* TEGELS — compacter en onderaan */
+.tiles-section{background:#fff;border-radius:var(--r-lg);padding:var(--s5);box-shadow:0 4px 20px rgba(34,34,34,.04)}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s4);margin-top:var(--s4)}
+.tile{background:var(--g1);border:1px solid transparent;border-radius:var(--r-md);padding:var(--s4);display:flex;flex-direction:column;gap:var(--s2);cursor:pointer;transition:border-color .2s,background .2s;text-align:left;font-family:'Poppins',sans-serif}
+.tile:hover{border-color:var(--af);background:#fff}
+.tile-icon{width:36px;height:36px;border-radius:var(--r-sm);background:var(--afl);color:var(--af);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.tile-title{font-weight:700;font-size:var(--fs-md);color:var(--dk);font-family:'Montserrat',sans-serif}
+.tile-stat{font-size:var(--fs-sm);color:var(--af);font-weight:600;margin-top:auto;padding-top:var(--s2);border-top:1px solid var(--hl-light)}
+
+/* Annotaties bovenop voor de mockup-uitleg */
+.note{background:#fff8e6;border-left:4px solid var(--af);padding:var(--s3) var(--s4);margin-bottom:var(--s5);border-radius:var(--r-sm);font-size:var(--fs-md);color:var(--g5)}
+.note strong{color:var(--dk)}
+
+@media (max-width:900px){
+  .ctx-grid{grid-template-columns:1fr}
+  .tiles{grid-template-columns:repeat(2,1fr)}
+  .compact-stats{flex-wrap:wrap;gap:var(--s4)}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">At Fielt Cockpit <span class="sub">Grip op projectinformatie</span></div>
+  <div class="user-info">tom@atfielt.nl</div>
+  <span class="pill">Admin</span>
+</header>
+
+<main class="wrap">
+
+  <div class="note">
+    <strong>Mockup-toelichting</strong> — Volgorde geherindeeld: nav-tabs &rarr; compacte stats &rarr; werk-data eerst (2-koloms) &rarr; extensies onderaan als &ldquo;quick start&rdquo;. De grote tegels op het oude dashboard zijn vervangen door een compacte tegel-strip onderaan; de top-bar tabs blijven de primaire navigatie.
+  </div>
+
+  <!-- Top-bar tabs blijven zoals ze waren -->
+  <nav class="cp-tabs">
+    <button class="cp-tab active">Dashboard</button>
+    <button class="cp-tab">Documentenlijst</button>
+    <button class="cp-tab">Rechten</button>
+    <button class="cp-tab">Upload</button>
+    <button class="cp-tab">Project Dashboard</button>
+  </nav>
+
+  <!-- 1. Compacte projectstats (was: groot "Project in één oogopslag" blok) -->
+  <div class="compact-stats">
+    <div class="compact-stat"><div class="v">6</div><div class="l">Leden</div></div>
+    <div class="compact-stat"><div class="v">8</div><div class="l">Mappen</div></div>
+    <div class="compact-stat"><div class="v">3</div><div class="l">Groepen</div></div>
+    <div class="compact-stat region"><div class="v">Europa</div><div class="l">Regio</div></div>
+  </div>
+
+  <!-- 2. Werk-data eerst — 3 ctx-grids -->
+  <div class="ctx-grid">
+    <div class="ctx-col">
+      <div class="overline">Recent gewijzigd</div>
+      <h2>Laatste <em>bestanden</em></h2>
+      <div class="activity-item"><span class="ac-ico">&#9776;</span><span class="name">001 Vergaderverslag wk19.pdf</span><span class="meta">vandaag 14:32</span></div>
+      <div class="activity-item"><span class="ac-ico">&#9776;</span><span class="name">Bouwtekening niveau 3.dwg</span><span class="meta">gisteren</span></div>
+      <div class="activity-item"><span class="ac-ico">&#9776;</span><span class="name">Specs installatie.docx</span><span class="meta">9 mei</span></div>
+      <div class="activity-item"><span class="ac-ico">&#9776;</span><span class="name">Brandscan rapport.pdf</span><span class="meta">8 mei</span></div>
+    </div>
+    <div class="ctx-col">
+      <div class="overline">To-do's</div>
+      <h2>Open <em>taken</em></h2>
+      <div class="todo-item"><span class="tag">Hoog</span><span class="name">Review tekening 3A</span><span class="meta">due 13 mei</span></div>
+      <div class="todo-item"><span class="tag">Medium</span><span class="name">Goedkeuring installatieplan</span><span class="meta">due 15 mei</span></div>
+      <div class="activity-empty">Geen verdere openstaande taken</div>
+    </div>
+  </div>
+
+  <div class="ctx-grid">
+    <div class="ctx-col">
+      <div class="overline">Uploads</div>
+      <h2>Laatst <em>geüpload</em></h2>
+      <div class="activity-item"><span class="ac-ico">&#8593;</span><span class="name">Specs HVAC v3.pdf</span><span class="meta">vandaag</span></div>
+      <div class="activity-item"><span class="ac-ico">&#8593;</span><span class="name">3D-model west.ifc</span><span class="meta">gisteren</span></div>
+      <div class="activity-item"><span class="ac-ico">&#8593;</span><span class="name">Brandscan rapport.pdf</span><span class="meta">8 mei</span></div>
+    </div>
+    <div class="ctx-col">
+      <div class="overline">Gedeelde links</div>
+      <h2>Open <em>shares</em></h2>
+      <div class="activity-item"><span class="ac-ico">&#128279;</span><span class="name">Bouwteam-pakket</span><span class="meta">3 ontvangers, &#8734;</span></div>
+      <div class="activity-item"><span class="ac-ico">&#128279;</span><span class="name">Specs naar onderaannemer</span><span class="meta">2 ontvangers, vervalt 20 mei</span></div>
+    </div>
+  </div>
+
+  <div class="ctx-grid">
+    <div class="ctx-col">
+      <div class="overline">Releases</div>
+      <h2>Recente <em>releases</em></h2>
+      <div class="release-item"><span class="tag">v1.4</span><span class="name">Definitief ontwerp BVO</span><span class="meta">7 mei</span></div>
+      <div class="release-item"><span class="tag">v1.3</span><span class="name">Concept tekeningen</span><span class="meta">2 mei</span></div>
+    </div>
+    <div class="ctx-col">
+      <div class="overline">Favorieten</div>
+      <h2><em>Favoriete</em> mappen</h2>
+      <div class="activity-item"><span class="ac-ico">&#9733;</span><span class="name">Bouwteam / Vergaderingen</span><span class="meta">12 bestanden</span></div>
+      <div class="activity-item"><span class="ac-ico">&#9733;</span><span class="name">02 Tekeningen / Bouw</span><span class="meta">87 bestanden</span></div>
+      <div class="activity-empty">Klik op een ster bij een map om hier toe te voegen.</div>
+    </div>
+  </div>
+
+  <!-- 3. Tegels onderaan — quick-start, compacter -->
+  <div class="tiles-section">
+    <div class="overline">Aan de slag</div>
+    <h2>Open een <em>extensie</em></h2>
+    <div class="tiles">
+      <button class="tile">
+        <div class="tile-icon">&#9636;</div>
+        <div class="tile-title">Project Dashboard</div>
+        <div class="tile-stat">72 projecten klaar</div>
+      </button>
+      <button class="tile">
+        <div class="tile-icon">&#9776;</div>
+        <div class="tile-title">Documentenlijst</div>
+        <div class="tile-stat">860 docs klaar</div>
+      </button>
+      <button class="tile">
+        <div class="tile-icon">&#128274;</div>
+        <div class="tile-title">Rechten Viewer</div>
+        <div class="tile-stat">785 mappen klaar</div>
+      </button>
+      <button class="tile">
+        <div class="tile-icon">&#8593;</div>
+        <div class="tile-title">Upload</div>
+        <div class="tile-stat">786 mappen klaar</div>
+      </button>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>

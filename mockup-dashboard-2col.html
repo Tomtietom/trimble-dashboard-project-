@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<title>Cockpit — mockup 2-koloms indeling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --af:#D4821A;--af2:#8a5410;--afl:#F5E6D6;
+  --dk:#222;--gr:#F5F0EA;
+  --g1:#F9F9F9;--g2:#F5F0EA;--g3:#b8b5ad;--g4:#7F8C8D;--g5:#555555;
+  --hl-light:#e8e2d8;--hl:#d6cdc0;
+  --warn:#c84a2f;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;--r-pill:999px;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;
+  --fs-xs:11px;--fs-sm:12px;--fs-md:13px;--fs-lg:15px;--fs-xl:18px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--gr);font-family:'Poppins',sans-serif;color:var(--dk)}
+h1,h2,h3{font-family:'Montserrat',sans-serif;margin:0}
+h2{font-size:22px;font-weight:700;letter-spacing:-0.02em}
+em{font-style:normal;color:var(--af)}
+.overline{font-family:'Poppins',sans-serif;font-size:var(--fs-sm);font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--af);margin-bottom:var(--s3)}
+
+/* Header */
+.topbar{background:var(--dk);color:#fff;padding:var(--s3) var(--s5);display:flex;align-items:center;gap:var(--s3)}
+.brand{font-family:'Montserrat',sans-serif;font-size:var(--fs-lg);font-weight:700;display:flex;align-items:center;gap:var(--s2)}
+.brand .sub{font-weight:500;font-size:var(--fs-sm);color:rgba(255,255,255,.7);padding-left:var(--s3);border-left:1px solid rgba(255,255,255,.2)}
+.pill{padding:4px 10px;border-radius:var(--r-pill);font-size:var(--fs-sm);font-weight:600;background:var(--af);color:#fff;margin-left:auto}
+.user-info{display:flex;align-items:center;gap:var(--s3);font-size:var(--fs-sm);color:rgba(255,255,255,.85)}
+
+/* Wrap + sec */
+.wrap{max-width:1300px;margin:0 auto;padding:var(--s5)}
+
+/* Cockpit-tabs (top-bar nav) */
+.cp-tabs{display:flex;gap:var(--s2);background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);padding:var(--s2);margin-bottom:var(--s5)}
+.cp-tab{flex:1;padding:10px 14px;border:0;background:transparent;border-radius:var(--r-sm);font:600 var(--fs-md) 'Poppins',sans-serif;color:var(--g5);cursor:pointer;transition:background .15s,color .15s}
+.cp-tab:hover{background:var(--gr);color:var(--dk)}
+.cp-tab.active{background:var(--af);color:#fff}
+
+/* Compacte stats — boven de hoofd-grid */
+.compact-stats{display:flex;gap:var(--s5);background:#fff;border-radius:var(--r-lg);padding:var(--s4) var(--s5);margin-bottom:var(--s5);box-shadow:0 4px 20px rgba(34,34,34,.04)}
+.compact-stat{display:flex;flex-direction:column;gap:2px}
+.compact-stat .v{font-family:'Montserrat',sans-serif;font-size:24px;font-weight:700;color:var(--dk);line-height:1}
+.compact-stat .l{font-size:var(--fs-sm);color:var(--g4);font-weight:500}
+.compact-stat.region .v{font-size:16px;padding-top:6px}
+
+/* HOOFDLAYOUT: 2-koloms grid */
+.dash-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:var(--s5);align-items:start}
+
+/* Linker kolom — werk-data, stacked */
+.work-col{display:flex;flex-direction:column;gap:var(--s5)}
+.work-col .ctx-pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--s5)}
+.ctx-col{background:#fff;border-radius:var(--r-lg);padding:var(--s5);box-shadow:0 4px 20px rgba(34,34,34,.04)}
+.ctx-col .overline{margin-bottom:var(--s2)}
+.ctx-col h2{font-size:var(--fs-xl);margin-bottom:var(--s3)}
+
+/* Lijsten */
+.activity-item,.todo-item,.release-item{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--hl-light);font-size:var(--fs-md)}
+.activity-item:last-child,.todo-item:last-child,.release-item:last-child{border-bottom:none}
+.ac-ico{font-size:18px;width:24px;text-align:center;color:var(--af)}
+.name{flex:1;color:var(--dk);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{color:var(--g4);font-size:var(--fs-sm);white-space:nowrap}
+.tag{background:var(--afl);color:var(--af2);padding:2px 8px;border-radius:var(--r-sm);font-size:var(--fs-xs);font-weight:600}
+.activity-empty{color:var(--g4);font-style:italic;padding:var(--s3) 0;font-size:var(--fs-md)}
+
+/* Rechter kolom — tegels verticaal gestapeld */
+.tiles-col{display:flex;flex-direction:column;gap:var(--s4);position:sticky;top:var(--s5)}
+.tiles-col-head{padding:0 var(--s2)}
+.tile-stack{background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);padding:var(--s4);cursor:pointer;display:flex;align-items:flex-start;gap:var(--s3);transition:transform .15s,box-shadow .15s,border-color .15s;text-align:left;font-family:'Poppins',sans-serif}
+.tile-stack:hover{transform:translateX(2px);border-color:var(--af);box-shadow:0 8px 24px rgba(0,0,0,.06)}
+.tile-stack .icon{width:40px;height:40px;border-radius:var(--r-sm);background:var(--afl);color:var(--af);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.tile-stack .body{flex:1;min-width:0}
+.tile-stack .title{font-family:'Montserrat',sans-serif;font-weight:700;font-size:var(--fs-md);color:var(--dk);margin-bottom:2px}
+.tile-stack .desc{font-size:var(--fs-sm);color:var(--g4);line-height:1.45;margin-bottom:var(--s2)}
+.tile-stack .stat{font-size:var(--fs-xs);color:var(--af);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.tile-stack.disabled{opacity:.5;cursor:not-allowed}
+
+/* Mockup-uitleg */
+.note{background:#fff8e6;border-left:4px solid var(--af);padding:var(--s3) var(--s4);margin-bottom:var(--s5);border-radius:var(--r-sm);font-size:var(--fs-md);color:var(--g5)}
+.note strong{color:var(--dk)}
+
+@media (max-width:1024px){
+  .dash-grid{grid-template-columns:1fr}
+  .tiles-col{position:static}
+  .work-col .ctx-pair{grid-template-columns:1fr}
+}
+@media (max-width:600px){
+  .compact-stats{flex-wrap:wrap;gap:var(--s4)}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">At Fielt Cockpit <span class="sub">Grip op projectinformatie</span></div>
+  <div class="user-info">tom@atfielt.nl</div>
+  <span class="pill">Admin</span>
+</header>
+
+<main class="wrap">
+
+  <div class="note">
+    <strong>Mockup-toelichting — 2-koloms variant</strong> — Hoofdlayout: links (~60%) werk-data, rechts (~40%) tegels verticaal gestapeld. Alles boven de vouw op desktop, geen scrollen voor kerngegevens. Onder 1024px valt de rechterkolom onder de linker. Tegels hebben hier weer ruimte voor beschrijvingen omdat ze in de smalle kolom verticaal staan.
+  </div>
+
+  <nav class="cp-tabs">
+    <button class="cp-tab active">Dashboard</button>
+    <button class="cp-tab">Documentenlijst</button>
+    <button class="cp-tab">Rechten</button>
+    <button class="cp-tab">Upload</button>
+    <button class="cp-tab">Project Dashboard</button>
+  </nav>
+
+  <div class="compact-stats">
+    <div class="compact-stat"><div class="v">6</div><div class="l">Leden</div></div>
+    <div class="compact-stat"><div class="v">8</div><div class="l">Mappen</div></div>
+    <div class="compact-stat"><div class="v">3</div><div class="l">Groepen</div></div>
+    <div class="compact-stat region"><div class="v">Europa</div><div class="l">Regio</div></div>
+  </div>
+
+  <div class="dash-grid">
+
+    <!-- LINKER kolom: werk-data -->
+    <div class="work-col">
+
+      <div class="ctx-pair">
+        <div class="ctx-col">
+          <div class="overline">Recent gewijzigd</div>
+          <h2>Laatste <em>bestanden</em></h2>
+          <div class="activity-item"><span class="ac-ico">&#9776;</span><span class="name">001 Vergaderverslag wk19.pdf</span><span class="meta">vandaag 14:32</span></div>
+          <div class="activity-item"><span class="ac-ico">&#9776;</span><span class="name">Bouwtekening niveau 3.dwg</span><span class="meta">gisteren</span></div>
+          <div class="activity-item"><span class="ac-ico">&#9776;</span><span class="name">Specs installatie.docx</span><span class="meta">9 mei</span></div>
+          <div class="activity-item"><span class="ac-ico">&#9776;</span><span class="name">Brandscan rapport.pdf</span><span class="meta">8 mei</span></div>
+        </div>
+        <div class="ctx-col">
+          <div class="overline">To-do's</div>
+          <h2>Open <em>taken</em></h2>
+          <div class="todo-item"><span class="tag">Hoog</span><span class="name">Review tekening 3A</span><span class="meta">13 mei</span></div>
+          <div class="todo-item"><span class="tag">Medium</span><span class="name">Goedkeuring installatieplan</span><span class="meta">15 mei</span></div>
+          <div class="activity-empty">Geen verdere openstaande taken</div>
+        </div>
+      </div>
+
+      <div class="ctx-pair">
+        <div class="ctx-col">
+          <div class="overline">Uploads</div>
+          <h2>Laatst <em>geüpload</em></h2>
+          <div class="activity-item"><span class="ac-ico">&#8593;</span><span class="name">Specs HVAC v3.pdf</span><span class="meta">vandaag</span></div>
+          <div class="activity-item"><span class="ac-ico">&#8593;</span><span class="name">3D-model west.ifc</span><span class="meta">gisteren</span></div>
+          <div class="activity-item"><span class="ac-ico">&#8593;</span><span class="name">Brandscan rapport.pdf</span><span class="meta">8 mei</span></div>
+        </div>
+        <div class="ctx-col">
+          <div class="overline">Gedeelde links</div>
+          <h2>Open <em>shares</em></h2>
+          <div class="activity-item"><span class="ac-ico">&#128279;</span><span class="name">Bouwteam-pakket</span><span class="meta">3, &#8734;</span></div>
+          <div class="activity-item"><span class="ac-ico">&#128279;</span><span class="name">Specs naar onderaannemer</span><span class="meta">2, t/m 20 mei</span></div>
+        </div>
+      </div>
+
+      <div class="ctx-pair">
+        <div class="ctx-col">
+          <div class="overline">Releases</div>
+          <h2>Recente <em>releases</em></h2>
+          <div class="release-item"><span class="tag">v1.4</span><span class="name">Definitief ontwerp BVO</span><span class="meta">7 mei</span></div>
+          <div class="release-item"><span class="tag">v1.3</span><span class="name">Concept tekeningen</span><span class="meta">2 mei</span></div>
+        </div>
+        <div class="ctx-col">
+          <div class="overline">Favorieten</div>
+          <h2><em>Favoriete</em> mappen</h2>
+          <div class="activity-item"><span class="ac-ico">&#9733;</span><span class="name">Bouwteam / Vergaderingen</span><span class="meta">12</span></div>
+          <div class="activity-item"><span class="ac-ico">&#9733;</span><span class="name">02 Tekeningen / Bouw</span><span class="meta">87</span></div>
+          <div class="activity-empty">Klik op een ster bij een map.</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RECHTER kolom: tegels verticaal gestapeld (sticky) -->
+    <aside class="tiles-col">
+      <div class="tiles-col-head">
+        <div class="overline">Aan de slag</div>
+        <h2>Open een <em>extensie</em></h2>
+      </div>
+
+      <button class="tile-stack">
+        <div class="icon">&#9636;</div>
+        <div class="body">
+          <div class="title">Project Dashboard</div>
+          <div class="desc">Overzicht van al je TC-projecten met rollen, leden en activiteit.</div>
+          <div class="stat">72 projecten klaar</div>
+        </div>
+      </button>
+
+      <button class="tile-stack">
+        <div class="icon">&#9776;</div>
+        <div class="body">
+          <div class="title">Documentenlijst Viewer</div>
+          <div class="desc">Lijst met metadata, filters, versies en exporteerbare overzichten.</div>
+          <div class="stat">860 docs klaar</div>
+        </div>
+      </button>
+
+      <button class="tile-stack">
+        <div class="icon">&#128274;</div>
+        <div class="body">
+          <div class="title">Rechten Viewer</div>
+          <div class="desc">Visueel overzicht van maprechten, groepen en gebruikers.</div>
+          <div class="stat">785 mappen klaar</div>
+        </div>
+      </button>
+
+      <button class="tile-stack">
+        <div class="icon">&#8593;</div>
+        <div class="body">
+          <div class="title">Projectinfo toevoegen</div>
+          <div class="desc">Begeleide upload-wizard: documenten met metadata op de juiste plek.</div>
+          <div class="stat">786 mappen klaar</div>
+        </div>
+      </button>
+
+    </aside>
+
+  </div>
+
+</main>
+</body>
+</html>
