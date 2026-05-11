@@ -5825,6 +5825,12 @@ const RV = (function(){
     if (!root || !_data) return;
     const main = root.querySelector('#rv-content');
     if (!main) return;
+
+    // Bewaar zoekveld-focus + cursor-positie voor restore na re-render
+    const prevSearch = root.querySelector('#rv-search');
+    const wasFocused = prevSearch && document.activeElement === prevSearch;
+    const cursorPos = wasFocused ? prevSearch.selectionStart : null;
+
     if (_currentView === 'dashboard') main.innerHTML = _renderDashboard();
     else if (_currentView === 'mappen') main.innerHTML = _renderMappen();
     else if (_currentView === 'groepen') main.innerHTML = _renderGroepen();
@@ -5834,6 +5840,17 @@ const RV = (function(){
       t.classList.toggle('active', t.getAttribute('data-rv-view') === _currentView);
     });
     _bindContentEvents();
+
+    // Restore focus + cursor zodat typen in zoekveld niet onderbroken wordt
+    if (wasFocused){
+      const newSearch = root.querySelector('#rv-search');
+      if (newSearch){
+        newSearch.focus();
+        if (cursorPos !== null){
+          try { newSearch.setSelectionRange(cursorPos, cursorPos); } catch(_){}
+        }
+      }
+    }
   }
 
   function _bindContentEvents(){
