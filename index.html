@@ -5704,15 +5704,27 @@ const RV = (function(){
   // === Render ===
   function _renderRows(access){
     if (!access) return '<div class="rv-placeholder">Selecteer links een groep of gebruiker om mappen te tonen.</div>';
-    const rows = _data.csvData.map(function(row){
+    const rootRow = _data.csvData[0];
+    const rootPath = (rootRow && rootRow.pad) || '';
+    const rootDepth = rootPath ? rootPath.split('/').length : 1;
+    const rows = _data.csvData.map(function(row, i){
       const lvl = access[row.pad];
       const cls = lvl === 'full' ? 'rv-full' : lvl === 'read' ? 'rv-read' : 'rv-none';
       const inhCls = row.inherited ? ' rv-inherited' : '';
-      const inhTitle = row.inherited ? ' title="Overgenomen van bovenliggende map"' : '';
+      const inhText = row.inherited ? ' (overgenomen)' : '';
+      const tooltip = ' title="' + _esc(row.pad) + inhText + '"';
       const badge = lvl === 'full' ? '<span class="rv-badge full">Volledig</span>'
                   : lvl === 'read' ? '<span class="rv-badge read">Lezen</span>'
                   : '<span class="rv-badge" style="background:#ddd;color:#666">Geen</span>';
-      return '<div class="rv-tree-row ' + cls + inhCls + '"' + inhTitle + '><span class="rv-pad">' + _esc(row.pad) + '</span>' + badge + '</div>';
+      if (i === 0){
+        // Project-root: header-stijl
+        return '<div class="rv-tree-row ' + cls + inhCls + '" style="font-weight:600;background:var(--gr)"' + tooltip + '>'
+          + '<span class="rv-pad">📂 ' + _esc(row.pad) + '</span>' + badge + '</div>';
+      }
+      const depth = Math.max(row.pad.split('/').length - rootDepth, 0);
+      const name = row.pad.split('/').pop();
+      return '<div class="rv-tree-row ' + cls + inhCls + '" style="padding-left:' + (10 + depth * 18) + 'px"' + tooltip + '>'
+        + '<span class="rv-pad">📁 ' + _esc(name) + '</span>' + badge + '</div>';
     }).join('');
     return rows || '<div class="rv-placeholder">Geen mappen gevonden.</div>';
   }
