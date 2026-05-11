@@ -1532,13 +1532,17 @@ async function loadDashboard(){
   $('st-region').textContent = tcRegion === 'north america' ? 'N-Amerika' : (tcRegion.charAt(0).toUpperCase()+tcRegion.slice(1));
 
   // Bepaal toegang per extensie (parallel) via hub auth() — geen blokkade-scherm in cockpit zelf.
-  // Fail-closed: license-strict — bij hub-fout geen extensie-toegang (voorkomt licentielek bij outage).
-  // Legacy hub-client zonder auth(): blijft soft-fail (toegang) — kort cache-window, breekt bestaande sessies niet.
+  // Strict whitelist: ALLEEN expliciet { allowed: true } geeft toegang. Alles anders (null,
+  // undefined, missing field, hub-error, legacy client zonder auth()) is fail-closed.
+  // Dit dicht twee fail-open gaten die een MITM/stub-client kon misbruiken om gratis te krijgen.
   await Promise.all(EXTENSIONS.map(async function(e){
     try {
-      if (typeof window.atfieltHub.auth !== 'function') { e.allowed = true; return; }
+      if (typeof window.atfieltHub.auth !== 'function'){
+        console.warn('[Cockpit] hub-client mist auth() — fail-closed voor', e.key, '(check hub-client versie)');
+        e.allowed = false; return;
+      }
       const r = await window.atfieltHub.auth(e.key);
-      e.allowed = (r && r.allowed === false) ? false : true;
+      e.allowed = !!(r && r.allowed === true);
     } catch (err) {
       console.warn('[Cockpit] auth-check faalde voor', e.key, '— fail-closed:', err.message);
       e.allowed = false;
