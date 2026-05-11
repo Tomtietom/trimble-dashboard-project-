@@ -226,8 +226,11 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .tile-stat.tile-done{color:var(--af);font-weight:600}
 .tile-stat.tile-error{color:var(--warn);font-weight:600}
 @keyframes tileSpin{to{transform:rotate(360deg)}}
-.tile{position:relative;overflow:hidden}
+.tile{position:relative;overflow:hidden;transition:transform .2s, box-shadow .2s, border-color .2s, opacity .25s}
 .tile.tile-loading{border-color:var(--afl)}
+.tile.tile-loading .tile-title,
+.tile.tile-loading .tile-desc,
+.tile.tile-loading .tile-icon{opacity:.45;transition:opacity .25s}
 .tile.tile-loading::after{
   content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
   background:linear-gradient(90deg,transparent 0%,var(--af) 50%,transparent 100%);
