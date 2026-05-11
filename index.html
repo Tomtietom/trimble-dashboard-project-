@@ -5884,8 +5884,8 @@ const DL = (function(){
     const headRow0 = root.querySelector('thead tr');
     if (headRow0) _bindThDragHandlers(headRow0);
 
-    // Kolom-resize: mousedown op grip start drag; mousemove update kolombreedte live;
-    // mouseup persisteert. Document-level handlers zodat slepen werkt over hele viewport.
+    // Kolom-resize: mousedown op grip start drag; mousemove update breedte live; mouseup persisteert.
+    // Tijdens resize zetten we draggable=false op de TH, anders kan HTML5-drag de resize stelen.
     let _resizeState = null;
     root.addEventListener('mousedown', function(e){
       const grip = e.target.closest('.dl-resizer');
@@ -5894,11 +5894,14 @@ const DL = (function(){
       e.preventDefault();
       const th = grip.closest('.dl-th');
       if (!th) return;
+      // Voorkom HTML5-drag-interferentie: tijdelijk uitschakelen
+      th.setAttribute('draggable', 'false');
       _resizeState = {
         key: grip.getAttribute('data-resize'),
         startX: e.clientX,
         startWidth: th.offsetWidth,
         grip: grip,
+        th: th,
       };
       grip.classList.add('active');
       document.body.style.cursor = 'col-resize';
@@ -5909,24 +5912,58 @@ const DL = (function(){
       const dx = e.clientX - _resizeState.startX;
       const w = Math.max(40, _resizeState.startWidth + dx);
       _colWidths[_resizeState.key] = w + 'px';
-      // Live update: zoek de col-index in actieve kolommen en pas style toe
+      // Live update: alleen het ene col-element aanpassen waar geresized wordt
       const tbl = root.querySelector('.dl-tbl');
       const colgroup = tbl && tbl.querySelector('colgroup');
       if (!colgroup) return;
       const cols = _getActiveCols();
       const colEls = colgroup.querySelectorAll('col');
-      cols.forEach(function(c, i){
-        if (colEls[i]) colEls[i].style.width = c.w;
-      });
+      const idx = cols.findIndex(function(c){ return c.k === _resizeState.key; });
+      if (idx >= 0 && colEls[idx]) colEls[idx].style.width = w + 'px';
     });
     document.addEventListener('mouseup', function(){
       if (!_resizeState) return;
+      if (_resizeState.th) _resizeState.th.setAttribute('draggable', 'true');
       _resizeState.grip.classList.remove('active');
       _resizeState = null;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       _saveColsConfig();
     });
+
+    // Dubbelklik op grip → auto-fit: meet breedste content via canvas en zet kolombreedte.
+    root.addEventListener('dblclick', function(e){
+      const grip = e.target.closest('.dl-resizer');
+      if (!grip) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const k = grip.getAttribute('data-resize');
+      if (!k) return;
+      const w = _measureColWidth(k);
+      _colWidths[k] = w + 'px';
+      _saveColsConfig();
+      _renderTableHeader();
+      _renderTable();
+    });
+  }
+
+  // Meet breedste content (header + waarden) in kolom via canvas. Sample max 500 docs.
+  // Padding-toeslag: 12px links + 12px rechts + 8px grip + 14px sort-indicator = ~46.
+  function _measureColWidth(key){
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = '14px "Poppins", sans-serif';
+    const col = ALL_COLS.find(function(c){ return c.k === key; });
+    let maxW = col ? ctx.measureText(col.l).width : 0;
+    const sample = _docs.slice(0, 500);
+    for (const d of sample){
+      let v = d[key];
+      if (key === '_created' || key === '_modified') v = _formatDate(v);
+      const text = String(v == null ? '' : v);
+      const w = ctx.measureText(text).width;
+      if (w > maxW) maxW = w;
+    }
+    return Math.min(Math.max(80, Math.ceil(maxW + 46)), 500);
   }
 
   // Public API
