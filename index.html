@@ -4517,9 +4517,17 @@ const DL = (function(){
   // === PSet metadata-loader (iter A) ===
   // Bulk-fetch via /libs/{libId}/psets met cursor-pagination (zelfde patroon als
   // standalone tc-viewer regel 1693-1740). Match instances op _vid en update _docs.
-  async function _dlFetchPSet(path){
+  async function _dlFetchPSet(path, attempt){
+    attempt = attempt || 0;
     const headers = { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' };
     const r = await fetch(_getPsetBase() + path, { headers: headers });
+    // 429/5xx: respecteer Retry-After of exp-backoff, max 2 retries
+    if ((r.status === 429 || (r.status >= 500 && r.status < 600)) && attempt < 2){
+      const ra = parseInt(r.headers.get('Retry-After') || '0', 10);
+      const wait = ra > 0 ? ra * 1000 : Math.min(4000, 500 * Math.pow(2, attempt));
+      await new Promise(function(res){ setTimeout(res, wait); });
+      return _dlFetchPSet(path, attempt + 1);
+    }
     if (!r.ok){
       const txt = await r.text().catch(function(){ return ''; });
       throw new Error('PSet ' + r.status + ' ' + path + ' — ' + txt.slice(0, 200));
@@ -4627,7 +4635,7 @@ const DL = (function(){
     _deepScanState = { totaal: todo.length, gedaan: 0, succes: 0, leeg: 0, fout: 0, actief: true, startTs: Date.now() };
     _renderDeepScanIndicator();
 
-    const CONCURRENCY = 6;
+    const CONCURRENCY = 10;
     const RERENDER_EVERY = 50;
     let idx = 0;
     let sinceLastRender = 0;
