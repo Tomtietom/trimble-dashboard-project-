@@ -81,6 +81,10 @@ em{font-style:normal;color:var(--af)}
 /* Mockup-uitleg */
 .note{background:#fff8e6;border-left:4px solid var(--af);padding:var(--s3) var(--s4);margin-bottom:var(--s5);border-radius:var(--r-sm);font-size:var(--fs-md);color:var(--g5)}
 .note strong{color:var(--dk)}
+.variant-bar{padding:var(--s2) var(--s5);border-bottom:1px solid var(--hl-light);font-size:var(--fs-sm);color:var(--g5);display:flex;gap:var(--s3);align-items:center;background:#fff}
+.variant-bar a{color:var(--af);font-weight:600;text-decoration:none}
+.variant-bar a:hover{text-decoration:underline}
+.variant-bar strong{color:var(--dk)}
 
 @media (max-width:1024px){
   .dash-grid{grid-template-columns:1fr}
@@ -99,6 +103,14 @@ em{font-style:normal;color:var(--af)}
   <div class="user-info">tom@atfielt.nl</div>
   <span class="pill">Admin</span>
 </header>
+<div class="variant-bar">
+  <strong>Variant 2:</strong> 2-koloms &mdash;
+  <a href="mockup-dashboard-baseline.html">3. baseline</a> &middot;
+  <a href="mockup-dashboard.html">1. info-first</a> &middot;
+  <a href="mockup-dashboard-2col.html">2. 2-koloms</a> &middot;
+  <a href="mockup-dashboard-sidebar.html">4. sidebar</a> &middot;
+  <a href="mockup-dashboard-bento.html">5. bento</a>
+</div>
 
 <main class="wrap">
 
