@@ -5381,6 +5381,7 @@ const RV = (function(){
   let _searchQuery = '';
   let _expandedPaths = new Set();   // welke mappen zijn uitgeklapt (collapse-state)
   let _hasChildrenIndex = new Set(); // welke paden hebben sub-mappen
+  let _lastRenderedView = null;     // voor scroll-restore: alleen bij hetzelfde view herstellen
 
   function getRoot(){ return document.getElementById('view-rechten-viewer'); }
 
@@ -5914,6 +5915,13 @@ const RV = (function(){
     const wasFocused = prevSearch && document.activeElement === prevSearch;
     const cursorPos = wasFocused ? prevSearch.selectionStart : null;
 
+    // Bewaar scroll-positie van sidebar + hoofdpaneel — alleen herstellen als view niet wijzigt
+    const isSameView = _lastRenderedView === _currentView;
+    const prevList = root.querySelector('.rv-list');
+    const prevMain = root.querySelector('.rv-main');
+    const prevListScroll = prevList ? prevList.scrollTop : 0;
+    const prevMainScroll = prevMain ? prevMain.scrollTop : 0;
+
     if (_currentView === 'dashboard') main.innerHTML = _renderDashboard();
     else if (_currentView === 'mappen') main.innerHTML = _renderMappen();
     else if (_currentView === 'groepen') main.innerHTML = _renderGroepen();
@@ -5934,6 +5942,15 @@ const RV = (function(){
         }
       }
     }
+
+    // Restore scroll-posities zodat klikken op gebruiker/groep niet naar boven springt
+    if (isSameView){
+      const newList = root.querySelector('.rv-list');
+      const newMain = root.querySelector('.rv-main');
+      if (newList) newList.scrollTop = prevListScroll;
+      if (newMain) newMain.scrollTop = prevMainScroll;
+    }
+    _lastRenderedView = _currentView;
   }
 
   function _bindContentEvents(){
