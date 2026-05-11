@@ -2462,6 +2462,7 @@ const PD = (function(){
       injectHtml();
       loadFavs();
       if (!_isLoaded && !_isLoading) load(false);
+      else if (_isLoaded){ renderTable(); updateStats(); }
     },
     prefetch: function(onProgress){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'project-dashboard'; });
@@ -4361,6 +4362,7 @@ const PU = (function(){
       }
       injectHtml();
       if (!_isLoaded && !_isLoading) loadFolders().then(_updateFolderHeader);
+      else if (_isLoaded){ _updateFolderHeader(); renderQueue(); }
       if (!_configLoaded && !_configLoading) _loadUploadConfig();
     },
     prefetch: function(onProgress){
@@ -5668,6 +5670,7 @@ const DL = (function(){
       }
       injectHtml();
       if (!_isLoaded && !_isLoading) _loadDocs();
+      else if (_isLoaded) _renderTable();
     },
     prefetch: function(onProgress){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
@@ -6502,6 +6505,11 @@ const RV = (function(){
       }
       injectHtml();
       if (!_isLoaded && !_isLoading) _loadData();
+      else if (_isLoaded){
+        const ld = getRoot().querySelector('#rv-loading');
+        if (ld) ld.style.display = 'none';
+        _render();
+      }
     },
     prefetch: function(onProgress){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'rechten-viewer'; });
