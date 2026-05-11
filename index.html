@@ -4548,11 +4548,25 @@ const DL = (function(){
           }
         }
         let nextToken = null;
-        if (r && r.links && r.links.next) nextToken = r.links.next.skiptoken || r.links.next.skipToken || r.links.next;
+        // 1. Spec-pattern (Core API + nieuwe PSet API): links.next.href bevat URL met ?skipToken=
+        if (r && r.links && r.links.next && r.links.next.href){
+          const m = /[?&]skip[Tt]oken=([^&]+)/.exec(r.links.next.href);
+          if (m) nextToken = decodeURIComponent(m[1]);
+        }
+        // 2. Legacy PSet API field-names (defensieve fallbacks, geen whole-object meer)
+        if (!nextToken && r && r.links && r.links.next){
+          nextToken = r.links.next.skiptoken || r.links.next.skipToken || null;
+        }
         if (!nextToken && r && r.skiptoken) nextToken = r.skiptoken;
         if (!nextToken && r && r.skipToken) nextToken = r.skipToken;
         if (!nextToken && r && r.nextPageToken) nextToken = r.nextPageToken;
-        if (!nextToken || nieuwe === 0) break;
+        if (!nextToken || nieuwe === 0){
+          // Diagnostisch: loop stopt maar links.next aanwezig → cursor-veld mist nog
+          if (pages === 1 && r && r.links && r.links.next){
+            console.log('[DL] PSet pagination stopt maar links.next aanwezig — shape:', r.links.next);
+          }
+          break;
+        }
         skiptoken = String(nextToken);
         if (pages > 100) { console.warn('[DL] PSet pagination stop na 100 pages (safety)'); break; }
       }
