@@ -1261,6 +1261,7 @@ async function tcFetchFolderItems(folderId){
     skipToken = m ? decodeURIComponent(m[1]) : null;
     if (!skipToken) break;
   }
+  if (safety > 1) console.log('[TC] folder', folderId, '→', all.length, 'items in', safety, 'pages');
   return all;
 }
 
@@ -2582,6 +2583,7 @@ const PU = (function(){
       skipToken = m ? decodeURIComponent(m[1]) : null;
       if (!skipToken) break;
     }
+    if (safety > 1) console.log('[PU] folder', folderId, '→', all.length, 'items in', safety, 'pages');
     return all;
   }
 
