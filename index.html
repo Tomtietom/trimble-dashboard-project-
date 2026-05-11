@@ -530,6 +530,12 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-subtitle{margin:var(--s1) 0 0;color:var(--g5);font-size:var(--fs-sm)}
 .dl-search{padding:8px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;min-width:280px;background:#fff}
 .dl-search:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 3px var(--afl)}
+.dl-refresh-btn{padding:8px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;background:#fff;color:var(--dk);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s, background .15s}
+.dl-refresh-btn:hover:not(:disabled){border-color:var(--af);background:var(--afl)}
+.dl-refresh-btn:disabled{opacity:.6;cursor:wait}
+.dl-refresh-icon{font-size:16px;line-height:1;display:inline-block}
+.dl-refresh-btn.busy .dl-refresh-icon{animation:dlSpin .8s linear infinite}
+@keyframes dlSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 .dl-loading{padding:var(--s5);text-align:center;color:var(--g5);font-size:var(--fs-sm)}
 .dl-error{background:#fee;border-left:3px solid #d00;padding:var(--s3) var(--s4);border-radius:var(--r-sm);margin-bottom:var(--s4);font-size:var(--fs-sm);color:#7a0000}
 .dl-tbl-wrap{position:relative;overflow:auto;max-height:calc(100vh - 320px);border:1px solid var(--hl-light);border-radius:var(--r-md);background:#fff}
@@ -5331,6 +5337,7 @@ const DL = (function(){
           '</div>' +
           '<div class="dl-app-head-right">' +
             '<div id="dl-view-toggle" class="dl-view-toggle"></div>' +
+            '<button type="button" id="dl-refresh" class="dl-refresh-btn" title="Cache wissen en opnieuw laden (forceert verse metadata-fetch)"><span class="dl-refresh-icon">↻</span>Vernieuwen</button>' +
             '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
           '</div>' +
         '</div>' +
@@ -5354,6 +5361,22 @@ const DL = (function(){
     _isInjected = true;
   }
 
+  // Force refresh: wis cache + reset state + herlaad. Triggert nieuwe bulk+deep-scan.
+  async function _forceRefresh(){
+    try { localStorage.removeItem(_cacheKey()); } catch(_){}
+    _docs = [];
+    _isLoaded = false;
+    _isLoading = false;
+    _hasMetaSchema = false;
+    _deepScanState = null;
+    const tbody = document.getElementById('dl-tbody');
+    if (tbody) tbody.innerHTML = '';
+    const count = document.getElementById('dl-count');
+    if (count) count.textContent = '–';
+    console.log('[DL] force refresh — cache gewist, opnieuw laden');
+    await _loadDocs();
+  }
+
   function _bindEvents(){
     const root = getRoot();
     const search = root.querySelector('#dl-search');
@@ -5364,6 +5387,19 @@ const DL = (function(){
           _searchQuery = search.value || '';
           _renderTable();
         }, 80);
+      });
+    }
+    const refresh = root.querySelector('#dl-refresh');
+    if (refresh){
+      refresh.addEventListener('click', async function(){
+        if (refresh.disabled) return;
+        refresh.classList.add('busy');
+        refresh.disabled = true;
+        try { await _forceRefresh(); }
+        finally {
+          refresh.classList.remove('busy');
+          refresh.disabled = false;
+        }
       });
     }
     root.querySelectorAll('.dl-th').forEach(function(th){
