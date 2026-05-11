@@ -4448,25 +4448,60 @@ const DL = (function(){
   // Vaste kolom-set: technische velden + 3 metadata-kolommen (iter A)
   // Bij project zonder metadata-schema (_hasMetaSchema=false) worden de 3 metadata
   // kolommen weggelaten en widths herschaald — zie _getActiveCols().
-  const COLS = [
-    { k: 'bestandsnaam',     l: 'Bestandsnaam', w: '28%' },
-    { k: 'document_status',  l: 'Status',       w: '10%' },
-    { k: 'discipline',       l: 'Discipline',   w: '10%' },
-    { k: 'project_fase',     l: 'Fase',         w: '12%' },
-    { k: '_versie',          l: 'Versie',       w: '6%'  },
-    { k: '_modified',        l: 'Gewijzigd',    w: '12%' },
-    { k: 'file_location',    l: 'Map',          w: '22%' },
+  // Alle beschikbare kolommen. bestandsnaam is fixed.
+  const ALL_COLS = [
+    { k: 'bestandsnaam',           l: 'Bestandsnaam',    w: '20%', fixed: true },
+    { k: 'document_nummer',        l: 'Doc.nr',          w: '8%' },
+    { k: 'titel',                  l: 'Omschrijving',    w: '14%' },
+    { k: 'revisie',                l: 'Rev.',            w: '5%' },
+    { k: 'document_status',        l: 'Status',          w: '8%' },
+    { k: 'project_fase',           l: 'Fase',            w: '8%' },
+    { k: 'discipline',             l: 'Discipline',      w: '8%' },
+    { k: 'bedrijf',                l: 'Bedrijf',         w: '8%' },
+    { k: 'document_datum',         l: 'Doc.datum',       w: '8%' },
+    { k: 'document_aanmaak_datum', l: 'Aanmaakdatum',    w: '8%' },
+    { k: 'bouwdeel',               l: 'Bouwdeel',        w: '7%' },
+    { k: 'bouwnummer',             l: 'Bouwnr',          w: '7%' },
+    { k: 'document_soort',         l: 'Doc.soort',       w: '8%' },
+    { k: 'contract_status',        l: 'Contract',        w: '8%' },
+    { k: 'controlestatus',         l: 'Controlestatus',  w: '8%' },
+    { k: 'controleverzoek',        l: 'Controleverzoek', w: '8%' },
+    { k: 'ifc_timestamp',          l: 'IFC timestamp',   w: '8%' },
+    { k: '_versie',                l: 'Versie',          w: '5%' },
+    { k: '_modified',              l: 'Gewijzigd',       w: '10%' },
+    { k: '_created',               l: 'Toegevoegd',      w: '10%' },
+    { k: 'file_location',          l: 'Map',             w: '15%' },
   ];
-  const META_COL_KEYS = new Set(['document_status', 'discipline', 'project_fase']);
+  const DEFAULT_VISIBLE = ['bestandsnaam', 'document_status', 'discipline', 'project_fase', '_versie', '_modified', 'file_location'];
+  // Kolommen die NIET als per-kolom filter beschikbaar zijn (vrij-tekst, datums, technical)
+  const SKIP_FILTER = new Set(['bestandsnaam', 'document_nummer', 'titel', 'revisie', 'document_datum', 'document_aanmaak_datum', '_versie', '_modified', '_created', 'file_location', 'ifc_timestamp']);
+  function _isMetaCol(k){ return !!k && k.charAt(0) !== '_' && k !== 'bestandsnaam' && k !== 'file_location'; }
   function _getActiveCols(){
-    if (_hasMetaSchema) return COLS;
-    // Geen metadata → laat de 3 kolommen weg, herschaal de rest naar 100%
-    const filtered = COLS.filter(function(c){ return !META_COL_KEYS.has(c.k); });
-    const total = filtered.reduce(function(s, c){ return s + parseFloat(c.w); }, 0);
-    const factor = 100 / total;
-    return filtered.map(function(c){
-      return { k: c.k, l: c.l, w: Math.round(parseFloat(c.w) * factor) + '%' };
-    });
+    let visible = ALL_COLS.filter(function(c){ return _visibleColKeys.has(c.k); });
+    if (!_hasMetaSchema){
+      visible = visible.filter(function(c){ return !_isMetaCol(c.k); });
+    }
+    return visible;
+  }
+  function _filterableVisibleCols(){
+    return _getActiveCols().filter(function(c){ return !SKIP_FILTER.has(c.k); });
+  }
+  function _colsConfigKey(){ return 'dl-cols-' + (tcProject && tcProject.id || 'unknown'); }
+  function _loadColsConfig(){
+    try {
+      const raw = localStorage.getItem(_colsConfigKey());
+      if (!raw) return;
+      const cfg = JSON.parse(raw);
+      if (cfg && cfg.visible && Array.isArray(cfg.visible) && cfg.visible.length){
+        _visibleColKeys = new Set(cfg.visible);
+        _visibleColKeys.add('bestandsnaam');
+      }
+    } catch(_){}
+  }
+  function _saveColsConfig(){
+    try {
+      localStorage.setItem(_colsConfigKey(), JSON.stringify({ visible: Array.from(_visibleColKeys) }));
+    } catch(_){}
   }
 
   // PSet base — region-aware via cockpit's tc-proxy (zelfde patroon als PU)
@@ -4492,7 +4527,8 @@ const DL = (function(){
   let _sortD = 'asc';
   let _searchTimer = null;
   let _searchQuery = '';
-  let _filters = { document_status: '', discipline: '', project_fase: '' };
+  let _filters = {};                          // dynamisch: { kolomKey: 'gekozen waarde', ... }
+  let _visibleColKeys = new Set(DEFAULT_VISIBLE);
   let _filterExts = new Set(); // bestandstype-chips: leeg = alle, anders alleen geselecteerde extensies
   let _viewMode = 'list';       // 'list' = vlakke tabel met groep-headers; 'tree' = split met mappen-sidebar
   let _selectedFolder = '';     // pad-prefix in tree-mode; leeg = root (alle docs)
@@ -5071,12 +5107,12 @@ const DL = (function(){
         return _filterExts.has(e);
       });
     }
-    // Metadata-filters: dropdown-state per FILTER_FIELDS
-    const activeFilters = FILTER_FIELDS.filter(function(f){ return _filters[f]; });
-    if (activeFilters.length){
+    // Metadata-filters: dynamische dropdown-state per zichtbare kolom
+    const activeFilterKeys = Object.keys(_filters).filter(function(k){ return _filters[k]; });
+    if (activeFilterKeys.length){
       d = d.filter(function(doc){
-        for (const f of activeFilters){
-          if ((doc[f] || '') !== _filters[f]) return false;
+        for (const k of activeFilterKeys){
+          if ((doc[k] || '') !== _filters[k]) return false;
         }
         return true;
       });
@@ -5127,31 +5163,40 @@ const DL = (function(){
       bar.style.display = 'none';
       return;
     }
+    const filterCols = _filterableVisibleCols();
+    if (!filterCols.length){
+      bar.style.display = 'none';
+      return;
+    }
     bar.style.display = '';
-    bar.innerHTML = FILTER_FIELDS.map(function(f){
-      const opts = _filterOptions(f);
-      const cur = _filters[f] || '';
-      const optHtml = '<option value="">Alle ' + _esc(FIELD_LABEL[f].toLowerCase()) + '…</option>'
+    bar.innerHTML = filterCols.map(function(c){
+      const opts = _filterOptions(c.k);
+      const cur = _filters[c.k] || '';
+      const lbl = (FIELD_LABEL[c.k] || c.l).toLowerCase();
+      const optHtml = '<option value="">Alle ' + _esc(lbl) + '…</option>'
         + opts.map(function(v){
             return '<option value="' + _esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + _esc(v) + '</option>';
           }).join('');
-      return '<select class="dl-filter" data-dl-filter="' + f + '">' + optHtml + '</select>';
+      return '<select class="dl-filter" data-dl-filter="' + _esc(c.k) + '">' + optHtml + '</select>';
     }).join('');
     // Reset-knop alleen als er een filter actief is
-    const anyActive = FILTER_FIELDS.some(function(f){ return _filters[f]; });
+    const anyActive = Object.keys(_filters).some(function(k){ return _filters[k]; });
     if (anyActive){
       bar.innerHTML += '<button class="dl-filter-reset" type="button" id="dl-filter-reset" title="Filters wissen">×</button>';
     }
     // Bind events op nieuwe selects
     bar.querySelectorAll('.dl-filter').forEach(function(sel){
       sel.addEventListener('change', function(){
-        _filters[sel.getAttribute('data-dl-filter')] = sel.value || '';
+        const k = sel.getAttribute('data-dl-filter');
+        if (sel.value) _filters[k] = sel.value;
+        else delete _filters[k];
         _renderTable();
       });
     });
     const resetBtn = bar.querySelector('#dl-filter-reset');
     if (resetBtn) resetBtn.addEventListener('click', function(){
-      for (const f of FILTER_FIELDS) _filters[f] = '';
+      _filters = {};
+      _renderFilterBar();
       _renderTable();
     });
   }
@@ -5428,6 +5473,8 @@ const DL = (function(){
     if (_isInjected) return;
     const root = getRoot();
     if (!root) return;
+    // Laad kolom-config (per project) vóór eerste render
+    _loadColsConfig();
     // Initiële render: gebruik _getActiveCols() zodat we direct de juiste kolom-set
     // tonen. Bij verandering van _hasMetaSchema later updateert _renderTableHeader().
     const initialCols = _getActiveCols();
@@ -5445,8 +5492,16 @@ const DL = (function(){
           '</div>' +
           '<div class="dl-app-head-right">' +
             '<div id="dl-view-toggle" class="dl-view-toggle"></div>' +
+            '<button type="button" id="dl-cols-btn" class="dl-cols-btn" title="Kolommen kiezen"><span class="dl-cols-icon">☰</span>Kolommen</button>' +
             '<button type="button" id="dl-refresh" class="dl-refresh-btn" title="Cache wissen en opnieuw laden (forceert verse metadata-fetch)"><span class="dl-refresh-icon">↻</span>Vernieuwen</button>' +
             '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
+            '<div id="dl-cols-picker" class="dl-cols-picker" style="display:none">' +
+              '<div class="dl-cols-picker-head">Kolommen tonen</div>' +
+              '<div class="dl-cols-picker-body" id="dl-cols-picker-body"></div>' +
+              '<div class="dl-cols-picker-foot">' +
+                '<button type="button" class="dl-cols-reset" id="dl-cols-reset">Standaard herstellen</button>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
         '</div>' +
         '<div id="dl-error" class="dl-error" style="display:none"></div>' +
@@ -5467,6 +5522,38 @@ const DL = (function(){
       '</section>';
     _bindEvents();
     _isInjected = true;
+  }
+
+  // Kolom-picker: render checkboxes voor alle kolommen, mark checked op basis van _visibleColKeys.
+  function _renderColPicker(){
+    const body = document.getElementById('dl-cols-picker-body');
+    if (!body) return;
+    body.innerHTML = ALL_COLS.map(function(c){
+      if (!_hasMetaSchema && _isMetaCol(c.k)) return ''; // verberg metadata-kolommen bij projecten zonder schema
+      const checked = _visibleColKeys.has(c.k) ? ' checked' : '';
+      const disabled = c.fixed ? ' disabled' : '';
+      const k = _esc(c.k);
+      return '<div class="dl-cols-row" data-colkey="' + k + '">'
+        + '<input type="checkbox" id="dl-col-' + k + '"' + checked + disabled + '>'
+        + '<label for="dl-col-' + k + '">' + _esc(c.l) + '</label>'
+        + '</div>';
+    }).join('');
+    body.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        const row = cb.closest('.dl-cols-row');
+        const k = row && row.getAttribute('data-colkey');
+        if (!k) return;
+        if (cb.checked) _visibleColKeys.add(k); else _visibleColKeys.delete(k);
+        _saveColsConfig();
+        // Clear filters voor kolommen die nu verborgen zijn
+        Object.keys(_filters).forEach(function(fk){
+          if (!_visibleColKeys.has(fk)) delete _filters[fk];
+        });
+        _renderFilterBar();
+        _renderTableHeader();
+        _renderTable();
+      });
+    });
   }
 
   // Force refresh: wis cache + reset state + herlaad. Triggert nieuwe bulk+deep-scan.
@@ -5509,6 +5596,41 @@ const DL = (function(){
           refresh.disabled = false;
         }
       });
+    }
+    // Kolom-picker: knop opent/sluit popover, outside-click sluit, reset-knop herstelt defaults
+    const colsBtn = root.querySelector('#dl-cols-btn');
+    const colsPicker = root.querySelector('#dl-cols-picker');
+    if (colsBtn && colsPicker){
+      colsBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        const isOpen = colsPicker.style.display !== 'none';
+        if (isOpen){
+          colsPicker.style.display = 'none';
+          colsBtn.classList.remove('active');
+        } else {
+          _renderColPicker();
+          colsPicker.style.display = '';
+          colsBtn.classList.add('active');
+        }
+      });
+      colsPicker.addEventListener('click', function(e){ e.stopPropagation(); });
+      document.addEventListener('click', function(){
+        if (colsPicker.style.display === 'none') return;
+        colsPicker.style.display = 'none';
+        colsBtn.classList.remove('active');
+      });
+      const colsReset = root.querySelector('#dl-cols-reset');
+      if (colsReset){
+        colsReset.addEventListener('click', function(){
+          _visibleColKeys = new Set(DEFAULT_VISIBLE);
+          _filters = {};
+          _saveColsConfig();
+          _renderColPicker();
+          _renderFilterBar();
+          _renderTableHeader();
+          _renderTable();
+        });
+      }
     }
     root.querySelectorAll('.dl-th').forEach(function(th){
       th.addEventListener('click', function(){
