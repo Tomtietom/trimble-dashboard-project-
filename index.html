@@ -581,11 +581,19 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-loading{padding:var(--s5);text-align:center;color:var(--g5);font-size:var(--fs-sm)}
 .dl-error{background:#fee;border-left:3px solid #d00;padding:var(--s3) var(--s4);border-radius:var(--r-sm);margin-bottom:var(--s4);font-size:var(--fs-sm);color:#7a0000}
 .dl-tbl-wrap{position:relative;overflow:auto;max-height:calc(100vh - 320px);border:1px solid var(--hl-light);border-radius:var(--r-md);background:#fff}
-.dl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.dl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm);table-layout:fixed}
 .dl-tbl thead{position:sticky;top:0;background:var(--gr);z-index:1}
 .dl-tbl .dl-th{position:relative;text-align:left;padding:10px 12px;font-weight:600;color:var(--dk);border-bottom:1px solid var(--hl);cursor:pointer;user-select:none;white-space:nowrap;font-family:'Poppins',sans-serif}
-.dl-resizer{position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize;user-select:none;z-index:2}
-.dl-resizer:hover,.dl-resizer.active{background:var(--af);opacity:.4}
+.dl-resizer{position:absolute;right:-1px;top:0;width:8px;height:100%;cursor:col-resize;user-select:none;z-index:2}
+.dl-resizer:hover,.dl-resizer.active{background:var(--af);opacity:.5}
+.dl-th[draggable=true]{cursor:grab}
+.dl-th[draggable=true]:active:not(.dl-th-dragging){cursor:grabbing}
+.dl-th-dragging{opacity:.4}
+.dl-th-drop-before{box-shadow:inset 3px 0 0 var(--af)}
+.dl-th-drop-after{box-shadow:inset -3px 0 0 var(--af)}
+.dl-tbl tbody td{overflow:hidden}
+.dl-tbl tbody td.dl-cell-name{white-space:normal}
+.dl-tbl tbody td.dl-cell-folder{white-space:normal}
 .dl-tbl .dl-th:hover{background:var(--hl-light)}
 .dl-tbl .dl-th.sorted{color:var(--af)}
 .dl-tbl .dl-th .dl-sort-ind{display:inline-block;width:10px;font-size:9px;margin-left:4px;color:var(--af)}
@@ -5496,6 +5504,7 @@ const DL = (function(){
           _renderTable();
         });
       });
+      _bindThDragHandlers(headRow);
     }
   }
 
@@ -5720,6 +5729,69 @@ const DL = (function(){
     _renderTable();
   }
 
+  function _reorderCol(fromKey, toKey, position){
+    if (!_colOrder.length){
+      _colOrder = ALL_COLS.map(function(c){ return c.k; });
+    }
+    if (_colOrder.indexOf(fromKey) < 0) _colOrder.push(fromKey);
+    if (_colOrder.indexOf(toKey) < 0) _colOrder.push(toKey);
+    const fromIdx = _colOrder.indexOf(fromKey);
+    _colOrder.splice(fromIdx, 1);
+    const toIdx = _colOrder.indexOf(toKey);
+    const insertAt = position === 'after' ? toIdx + 1 : toIdx;
+    _colOrder.splice(insertAt, 0, fromKey);
+    _saveColsConfig();
+    _renderTableHeader();
+    _renderTable();
+    _renderColPicker();
+  }
+
+  // Bind HTML5 drag-and-drop handlers op kolomkoppen. Drag conflicts met click (sort) en
+  // mousedown op resizer: dragstart cancelled wanneer e.target binnen .dl-resizer ligt.
+  function _bindThDragHandlers(headRow){
+    headRow.querySelectorAll('.dl-th').forEach(function(th){
+      th.setAttribute('draggable', 'true');
+      th.addEventListener('dragstart', function(e){
+        if (e.target.closest('.dl-resizer')){ e.preventDefault(); return; }
+        const k = th.getAttribute('data-sort');
+        if (!k) return;
+        e.dataTransfer.setData('text/plain', k);
+        e.dataTransfer.effectAllowed = 'move';
+        th.classList.add('dl-th-dragging');
+      });
+      th.addEventListener('dragover', function(e){
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = th.getBoundingClientRect();
+        const before = (e.clientX - rect.left) < rect.width / 2;
+        th.classList.toggle('dl-th-drop-before', before);
+        th.classList.toggle('dl-th-drop-after', !before);
+      });
+      th.addEventListener('dragleave', function(){
+        th.classList.remove('dl-th-drop-before');
+        th.classList.remove('dl-th-drop-after');
+      });
+      th.addEventListener('drop', function(e){
+        e.preventDefault();
+        const before = th.classList.contains('dl-th-drop-before');
+        th.classList.remove('dl-th-drop-before');
+        th.classList.remove('dl-th-drop-after');
+        const fromKey = e.dataTransfer.getData('text/plain');
+        const toKey = th.getAttribute('data-sort');
+        if (fromKey && toKey && fromKey !== toKey){
+          _reorderCol(fromKey, toKey, before ? 'before' : 'after');
+        }
+      });
+      th.addEventListener('dragend', function(){
+        headRow.querySelectorAll('.dl-th').forEach(function(t){
+          t.classList.remove('dl-th-dragging');
+          t.classList.remove('dl-th-drop-before');
+          t.classList.remove('dl-th-drop-after');
+        });
+      });
+    });
+  }
+
   // Force refresh: wis cache + reset state + herlaad. Triggert nieuwe bulk+deep-scan.
   async function _forceRefresh(){
     try { localStorage.removeItem(_cacheKey()); } catch(_){}
@@ -5809,6 +5881,8 @@ const DL = (function(){
         _renderTable();
       });
     });
+    const headRow0 = root.querySelector('thead tr');
+    if (headRow0) _bindThDragHandlers(headRow0);
 
     // Kolom-resize: mousedown op grip start drag; mousemove update kolombreedte live;
     // mouseup persisteert. Document-level handlers zodat slepen werkt over hele viewport.
