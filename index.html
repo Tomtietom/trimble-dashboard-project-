@@ -1792,54 +1792,40 @@ function _tcRegionToTrn(region){
 }
 async function fetchIssuesForProject(pid){
   if (!pid || !tcToken) return null;
-  const trn = 'trn:2:tc:' + _tcRegionToTrn(tcRegion) + ':projects:' + pid;
-  // Probeer call-varianten in volgorde van waarschijnlijkheid. Bij elke 400 loggen
-  // we de ApiError body zodat we precies zien wat de server klaagt.
-  // Vorige diagnose-output: "Please provide a valid value for contextId" → waarde-fout,
-  // niet query-fout. Hypothese: encodeURIComponent zet ':' om naar '%3A' wat de Trimble
-  // parser mogelijk niet accepteert. Probeer beide encoding-stijlen.
-  const variants = [
-    // V1 — raw TRN (geen URL-encoding op de TRN zelf, alleen op pid)
-    { label: 'raw-trn', encode: false, qs: 'pageSize=20' },
-    // V2 — encoded TRN minimaal
-    { label: 'encoded-min', encode: true, qs: 'pageSize=20' },
-    // V3 — encoded TRN met fields explode
-    { label: 'encoded-fields-explode', encode: true, qs: 'pageSize=20&fields=status&fields=dueDate&fields=assignees&fields=priority&fields=type' },
-    // V4 — raw TRN met fields explode (combineren)
-    { label: 'raw-fields-explode', encode: false, qs: 'pageSize=20&fields=status&fields=dueDate&fields=assignees&fields=priority&fields=type' },
-  ];
-  for (const v of variants){
-    // encodeURI laat ':' en '/' staan, encodeURIComponent niet. Project-ID zelf altijd
-    // veilig encoderen (kan special chars bevatten).
-    const safeTrn = v.encode
-      ? encodeURIComponent(trn)
-      : ('trn:2:tc:' + _tcRegionToTrn(tcRegion) + ':projects:' + encodeURIComponent(pid));
-    const url = ISSUE_API_BASE + '/context/' + safeTrn + '/issues?' + v.qs;
-    try {
-      const r = await fetch(url, {
-        headers: { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' }
-      });
-      if (r.ok){
-        const data = await r.json();
-        const items = Array.isArray(data) ? data : (data.items || []);
-        console.log('[Cockpit] Issues opgehaald via "' + v.label + '" variant — items:', items.length);
-        return items;
-      }
-      // Foutpad — log de body zodat we de oorzaak zien
-      let body = '';
-      try { body = await r.text(); } catch(_){}
-      if (r.status === 403 || r.status === 404){
-        console.log('[Cockpit] Issues niet beschikbaar (HTTP ' + r.status + ', variant=' + v.label + '): ' + body.slice(0, 300));
-        return null;
-      }
-      console.warn('[Cockpit] Issues HTTP ' + r.status + ' op variant "' + v.label + '": ' + body.slice(0, 500));
-      // Bij 400 → probeer volgende variant; bij 5xx → ook proberen
-    } catch(e){
-      console.warn('[Cockpit] Issues fetch fout op variant "' + v.label + '":', e.message);
+  // Spec-conforme TRN: trn:2:tc:{us|eu|ap|ap-au}:projects:{projectId}
+  // Diagnose (mei 2026): server geeft consequent 400 "Please provide a valid value for contextId"
+  // op alle TRN-varianten (raw + encoded, met/zonder fields). Het verschijnsel is project-afhankelijk;
+  // waarschijnlijk moet BCF Topics / Issue Mgmt per project geactiveerd zijn in TC. Daarom: gracieus
+  // afhandelen — bij 400/403/404 melden we het rustig en valt de tegel terug op de placeholder-tekst.
+  const trn = 'trn:2:tc:' + _tcRegionToTrn(tcRegion) + ':projects:' + encodeURIComponent(pid);
+  const url = ISSUE_API_BASE + '/context/' + trn + '/issues?pageSize=20';
+  try {
+    const r = await fetch(url, {
+      headers: { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' }
+    });
+    if (r.ok){
+      const data = await r.json();
+      const items = Array.isArray(data) ? data : (data.items || []);
+      console.log('[Cockpit] Issues opgehaald — items:', items.length);
+      return items;
     }
+    // Alle 4xx-paden interpreteren als "issues niet beschikbaar voor dit project":
+    //  - 400: contextId afgewezen → BCF/Issue Mgmt waarschijnlijk niet actief op dit project
+    //  - 401/403: token-scope of permission
+    //  - 404: endpoint of project niet gevonden
+    if (r.status >= 400 && r.status < 500){
+      console.log('[Cockpit] Issues niet beschikbaar voor dit project (HTTP ' + r.status + ')');
+      return null;
+    }
+    // 5xx of andere onverwachte status — wel als waarschuwing loggen
+    let body = '';
+    try { body = await r.text(); } catch(_){}
+    console.warn('[Cockpit] Issues HTTP ' + r.status + ': ' + body.slice(0, 300));
+    return null;
+  } catch(e){
+    console.warn('[Cockpit] Issues fetch fout:', e.message);
+    return null;
   }
-  console.warn('[Cockpit] Issues: geen enkele variant werkte — Issue Mgmt API request-format onbekend');
-  return null;
 }
 
 function renderTodos(todos){
