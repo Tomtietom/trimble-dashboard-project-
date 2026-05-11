@@ -1171,6 +1171,34 @@ async function tcFetchSafe(path, fallback){
   catch(e){ console.warn('[TC] fetch failed:', path, e.message); return fallback; }
 }
 
+// V2.0-conforme pagination via Range-header (geen pageSize/offset query — die staan niet in de spec).
+// Geeft alle items terug door te paginieren tot Content-Range total bereikt is.
+async function tcFetchRange(path, pageSize){
+  pageSize = pageSize || 500;
+  const headers = { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' };
+  const all = []; let start = 0; let safety = 0;
+  while (safety++ < 50){
+    const rangeHeaders = Object.assign({}, headers, { Range: 'items=' + start + '-' + (start + pageSize - 1) });
+    let resp = null; let lastErr = null;
+    for (const url of [TC_API_BASE + path, TC_PROXY_BASE + '/tc/' + tcRegionShort() + path]){
+      try { resp = await fetch(url, { headers: rangeHeaders }); if (resp.status === 206 || resp.ok) break; lastErr = new Error('HTTP '+resp.status); resp = null; }
+      catch(e){ lastErr = e; }
+    }
+    if (!resp) throw lastErr || new Error('Range fetch faalde: ' + path);
+    const body = await resp.json();
+    const items = Array.isArray(body) ? body : (body && Array.isArray(body.items) ? body.items : []);
+    if (items.length === 0) break;
+    all.push.apply(all, items);
+    const cr = resp.headers.get('Content-Range') || resp.headers.get('content-range');
+    if (!cr) break;
+    const m = cr.match(/items \d+-\d+\/(\d+)/);
+    if (!m) break;
+    start += items.length;
+    if (start >= parseInt(m[1], 10)) break;
+  }
+  return all;
+}
+
 // V3 — Volg 206-cursors automatisch tot complete dataset is opgehaald (future-proof voor projecten >500 items)
 async function tcFetchAll(path, maxPages){
   maxPages = maxPages || 20; // safety cap (~10000 items @ 500/page)
@@ -1431,7 +1459,8 @@ async function loadDashboard(){
     tcFetchSafe('/projects/'+pid+'/users', []),
     tcFetchSafe('/groups?projectId='+pid, []),
     rootId ? tcFetchSafe('/folders/'+rootId+'/items?pageSize=500', {items:[]}) : Promise.resolve({items:[]}),
-    tcFetchSafe('/projects?showSubProjects=true&pageSize=500', []),
+    // /projects: Range-header pagination (v2.0 spec) i.p.v. niet-bestaande pageSize/showSubProjects query
+    tcFetchRange('/projects', 500).catch(function(e){ console.warn('[Cockpit] projects fetch fout:', e.message); return []; }),
     tcFetchSafe('/releases?projectId='+pid+'&pageSize=10', []),
     // Issues via Issue Management API (BCF-compatible, vervangt oude /todos)
     fetchIssuesForProject(pid),
@@ -2002,19 +2031,20 @@ const PD = (function(){
     if (bar) bar.classList.toggle('active', !!active);
   }
 
-  // Multi-region project-fetch via tc-proxy (skipt CORS) — iframeless, gebruikt cockpit's token
+  // Multi-region project-fetch via tc-proxy — Range-header pagination (v2.0-conform, geen offset/limit query)
   async function fetchProjectsForRegion(region){
     const key = REGION_KEYS_PD[region] || 'eu';
-    const all = []; const seen = new Set(); let offset = 0; const limit = 100;
+    const all = []; const seen = new Set(); let start = 0; const pageSize = 100;
     while (true){
-      const url = PROXY_BASE_PD + '/tc/' + key + '/projects?offset=' + offset + '&limit=' + limit;
-      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' } });
-      if (!r.ok) throw new Error('HTTP '+r.status);
+      const url = PROXY_BASE_PD + '/tc/' + key + '/projects';
+      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tcToken, Accept: 'application/json', Range: 'items='+start+'-'+(start+pageSize-1) } });
+      if (!r.ok && r.status !== 206) throw new Error('HTTP '+r.status);
       const items = await r.json();
       if (!Array.isArray(items) || items.length === 0) break;
       for (const it of items){ if (!seen.has(it.id)){ seen.add(it.id); all.push(it); } }
-      if (items.length < limit) break;
-      offset += items.length;
+      const cr = r.headers.get('Content-Range');
+      if (cr){ const m = cr.match(/items \d+-\d+\/(\d+)/); if (m){ start += items.length; if (start >= parseInt(m[1], 10)) break; } else break; }
+      else { if (items.length < pageSize) break; start += items.length; }
     }
     return all;
   }
