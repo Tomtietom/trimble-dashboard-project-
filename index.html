@@ -536,6 +536,22 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-refresh-icon{font-size:16px;line-height:1;display:inline-block}
 .dl-refresh-btn.busy .dl-refresh-icon{animation:dlSpin .8s linear infinite}
 @keyframes dlSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.dl-cols-btn{padding:8px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;background:#fff;color:var(--dk);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s,background .15s}
+.dl-cols-btn:hover,.dl-cols-btn.active{border-color:var(--af);background:var(--afl)}
+.dl-cols-icon{font-size:14px;line-height:1}
+.dl-app-head-right{position:relative}
+.dl-cols-picker{position:absolute;top:100%;right:0;margin-top:8px;background:#fff;border:1px solid var(--hl);border-radius:var(--r-md);box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:240px;max-height:60vh;overflow:hidden;z-index:50;font:14px 'Poppins',sans-serif;display:flex;flex-direction:column}
+.dl-cols-picker-head{padding:10px 14px;border-bottom:1px solid var(--hl-light);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--g5)}
+.dl-cols-picker-body{padding:6px 0;overflow:auto;flex:1}
+.dl-cols-row{display:flex;align-items:center;gap:8px;padding:6px 14px;cursor:pointer;transition:background .1s}
+.dl-cols-row:hover{background:var(--afl)}
+.dl-cols-row input{cursor:pointer;margin:0}
+.dl-cols-row input:disabled{cursor:not-allowed}
+.dl-cols-row label{cursor:pointer;font-size:14px;color:var(--dk);user-select:none;flex:1;margin:0}
+.dl-cols-row input:disabled+label{color:var(--g5);cursor:not-allowed}
+.dl-cols-picker-foot{padding:8px 14px;border-top:1px solid var(--hl-light);display:flex;justify-content:flex-end}
+.dl-cols-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;background:#fff;color:var(--dk);cursor:pointer}
+.dl-cols-reset:hover{border-color:var(--af);background:var(--afl)}
 .dl-loading{padding:var(--s5);text-align:center;color:var(--g5);font-size:var(--fs-sm)}
 .dl-error{background:#fee;border-left:3px solid #d00;padding:var(--s3) var(--s4);border-radius:var(--r-sm);margin-bottom:var(--s4);font-size:var(--fs-sm);color:#7a0000}
 .dl-tbl-wrap{position:relative;overflow:auto;max-height:calc(100vh - 320px);border:1px solid var(--hl-light);border-radius:var(--r-md);background:#fff}
@@ -644,14 +660,15 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .rv-tree-row.rv-read{background:#fff8e1}
 .rv-tree-row.rv-none{color:#aaa}
 .rv-tree-row.rv-blocked{background:#fde8e8;color:#a94442}
-.rv-tree-row.rv-container{background:transparent;opacity:.55}
-.rv-tree-row.rv-container .rv-pad{font-size:13px;color:#888}
+.rv-tree-row.rv-container{background:#e3f2fd;opacity:.85}
+.rv-tree-row.rv-container .rv-pad{color:#1565c0}
 .rv-tree-row .rv-pad{flex:1;word-break:break-word}
 .rv-badge{font-size:11px;padding:2px 8px;border-radius:8px;font-weight:500;white-space:nowrap}
 .rv-badge.full{background:#2e7d32;color:#fff}
 .rv-badge.read{background:#f57c00;color:#fff}
 .rv-badge.blocked{background:#a94442;color:#fff}
-.rv-badge.container{background:#e0e0e0;color:#555;font-style:italic}
+.rv-badge.container{background:#1976d2;color:#fff;font-style:italic}
+.rv-badge.none{background:#5a6268;color:#fff}
 .rv-placeholder{padding:var(--s5);text-align:center;color:var(--g4);font-style:italic;font-size:var(--fs-sm)}
 .rv-dashboard{padding:var(--s2)}
 .rv-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s3);margin:var(--s3) 0}
@@ -1586,39 +1603,84 @@ async function loadDashboard(){
     }
   }
 
-  // Idle warming: PD's zware multi-region fetch alvast starten zodat de
-  // Project Dashboard-view direct gevuld is wanneer gebruiker erop klikt.
-  // PD heeft eigen _isLoading/_isLoaded guards → dubbele aanroep is veilig.
-  function warmPD(){
-    if (typeof PD === 'undefined') return;
-    // Hub-access respecteren: skip prefetch als user geen toegang heeft tot PD.
-    // PD heeft zelf geen access-guard, dus dit moet hier.
-    const pdExt = EXTENSIONS.find(function(e){ return e.key === 'project-dashboard'; });
-    if (pdExt && pdExt.allowed === false){
-      console.log('[Cockpit] PD prefetch overgeslagen (geen hub-toegang)');
-      return;
-    }
-    try {
-      PD.activate();
-      console.log('[Cockpit] PD prefetch started (idle warming)');
-    } catch(e){ console.warn('[Cockpit] PD prefetch faalde:', e.message); }
-  }
+  // Sequentiële prefetch in vaste volgorde (PU → DL → RV → PD), met live
+  // tile-counter. Scheduled na idle zodat dashboard-render eerst klaar is.
   if ('requestIdleCallback' in window){
-    requestIdleCallback(warmPD, { timeout: 3000 });
+    requestIdleCallback(warmAll, { timeout: 3000 });
   } else {
-    setTimeout(warmPD, 1500);
+    setTimeout(warmAll, 1500);
   }
+}
 
-  // Idle warming voor PU (folder-tree fetch). Gevoerd na PD om netwerk-throttle te respecteren.
-  function warmPU(){
-    if (typeof PU === 'undefined') return;
-    try { PU.prefetchFolders(); console.log('[Cockpit] PU prefetch started (idle warming)'); }
-    catch(e){ console.warn('[Cockpit] PU prefetch faalde:', e.message); }
+// ============================================================
+//  Prefetch orchestrator
+//  Volgorde door gebruiker bepaald: licht-eerst, PD (multi-region) als laatste.
+//  Strict sequentieel: elke module wacht tot vorige klaar is, zodat de browser
+//  niet 4 parallelle TC-fetch-stromen tegelijk hoeft te slikken op cockpit-open.
+// ============================================================
+const PREFETCH_ORDER = ['project-upload', 'documentenlijst', 'rechten-viewer', 'project-dashboard'];
+const PREFETCH_LABEL = {
+  'project-upload':    'mappen',
+  'documentenlijst':   'docs',
+  'rechten-viewer':    'rechten',
+  'project-dashboard': 'projecten',
+};
+
+// State-based tile-stat rendering. info = { current, total, phase, count }
+function updateTilePrefetch(key, state, info){
+  const el = document.querySelector('[data-stat="'+key+'"]');
+  if (!el) return;
+  const unit = PREFETCH_LABEL[key] || 'items';
+  info = info || {};
+  if (state === 'start'){
+    el.textContent = 'Laden…';
+    el.style.color = '';
+  } else if (state === 'progress'){
+    if (info.total > 0 && info.current != null){
+      el.textContent = info.current + '/' + info.total + ' ' + (info.unit || unit) + '…';
+    } else if (info.phase){
+      el.textContent = info.phase + '…';
+    } else {
+      el.textContent = 'Laden…';
+    }
+  } else if (state === 'done'){
+    el.textContent = (info.count != null ? info.count + ' ' : '') + (info.unit || unit) + ' klaar';
+    el.style.color = '';
+  } else if (state === 'error'){
+    el.textContent = '⚠ klik om opnieuw';
+    el.style.color = 'var(--warn)';
   }
-  if ('requestIdleCallback' in window){
-    setTimeout(function(){ requestIdleCallback(warmPU, { timeout: 3000 }); }, 800);
-  } else {
-    setTimeout(warmPU, 2300);
+}
+
+async function warmAll(){
+  const MODULES = {
+    'project-dashboard': typeof PD !== 'undefined' ? PD : null,
+    'project-upload':    typeof PU !== 'undefined' ? PU : null,
+    'documentenlijst':   typeof DL !== 'undefined' ? DL : null,
+    'rechten-viewer':    typeof RV !== 'undefined' ? RV : null,
+  };
+  for (const key of PREFETCH_ORDER){
+    const ext = EXTENSIONS.find(function(e){ return e.key === key; });
+    if (!ext || ext.allowed === false){
+      console.log('[Cockpit] prefetch overgeslagen voor', key, '(geen hub-toegang)');
+      continue;
+    }
+    const mod = MODULES[key];
+    if (!mod || typeof mod.prefetch !== 'function'){
+      console.warn('[Cockpit] geen prefetch() op module', key);
+      continue;
+    }
+    updateTilePrefetch(key, 'start');
+    try {
+      const result = await mod.prefetch(function(info){
+        updateTilePrefetch(key, 'progress', info);
+      });
+      updateTilePrefetch(key, 'done', result || {});
+      console.log('[Cockpit] prefetch klaar:', key, result);
+    } catch(e){
+      console.warn('[Cockpit] prefetch faalde:', key, e && e.message);
+      updateTilePrefetch(key, 'error', { message: e && e.message });
+    }
   }
 }
 
@@ -2035,6 +2097,7 @@ const PD = (function(){
   let _isLoading = false;
   let _isLoaded = false;
   let _isInjected = false;
+  let _prefetchProgress = null; // (info)=>void — gezet door cockpit prefetch-orchestrator
 
   function favKey(){ return 'cockpit-pd-favs-' + (currentUserEmail || 'anon'); }
   function loadFavs(){ try { _favorites = new Set(JSON.parse(localStorage.getItem(favKey()) || '[]')); } catch(e){ _favorites = new Set(); } }
@@ -2174,6 +2237,9 @@ const PD = (function(){
             }
           }
         } catch(e){ console.warn('[PD] regio '+region+' faalde:', e.message); }
+        if (typeof _prefetchProgress === 'function'){
+          try { _prefetchProgress({ current: _projects.length, phase: 'projecten (regio ' + region + ')', unit: 'projecten' }); } catch(_){}
+        }
       }
 
       console.log('[PD] '+_projects.length+' projecten geladen');
@@ -2216,6 +2282,9 @@ const PD = (function(){
         } catch(e){ project.role = '?'; }
         done++;
         if (fill) fill.style.width = Math.round((done/total)*100) + '%';
+        if (typeof _prefetchProgress === 'function' && (done % 3 === 0 || done === total)){
+          try { _prefetchProgress({ current: done, total: total, phase: 'rollen', unit: 'projecten' }); } catch(_){}
+        }
         updateRow(project);
         updateStats();
       })();
@@ -2395,6 +2464,23 @@ const PD = (function(){
       injectHtml();
       loadFavs();
       if (!_isLoaded && !_isLoading) load(false);
+    },
+    prefetch: function(onProgress){
+      const ext = EXTENSIONS.find(function(e){ return e.key === 'project-dashboard'; });
+      if (ext && ext.allowed === false) return Promise.resolve(null);
+      if (_isLoaded){
+        return Promise.resolve({ count: _projects.length, unit: 'projecten' });
+      }
+      _prefetchProgress = onProgress;
+      return load(false)
+        .then(function(){
+          _prefetchProgress = null;
+          return { count: _projects.length, unit: 'projecten' };
+        })
+        .catch(function(e){
+          _prefetchProgress = null;
+          throw e;
+        });
     }
   };
 })();
@@ -2618,10 +2704,13 @@ const PU = (function(){
     return all;
   }
 
-  // Folder tree → schrijfbare mappen
-  async function loadFolders(){
+  // Folder tree → schrijfbare mappen. onProgress(info) wordt na elke BFS-batch
+  // aangeroepen met { current: <huidige folder-count> } (total niet bekend tot einde).
+  async function loadFolders(onProgress){
     if (_isLoading || _isLoaded) return;
     _isLoading = true;
+    function _emit(){ if (typeof onProgress === 'function'){ try { onProgress({ current: result.length }); } catch(_){} } }
+    let result;
     try {
       let rootId = null;
       try {
@@ -2630,7 +2719,7 @@ const PU = (function(){
       } catch(e){ console.warn('[PU] /projects/{id} mislukt:', e.message); }
       if (!rootId) throw new Error('Root folder niet gevonden');
 
-      const result = [{ id: rootId, name: tcProject.name || 'Projectroot', path: '(projectroot)', depth: 0 }];
+      result = [{ id: rootId, name: tcProject.name || 'Projectroot', path: '(projectroot)', depth: 0 }];
       let queueList = [{ id: rootId, path: [] }];
       const PARALLEL = 50;
       while (queueList.length){
@@ -2654,6 +2743,7 @@ const PU = (function(){
             queueList.push({ id: f.id, path: currentPath });
           }
         }
+        _emit();
       }
       result.sort(function(a,b){ return a.path.localeCompare(b.path,'nl'); });
       _writableFolders = result;
@@ -4275,15 +4365,18 @@ const PU = (function(){
       if (!_isLoaded && !_isLoading) loadFolders().then(_updateFolderHeader);
       if (!_configLoaded && !_configLoading) _loadUploadConfig();
     },
-    prefetchFolders: function(){
+    prefetch: function(onProgress){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'project-upload'; });
       if (ext && ext.allowed === false){
         console.log('[Cockpit] PU prefetch overgeslagen (geen hub-toegang)');
-        return;
+        return Promise.resolve(null);
       }
-      // Parallel prefetch: folders (zwaar) + config (licht)
-      if (!_isLoaded && !_isLoading) loadFolders();
-      if (!_configLoaded && !_configLoading) _loadUploadConfig();
+      // Parallel: folders (zwaar, levert progress) + config (licht)
+      const p1 = (!_isLoaded && !_isLoading) ? loadFolders(onProgress) : Promise.resolve();
+      const p2 = (!_configLoaded && !_configLoading) ? _loadUploadConfig() : Promise.resolve();
+      return Promise.all([p1, p2]).then(function(){
+        return { count: _writableFolders.length };
+      });
     }
   };
 })();
@@ -4325,7 +4418,6 @@ const DL = (function(){
     project_fase: ['Initiatief','Project definitie','Structuur ontwerp','Voorlopig ontwerp','Definitief ontwerp','Technisch ontwerp','Prijs en contractvorming','Uitvoeringsgereed ontwerp','Realisatie','Gebruik en exploitatie','Project (alle fasen)'],
     document_status: ['Concept','Voorlopig','Definitief','Vervallen','Voor ontwerp','Voor uitvoering','As built','Intern'],
   };
-  const FILTER_FIELDS = ['document_status', 'discipline', 'project_fase'];
   const FIELD_LABEL = {
     document_status: 'Status',
     discipline: 'Discipline',
@@ -4407,6 +4499,8 @@ const DL = (function(){
   let _treeCollapsed = new Set(); // ingeklapte tree-paths
   let _hasMetaSchema = false; // wordt true zodra we minstens 1 metadata-match krijgen
   let _deepScanState = null; // { totaal, gedaan, actief } tijdens per-file metadata-fetch
+  let _deepScanPromise = null; // capture deep-scan promise zodat prefetch erop kan wachten
+  let _prefetchProgress = null; // (info)=>void — gezet door cockpit prefetch-orchestrator
   let _selectedDoc = null;   // huidige doc in detail-paneel ('_vid' van geselecteerde rij)
   let _escListener = null;   // escape-key handler tijdens panel open
   // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
@@ -4667,6 +4761,9 @@ const DL = (function(){
         }
         _deepScanState.gedaan++;
         sinceLastRender++;
+        if (typeof _prefetchProgress === 'function' && (_deepScanState.gedaan % 5 === 0 || _deepScanState.gedaan === _deepScanState.totaal)){
+          try { _prefetchProgress({ current: _deepScanState.gedaan, total: _deepScanState.totaal, unit: 'docs' }); } catch(_){}
+        }
         if (sinceLastRender >= RERENDER_EVERY){
           sinceLastRender = 0;
           try { _renderTable(); } catch(_){}
@@ -4872,6 +4969,9 @@ const DL = (function(){
       _docs = result;
       _isLoaded = true;
       console.log('[DL] geladen:', _docs.length, 'documenten');
+      if (typeof _prefetchProgress === 'function'){
+        try { _prefetchProgress({ current: _docs.length, total: _docs.length, phase: 'docs gevonden', unit: 'docs' }); } catch(_){}
+      }
 
       // Metadata na docs binnen — niet-blokkerend voor lijst-render
       _renderTable();
@@ -4889,7 +4989,7 @@ const DL = (function(){
           const newDocs = _docs.filter(function(d){ return !d._matchedFromBulk; });
           if (newDocs.length > 0){
             console.log('[DL] cache revalidate: ' + newDocs.length + ' nieuwe docs ophalen');
-            _deepScanMetadata().then(function(){ _writeCache(_buildCacheFromDocs()); }).catch(function(e){ console.warn('[DL] cache revalidate fout:', e.message); });
+            _deepScanPromise = _deepScanMetadata().then(function(){ _writeCache(_buildCacheFromDocs()); }).catch(function(e){ console.warn('[DL] cache revalidate fout:', e.message); });
           }
           return; // klaar — cache flow stopt hier
         } else {
@@ -4903,7 +5003,7 @@ const DL = (function(){
       _renderTable(); // bulk binnen, eerste 100 docs hebben metadata
       // Deep-scan voor de rest (bulk geeft max 100/project) — async, niet awaiten
       if (_docs.length > 0){
-        _deepScanMetadata().then(function(){
+        _deepScanPromise = _deepScanMetadata().then(function(){
           _writeCache(_buildCacheFromDocs());
           console.log('[DL] cache geschreven voor', _docs.length, 'docs (24u TTL)');
         }).catch(function(e){ console.warn('[DL] deep-scan fout:', e.message); });
@@ -5432,10 +5532,24 @@ const DL = (function(){
       injectHtml();
       if (!_isLoaded && !_isLoading) _loadDocs();
     },
-    prefetchDocs: function(){
+    prefetch: function(onProgress){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
-      if (ext && ext.allowed === false) return;
-      if (!_isLoaded && !_isLoading) _loadDocs();
+      if (ext && ext.allowed === false) return Promise.resolve(null);
+      if (_isLoaded){
+        return Promise.resolve({ count: _docs.length, unit: 'docs' });
+      }
+      _prefetchProgress = onProgress;
+      // _loadDocs schopt deep-scan async aan → bewaard in _deepScanPromise. Wij awaiten beide.
+      return _loadDocs()
+        .then(function(){ return _deepScanPromise; })
+        .then(function(){
+          _prefetchProgress = null;
+          return { count: _docs.length, unit: 'docs' };
+        })
+        .catch(function(e){
+          _prefetchProgress = null;
+          throw e;
+        });
     }
   };
 })();
@@ -5461,6 +5575,7 @@ const RV = (function(){
   let _expandedPaths = new Set();   // welke mappen zijn uitgeklapt (collapse-state)
   let _hasChildrenIndex = new Set(); // welke paden hebben sub-mappen
   let _lastRenderedView = null;     // voor scroll-restore: alleen bij hetzelfde view herstellen
+  let _prefetchProgress = null;     // (info)=>void — gezet door cockpit prefetch-orchestrator
 
   function getRoot(){ return document.getElementById('view-rechten-viewer'); }
 
@@ -5508,6 +5623,9 @@ const RV = (function(){
           }
         }
       }
+      if (typeof _prefetchProgress === 'function'){
+        try { _prefetchProgress({ current: result.length, phase: 'mappen ophalen', unit: 'mappen' }); } catch(_){}
+      }
     }
     return result;
   }
@@ -5526,6 +5644,9 @@ const RV = (function(){
         }
       }));
       out.push.apply(out, results);
+      if (typeof _prefetchProgress === 'function'){
+        try { _prefetchProgress({ current: out.length, total: folders.length, phase: 'rechten', unit: 'rechten' }); } catch(_){}
+      }
     }
     return out;
   }
@@ -5912,7 +6033,7 @@ const RV = (function(){
         badge = '<span class="rv-badge container">via sub-mappen</span>';
       } else {
         cls = 'rv-none';
-        badge = '<span class="rv-badge" style="background:#ddd;color:#666">Niet ingesteld</span>';
+        badge = '<span class="rv-badge none">Geen toegang</span>';
       }
 
       const inhCls = row.inherited ? ' rv-inherited' : '';
@@ -5989,7 +6110,7 @@ const RV = (function(){
         const inhTitle = ' title="' + _esc(row.pad) + (row.inherited ? ' (rechten overgenomen)' : '') + '"';
         const fullBadge = fullCount ? '<span class="rv-badge full">' + fullCount + ' volledig</span>' : '';
         const readBadge = readCount ? '<span class="rv-badge read">' + readCount + ' lezen</span>' : '';
-        const empty = (!fullCount && !readCount) ? '<span class="rv-badge" style="background:#ddd;color:#666">geen rechten</span>' : '';
+        const empty = (!fullCount && !readCount) ? '<span class="rv-badge none">Geen rechten ingesteld</span>' : '';
         const toggle = isSearching ? '<span class="rv-toggle rv-toggle-empty"></span>' : _renderTreeToggle(row, rootPath);
         const clickable = (!isSearching && _hasChildrenIndex.has(row.pad)) ? ' data-rv-toggle="' + _esc(row.pad) + '"' : '';
         return '<div class="rv-tree-row' + inhCls + '" style="padding-left:' + (10 + depth * 18) + 'px"' + inhTitle + clickable + '>'
@@ -6198,6 +6319,9 @@ const RV = (function(){
       const folders = await _fetchFoldersRecursive(rootId, tcProject.name || '–');
       console.log('[RV] folders gevonden:', folders.length);
       const permsData = await _fetchPermissions(folders);
+      if (typeof _prefetchProgress === 'function'){
+        try { _prefetchProgress({ phase: 'team ophalen', unit: 'rechten' }); } catch(_){}
+      }
       const team = await _fetchTeam();
       _data = _convertData(folders, permsData, team.users, team.groups, tcProject.name || '–');
       _buildTreeIndices();
@@ -6241,6 +6365,23 @@ const RV = (function(){
       }
       injectHtml();
       if (!_isLoaded && !_isLoading) _loadData();
+    },
+    prefetch: function(onProgress){
+      const ext = EXTENSIONS.find(function(e){ return e.key === 'rechten-viewer'; });
+      if (ext && ext.allowed === false) return Promise.resolve(null);
+      if (_isLoaded){
+        return Promise.resolve({ count: _data ? _data.csvData.length - 1 : 0, unit: 'mappen' });
+      }
+      _prefetchProgress = onProgress;
+      return _loadData()
+        .then(function(){
+          _prefetchProgress = null;
+          return { count: _data ? _data.csvData.length - 1 : 0, unit: 'mappen' };
+        })
+        .catch(function(e){
+          _prefetchProgress = null;
+          throw e;
+        });
     }
   };
 })();
