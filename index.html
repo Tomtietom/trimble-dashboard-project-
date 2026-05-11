@@ -1433,8 +1433,8 @@ async function loadDashboard(){
     rootId ? tcFetchSafe('/folders/'+rootId+'/items?pageSize=500', {items:[]}) : Promise.resolve({items:[]}),
     tcFetchSafe('/projects?showSubProjects=true&pageSize=500', []),
     tcFetchSafe('/releases?projectId='+pid+'&pageSize=10', []),
-    // Todos: probeer meerdere endpoints (TC API is variabel)
-    fetchTodosMulti(pid),
+    // Issues via Issue Management API (BCF-compatible, vervangt oude /todos)
+    fetchIssuesForProject(pid),
     // Shares: openstaande gedeelde links
     tcFetchSafe('/shares?projectId='+pid+'&pageSize=20', []),
   ]);
@@ -1627,27 +1627,40 @@ function renderActivity(rootList){
 //  Project-context: To-do's, Releases, Uploads, Shares, Favorieten
 // ============================================================
 
-// Probeer meerdere TC API endpoints voor todos — pak het eerste niet-leeg/niet-404 resultaat
-async function fetchTodosMulti(pid){
-  const candidates = [
-    '/todos?projectId=' + pid + '&pageSize=20',
-    '/projects/' + pid + '/todos?pageSize=20',
-    '/issues?projectId=' + pid + '&pageSize=20',
-    '/projects/' + pid + '/issues?pageSize=20'
-  ];
-  for (const path of candidates){
-    try {
-      const r = await tcFetch(path);
-      if (r) {
-        console.log('[Cockpit] Todos via', path, '— items:', Array.isArray(r) ? r.length : (r.items?.length || 0));
-        return r;
+// Issues ophalen via Trimble's Issue Management API (BCF-compatible, master-host, TRN context).
+// Spec: https://api.swaggerhub.com/apis/Trimble-Connect/IssueMgmt/v0
+// Server: https://app.connect.trimble.com/v1 — region-agnostic, TRN bevat regio.
+const ISSUE_API_BASE = 'https://app.connect.trimble.com/v1';
+function _tcRegionToTrn(region){
+  const r = String(region || '').toLowerCase();
+  if (r.includes('america') || r.includes('north')) return 'us';
+  if (r.includes('asia') || r.includes('ap')) return 'ap';
+  return 'eu';
+}
+async function fetchIssuesForProject(pid){
+  if (!pid || !tcToken) return null;
+  const trn = 'trn:2:tc:' + _tcRegionToTrn(tcRegion) + ':projects:' + pid;
+  const url = ISSUE_API_BASE + '/context/' + encodeURIComponent(trn)
+            + '/issues?pageSize=20&order=desc&fields=status,dueDate,assignees,priority,type';
+  try {
+    const r = await fetch(url, {
+      headers: { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' }
+    });
+    if (!r.ok){
+      if (r.status === 404 || r.status === 403){
+        console.log('[Cockpit] Issues niet beschikbaar voor dit project (HTTP ' + r.status + ')');
+        return null;
       }
-    } catch (e) {
-      // 404/400/etc → probeer volgende
+      throw new Error('HTTP ' + r.status);
     }
+    const data = await r.json();
+    const items = Array.isArray(data) ? data : (data.items || []);
+    console.log('[Cockpit] Issues opgehaald via Issue Mgmt API — items:', items.length);
+    return items;
+  } catch(e){
+    console.warn('[Cockpit] Issues fetch fout:', e.message);
+    return null;
   }
-  console.log('[Cockpit] Geen todos endpoint werkt in deze omgeving');
-  return null;
 }
 
 function renderTodos(todos){
