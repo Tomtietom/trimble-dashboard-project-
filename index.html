@@ -574,6 +574,8 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-group-count{opacity:.6;font-weight:normal;text-transform:none;letter-spacing:0;margin-left:6px}
 .dl-no-results{padding:var(--s5);text-align:center;color:var(--g4);font-size:var(--fs-sm)}
 .dl-filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:var(--s3);padding:10px var(--s3);background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm)}
+.dl-meta-banner{padding:10px 14px;background:#eef4fb;border:1px solid #c8d9ea;border-left:3px solid #4a82c1;border-radius:var(--r-sm);margin-bottom:var(--s3);font-size:var(--fs-sm);color:#2a4d72}
+.dl-meta-banner strong{color:#1a3d62}
 .dl-filter{padding:6px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;background:#fff;cursor:pointer;min-width:140px}
 .dl-filter:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 2px var(--afl)}
 .dl-filter-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 13px 'Poppins',sans-serif;color:var(--g5);transition:all .15s}
@@ -4534,6 +4536,7 @@ const DL = (function(){
   let _selectedFolder = '';     // pad-prefix in tree-mode; leeg = root (alle docs)
   let _treeCollapsed = new Set(); // ingeklapte tree-paths
   let _hasMetaSchema = false; // wordt true zodra we minstens 1 metadata-match krijgen
+  let _metadataFetchComplete = false; // bulk/cache klaar — pas dan banner tonen bij geen schema
   let _deepScanState = null; // { totaal, gedaan, actief } tijdens per-file metadata-fetch
   let _deepScanPromise = null; // capture deep-scan promise zodat prefetch erop kan wachten
   let _prefetchProgress = null; // (info)=>void — gezet door cockpit prefetch-orchestrator
@@ -5019,6 +5022,7 @@ const DL = (function(){
         if (hits / _docs.length >= 0.5){
           // ≥50% in cache → vertrouw cache, skip nieuwe fetch (geen 13s wacht)
           _hasMetaSchema = withMeta > 0;
+          _metadataFetchComplete = true;
           console.log('[DL] cache hit:', hits, '/', _docs.length, 'docs (' + withMeta + ' met metadata) — bulk + deep-scan overgeslagen');
           _renderTable();
           // Schedule background revalidate van NIEUWE docs (sinds cache) als die er zijn
@@ -5036,6 +5040,7 @@ const DL = (function(){
       }
 
       try { await _loadMetadata(); } catch(e){ console.warn('[DL] metadata-load fout:', e.message); }
+      _metadataFetchComplete = true;
       _renderTable(); // bulk binnen, eerste 100 docs hebben metadata
       // Deep-scan voor de rest (bulk geeft max 100/project) — async, niet awaiten
       if (_docs.length > 0){
@@ -5199,6 +5204,15 @@ const DL = (function(){
       _renderFilterBar();
       _renderTable();
     });
+  }
+
+  // Banner tonen wanneer project geen metadata-schema heeft (pas na bulk/cache-check).
+  function _renderMetaBanner(){
+    const root = getRoot();
+    if (!root) return;
+    const el = root.querySelector('#dl-meta-banner');
+    if (!el) return;
+    el.style.display = (_metadataFetchComplete && !_hasMetaSchema) ? '' : 'none';
   }
 
   // Render de bestandstype-chips-rij. Toont alleen als er meer dan 1 extensie is —
@@ -5389,6 +5403,7 @@ const DL = (function(){
     if (!tbody || !count) return;
 
     _renderViewToggle();
+    _renderMetaBanner();
     _renderFilterBar();
     _renderExtChips();
     _renderFolderTree();
@@ -5506,6 +5521,7 @@ const DL = (function(){
         '</div>' +
         '<div id="dl-error" class="dl-error" style="display:none"></div>' +
         '<div id="dl-loading" class="dl-loading" style="display:none">Documenten laden…</div>' +
+        '<div id="dl-meta-banner" class="dl-meta-banner" style="display:none"><strong>Geen metadata-schema in dit project.</strong> Filters en metadata-kolommen zijn uitgeschakeld. Bestandsnaam, versie, datum en map blijven beschikbaar.</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
         '<div id="dl-ext-chips" class="dl-ext-chips" style="display:none"></div>' +
         '<div id="dl-main" class="dl-main">' +
@@ -5563,11 +5579,14 @@ const DL = (function(){
     _isLoaded = false;
     _isLoading = false;
     _hasMetaSchema = false;
+    _metadataFetchComplete = false;
     _deepScanState = null;
     const tbody = document.getElementById('dl-tbody');
     if (tbody) tbody.innerHTML = '';
     const count = document.getElementById('dl-count');
     if (count) count.textContent = '–';
+    const banner = document.getElementById('dl-meta-banner');
+    if (banner) banner.style.display = 'none';
     console.log('[DL] force refresh — cache gewist, opnieuw laden');
     await _loadDocs();
   }
