@@ -485,6 +485,22 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .pu-bulk-bar .bulk-apply{padding:8px 18px;background:var(--af);color:#fff;border:0;border-radius:var(--r-pill);font-family:'Montserrat',sans-serif;font-weight:600;cursor:pointer;font-size:var(--fs-md);box-shadow:0 4px 14px rgba(212,130,26,.25);transition:all .2s}
 .pu-bulk-bar .bulk-apply:hover{background:var(--af2)}
 
+/* Template-banner (Wijziging 4) */
+.pu-tpl-banner{background:var(--afl);border:1px solid var(--af);border-left:4px solid var(--af);border-radius:var(--r-md);padding:var(--s3) var(--s4);margin:var(--s3) 0;display:flex;flex-wrap:wrap;align-items:center;gap:var(--s3)}
+.pu-tpl-banner-msg{flex:1;min-width:240px;font-size:var(--fs-md);color:var(--dk);line-height:1.5}
+.pu-tpl-banner-actions{display:flex;gap:var(--s2);flex-wrap:wrap}
+.pu-tpl-banner .pu-tpl-take{padding:7px 16px;background:var(--af);color:#fff;border:0;border-radius:var(--r-pill);font-family:'Montserrat',sans-serif;font-weight:600;cursor:pointer;font-size:var(--fs-sm)}
+.pu-tpl-banner .pu-tpl-take:hover{background:var(--af2)}
+.pu-tpl-banner .pu-tpl-take:disabled{opacity:.6;cursor:wait}
+.pu-tpl-banner .pu-tpl-skip{padding:7px 14px;background:transparent;color:var(--g6);border:1px solid var(--hl);border-radius:var(--r-pill);font-family:'Poppins',sans-serif;cursor:pointer;font-size:var(--fs-sm)}
+.pu-tpl-banner .pu-tpl-skip:hover{background:#fff}
+.pu-tpl-banner-msg-out{flex-basis:100%;font-size:var(--fs-xs);color:var(--g5);margin-top:4px}
+.pu-tpl-banner-msg-out:empty{display:none}
+
+/* Vergrendelde metadata-velden (Wijziging 5): read-only met 🔒 */
+.queue-item .locked-select{background:#f3eee5;color:var(--dk);border-color:#d8c9aa;cursor:not-allowed;opacity:1}
+.queue-item .locked-select:disabled{-webkit-appearance:none;appearance:none;padding-right:10px}
+
 /* Settings-modal (admin: hub-config bewerken) */
 .pu-app-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s3);margin-bottom:var(--s3)}
 .pu-app-head>div{flex:1;min-width:0}
@@ -2312,7 +2328,10 @@ const PU = (function(){
   let _psetStats = { ok:0, fail:0 };
 
   // Stage 2: hub-config + suggestion engine state
-  let _uploadConfig = { rules: [], filePatterns: [], synonyms: {} };
+  // folderPatterns: regex op bestandsnaam → suggesteer specifieke folderId (bv. .ifc → 00 Modellen)
+  // lockedFields: per metadata-veld een vaste waarde die door uploader NIET gewijzigd kan worden
+  // isTemplate: dit project mag als bron-template dienen voor andere projecten (banner-flow)
+  let _uploadConfig = { rules: [], filePatterns: [], folderPatterns: [], synonyms: {}, lockedFields: {}, isTemplate: false };
   let _configLoaded = false;
   let _configLoading = false;
   let _bulkMeta = { discipline:'', project_fase:'', document_status:'' };
@@ -2548,7 +2567,12 @@ const PU = (function(){
       const session = _getHubSessionToken();
       if (session) headers['X-Session'] = session;
       const r = await _fetchTimeout(url, { headers: headers }, 10000);
-      if (r.status === 404) { console.log('[PU] config nog niet ingesteld — default rules'); _configLoaded = true; return; }
+      if (r.status === 404) {
+        console.log('[PU] config nog niet ingesteld — default rules');
+        _configLoaded = true;
+        _maybeShowTemplateBanner();
+        return;
+      }
       if (r.status === 401) { console.warn('[PU] config 401 — sessietoken ontbreekt; default rules'); _configLoaded = true; return; }
       if (!r.ok) { console.warn('[PU] config-fetch fout:', r.status); return; }
       const body = await r.json().catch(function(){ return null; });
@@ -2577,16 +2601,41 @@ const PU = (function(){
         }
         _uploadConfig.synonyms = clean;
       }
+      if (cfg && Array.isArray(cfg.folderPatterns)){
+        _uploadConfig.folderPatterns = cfg.folderPatterns.filter(function(p){
+          return p && typeof p.regex === 'string' && typeof p.folderId === 'string' && p.regex && p.folderId;
+        });
+      }
+      if (cfg && cfg.lockedFields && typeof cfg.lockedFields === 'object'){
+        const clean = {};
+        for (const f of METADATA_FIELDS){
+          const v = cfg.lockedFields[f];
+          if (typeof v === 'string' && (ENUM_VALUES[f] || []).indexOf(v) >= 0) clean[f] = v;
+        }
+        _uploadConfig.lockedFields = clean;
+      }
+      if (cfg && cfg.isTemplate === true){
+        _uploadConfig.isTemplate = true;
+        // Cache template-project in localStorage van de admin (zie banner-flow)
+        try {
+          localStorage.setItem('pu-template-project-id', tcProject.id);
+          if (tcProject.name) localStorage.setItem('pu-template-project-name', tcProject.name);
+        } catch(_){}
+      }
       _configLoaded = true;
       const synCount = Object.values(_uploadConfig.synonyms).reduce(function(n,m){ return n + Object.keys(m).length; }, 0);
-      console.log('[PU] config geladen:', _uploadConfig.rules.length, 'pad-regels,', _uploadConfig.filePatterns.length, 'patronen,', synCount, 'synoniemen');
+      const lockCount = Object.keys(_uploadConfig.lockedFields || {}).length;
+      console.log('[PU] config geladen:', _uploadConfig.rules.length, 'pad-regels,', _uploadConfig.filePatterns.length, 'patronen,', _uploadConfig.folderPatterns.length, 'map-patronen,', synCount, 'synoniemen,', lockCount, 'vergrendelingen' + (_uploadConfig.isTemplate ? ' (template)' : ''));
       // Re-suggest pending items zodra config beschikbaar is
       if (_isInjected){
         for (const item of _queue){
           if (item.status !== 'pending') continue;
+          item.folderPatternMatched = false;
           _applyFilenamePatterns(item);
-          _recomputeFolderSuggestion(item);
+          if (item.folderAuto) _applyFolderPattern(item);
+          if (item.folderAuto && !item.folderPatternMatched) _recomputeFolderSuggestion(item);
           _applyMetadataSuggestion(item);
+          _applyLockedFields(item);
         }
         renderQueue();
       }
@@ -2609,7 +2658,14 @@ const PU = (function(){
       slug: EXTENSION_SLUG_PU,
       project: tcProject.id,
       key: 'metadata-rules',
-      value: { rules: _uploadConfig.rules, filePatterns: _uploadConfig.filePatterns, synonyms: _uploadConfig.synonyms },
+      value: {
+        rules: _uploadConfig.rules,
+        filePatterns: _uploadConfig.filePatterns,
+        synonyms: _uploadConfig.synonyms,
+        folderPatterns: _uploadConfig.folderPatterns || [],
+        lockedFields: _uploadConfig.lockedFields || {},
+        isTemplate: !!_uploadConfig.isTemplate,
+      },
       tcToken: tcToken,
     };
     const r = await _fetchTimeout(HUB_CONFIG_URL_PU, { method:'POST', headers: headers, body: JSON.stringify(body) }, 15000);
@@ -2648,6 +2704,111 @@ const PU = (function(){
   }
 
   // ============================================================
+  //  Template-banner: bij leeg project + gecachte template-project-id
+  //  → toon banner "Importeer regels uit X?" (admin-flow, single-user via localStorage)
+  // ============================================================
+  function _maybeShowTemplateBanner(){
+    let templateId, templateName;
+    try {
+      templateId = localStorage.getItem('pu-template-project-id');
+      templateName = localStorage.getItem('pu-template-project-name') || 'Template-project';
+    } catch(_){ return; }
+    if (!templateId || templateId === tcProject.id) return;
+    try {
+      if (localStorage.getItem('pu-template-dismissed-' + tcProject.id) === '1') return;
+    } catch(_){}
+    // Niet tonen als project toch al regels heeft (race-conditie)
+    if ((_uploadConfig.rules || []).length || (_uploadConfig.filePatterns || []).length) return;
+    _renderTemplateBanner(templateId, templateName);
+  }
+
+  function _renderTemplateBanner(templateId, templateName){
+    const root = getRoot();
+    if (!root) return;
+    const el = root.querySelector('#pu-template-banner');
+    if (!el) return;
+    el.innerHTML =
+      '<div class="pu-tpl-banner">'
+        + '<div class="pu-tpl-banner-msg">'
+          + '<strong>ℹ️ Dit project heeft nog geen regels.</strong> '
+          + 'Wil je de regels van <strong>' + escapeHtml(templateName) + '</strong> overnemen?'
+        + '</div>'
+        + '<div class="pu-tpl-banner-actions">'
+          + '<button type="button" class="pu-tpl-take" data-tpl-id="' + escapeHtml(templateId) + '">Overnemen</button>'
+          + '<button type="button" class="pu-tpl-skip">Negeren</button>'
+        + '</div>'
+        + '<div class="pu-tpl-banner-msg-out" id="pu-tpl-msg"></div>'
+      + '</div>';
+    const takeBtn = el.querySelector('.pu-tpl-take');
+    const skipBtn = el.querySelector('.pu-tpl-skip');
+    const msgEl = el.querySelector('#pu-tpl-msg');
+    if (takeBtn){
+      takeBtn.addEventListener('click', async function(){
+        takeBtn.disabled = true;
+        if (skipBtn) skipBtn.disabled = true;
+        msgEl.textContent = 'Ophalen…';
+        try {
+          await _importFromTemplate(takeBtn.getAttribute('data-tpl-id'));
+          el.innerHTML = '';
+          // Re-suggesteer eventueel al-bestaande pending items met de nieuwe regels
+          for (const item of _queue){
+            if (item.status !== 'pending') continue;
+            item.folderPatternMatched = false;
+            for (const f of METADATA_FIELDS){
+              if (item.metadataLocked && item.metadataLocked[f]) continue;
+              if (item.metadataAuto[f]){ item.metadata[f] = ''; item.metadataAuto[f] = false; }
+            }
+            _applyFilenamePatterns(item);
+            if (item.folderAuto) _applyFolderPattern(item);
+            if (item.folderAuto && !item.folderPatternMatched) _recomputeFolderSuggestion(item);
+            _applyMetadataSuggestion(item);
+            _applyLockedFields(item);
+          }
+          renderQueue();
+        } catch(e){
+          msgEl.textContent = 'Fout: ' + (e.message || 'onbekend');
+          takeBtn.disabled = false;
+          if (skipBtn) skipBtn.disabled = false;
+        }
+      });
+    }
+    if (skipBtn){
+      skipBtn.addEventListener('click', function(){
+        try { localStorage.setItem('pu-template-dismissed-' + tcProject.id, '1'); } catch(_){}
+        el.innerHTML = '';
+      });
+    }
+  }
+
+  // Haalt template-config op, kopieert naar _uploadConfig (exclusief isTemplate!),
+  // en slaat naar hub. isTemplate-flag NIET overnemen — anders zou elk project
+  // dat de banner accepteert óók als template gaan dienen.
+  async function _importFromTemplate(templateId){
+    const cfg = await _fetchConfigForProject(templateId);
+    if (!cfg) throw new Error('Template-project heeft geen regels meer.');
+    _uploadConfig.rules = Array.isArray(cfg.rules)
+      ? cfg.rules.filter(function(r){ return r && Number.isFinite(r.depth) && METADATA_FIELDS.indexOf(r.field) >= 0; })
+      : [];
+    _uploadConfig.filePatterns = Array.isArray(cfg.filePatterns)
+      ? cfg.filePatterns.filter(function(p){ return p && typeof p.regex === 'string' && METADATA_FIELDS.indexOf(p.field) >= 0 && typeof p.value === 'string'; })
+      : [];
+    _uploadConfig.folderPatterns = Array.isArray(cfg.folderPatterns)
+      ? cfg.folderPatterns.filter(function(p){ return p && typeof p.regex === 'string' && typeof p.folderId === 'string' && p.regex && p.folderId; })
+      : [];
+    _uploadConfig.synonyms = (cfg.synonyms && typeof cfg.synonyms === 'object') ? cfg.synonyms : {};
+    const locked = {};
+    if (cfg.lockedFields && typeof cfg.lockedFields === 'object'){
+      for (const f of METADATA_FIELDS){
+        const v = cfg.lockedFields[f];
+        if (typeof v === 'string' && (ENUM_VALUES[f] || []).indexOf(v) >= 0) locked[f] = v;
+      }
+    }
+    _uploadConfig.lockedFields = locked;
+    _uploadConfig.isTemplate = false;
+    await _saveUploadConfig();
+  }
+
+  // ============================================================
   //  Stage 2B: Settings-modal — admin bewerkt rules / patterns / synonyms
   // ============================================================
   function _openConfigModal(){
@@ -2662,6 +2823,9 @@ const PU = (function(){
       rules: _uploadConfig.rules.map(function(r){ return { depth: r.depth, field: r.field, map: r.map ? Object.assign({}, r.map) : null }; }),
       filePatterns: (_uploadConfig.filePatterns || []).map(function(p){ return { regex: p.regex, field: p.field, value: p.value }; }),
       synonyms: flatSynonyms,
+      folderPatterns: (_uploadConfig.folderPatterns || []).map(function(p){ return { regex: p.regex, folderId: p.folderId }; }),
+      lockedFields: Object.assign({}, _uploadConfig.lockedFields || {}),
+      isTemplate: !!_uploadConfig.isTemplate,
     };
 
     const backdrop = document.createElement('div');
@@ -2678,6 +2842,21 @@ const PU = (function(){
     };
     const valueOptionsFor = function(field, selected){
       const opts = ['<option value="">— kies waarde —</option>'];
+      for (const v of (ENUM_VALUES[field] || [])){
+        opts.push('<option value="' + escapeHtml(v) + '"' + (v === selected ? ' selected' : '') + '>' + escapeHtml(v) + '</option>');
+      }
+      return opts.join('');
+    };
+    const folderOptionsFor = function(selectedId){
+      const opts = ['<option value="">— kies map —</option>'];
+      for (const f of _writableFolders){
+        if (f.path === '(projectroot)') continue;
+        opts.push('<option value="' + escapeHtml(f.id) + '"' + (f.id === selectedId ? ' selected' : '') + '>' + escapeHtml(f.path) + '</option>');
+      }
+      return opts.join('');
+    };
+    const lockOptionsFor = function(field, selected){
+      const opts = ['<option value="">— niet vergrendeld —</option>'];
       for (const v of (ENUM_VALUES[field] || [])){
         opts.push('<option value="' + escapeHtml(v) + '"' + (v === selected ? ' selected' : '') + '>' + escapeHtml(v) + '</option>');
       }
@@ -2717,6 +2896,23 @@ const PU = (function(){
             + '</div>';
           }).join('');
 
+      const folderPatternsHtml = draft.folderPatterns.length === 0
+        ? '<p class="sub" style="margin:8px 0 12px;">Nog geen map-patronen. Voeg er een toe om bv. <code>.ifc</code>/<code>.rvt</code>-bestanden automatisch naar de modellen-map te suggereren.</p>'
+        : draft.folderPatterns.map(function(p, i){
+            return '<div class="rule-row pattern-row">'
+              + '<input type="text" value="' + escapeHtml(p.regex) + '" data-fpat-regex="' + i + '" placeholder="bv. \\.ifc$|\\.rvt$" title="Regex op de bestandsnaam. Tip: \\.ifc$ matcht alleen op exact die extensie aan het eind.">'
+              + '<select data-fpat-folder="' + i + '">' + folderOptionsFor(p.folderId) + '</select>'
+              + '<button class="rule-del" data-fpat-del="' + i + '" title="Regel verwijderen">×</button>'
+            + '</div>';
+          }).join('');
+
+      const lockedFieldsHtml = METADATA_FIELDS.map(function(f){
+        return '<div class="rule-row pattern-row">'
+          + '<label style="min-width:90px;font-size:var(--fs-sm);color:var(--dk);">🔒 ' + escapeHtml(FIELD_LABEL[f]) + '</label>'
+          + '<select data-lock-field="' + f + '" style="flex:1;">' + lockOptionsFor(f, draft.lockedFields[f] || '') + '</select>'
+        + '</div>';
+      }).join('');
+
       modal.innerHTML =
         '<h2>Instellingen — metadata automatisch invullen</h2>'
         + '<p class="sub" style="margin-bottom:var(--s3);">Vertel de uploader hoe je bestanden herkend moeten worden, dan stelt hij de juiste map voor en vult Discipline / Fase / Status alvast in.</p>'
@@ -2750,6 +2946,21 @@ const PU = (function(){
         + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Voorbeeld: <code>VO</code> → <code>Voorlopig ontwerp</code>, <code>ARC</code> → <code>Architect</code>. Zonder deze vertaling ziet de uploader <code>3.2 VO</code> niet als Fase = Voorlopig ontwerp.</p>'
         + '<div id="synonyms-list">' + synonymsHtml + '</div>'
         + '<button type="button" class="add-rule" id="add-synonym-btn">+ Synoniem toevoegen</button>'
+        + '<h3 style="font-size:14px;margin:22px 0 4px;">4. Bestandstype → map</h3>'
+        + '<p class="sub" style="margin:0 0 var(--s1);">Stuur bestanden op basis van hun naam (meestal extensie) automatisch naar een specifieke map.</p>'
+        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Voorbeeld: <code>\\.ifc$|\\.rvt$</code> → map <code>00 Modellen</code>. Bij <code>.pdf</code> blijft de map-suggestie via de metadata-scoring werken.</p>'
+        + '<div id="fpatterns-list">' + folderPatternsHtml + '</div>'
+        + '<button type="button" class="add-rule" id="add-fpattern-btn">+ Map-patroon toevoegen</button>'
+        + '<h3 style="font-size:14px;margin:22px 0 4px;">5. Vergrendelde waarden</h3>'
+        + '<p class="sub" style="margin:0 0 var(--s1);">Voor projecten waar één discipline / fase / status altijd hetzelfde is (bv. een onderaannemer die alleen Constructeur-bestanden levert).</p>'
+        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Een vergrendeld veld is in de uploader read-only met 🔒-icoon — de uploader hoeft niets in te vullen.</p>'
+        + '<div id="locked-list">' + lockedFieldsHtml + '</div>'
+        + '<h3 style="font-size:14px;margin:22px 0 4px;">6. Dit project als template</h3>'
+        + '<p class="sub" style="margin:0 0 var(--s2);">Markeer dit project zodat nieuwe lege projecten in een banner kunnen kiezen om deze regels over te nemen.</p>'
+        + '<label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--dk);cursor:pointer;">'
+          + '<input type="checkbox" id="cfg-is-template"' + (draft.isTemplate ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer;">'
+          + '<span>📌 Gebruik dit project als template voor nieuwe projecten</span>'
+        + '</label>'
         + '<div class="modal-actions">'
           + '<button class="btn-ghost" type="button" id="cfg-cancel">Annuleren</button>'
           + '<button class="btn-primary" type="button" id="cfg-save">Opslaan</button>'
@@ -2849,6 +3060,41 @@ const PU = (function(){
         render();
       });
 
+      // === Map-patroon handlers (folderPatterns) ===
+      modal.querySelectorAll('input[data-fpat-regex]').forEach(function(el){
+        el.addEventListener('input', function(){
+          draft.folderPatterns[Number(el.getAttribute('data-fpat-regex'))].regex = el.value;
+        });
+      });
+      modal.querySelectorAll('select[data-fpat-folder]').forEach(function(el){
+        el.addEventListener('change', function(){
+          draft.folderPatterns[Number(el.getAttribute('data-fpat-folder'))].folderId = el.value;
+        });
+      });
+      modal.querySelectorAll('button[data-fpat-del]').forEach(function(el){
+        el.addEventListener('click', function(){
+          draft.folderPatterns.splice(Number(el.getAttribute('data-fpat-del')), 1);
+          render();
+        });
+      });
+      modal.querySelector('#add-fpattern-btn').addEventListener('click', function(){
+        draft.folderPatterns.push({ regex:'', folderId:'' });
+        render();
+      });
+
+      // === Locked-fields handlers ===
+      modal.querySelectorAll('select[data-lock-field]').forEach(function(el){
+        el.addEventListener('change', function(){
+          const f = el.getAttribute('data-lock-field');
+          if (el.value) draft.lockedFields[f] = el.value;
+          else delete draft.lockedFields[f];
+        });
+      });
+
+      // === Template-checkbox ===
+      const tplCheck = modal.querySelector('#cfg-is-template');
+      if (tplCheck) tplCheck.addEventListener('change', function(){ draft.isTemplate = tplCheck.checked; });
+
       // === Import-dropdown vullen (async, één keer per modal-sessie volstaat) ===
       const projectSel = modal.querySelector('#import-project');
       if (projectSel && projectSel.options.length <= 1){
@@ -2883,7 +3129,7 @@ const PU = (function(){
               importBtn.disabled = false;
               return;
             }
-            const totalOld = draft.rules.length + draft.filePatterns.length + draft.synonyms.length;
+            const totalOld = draft.rules.length + draft.filePatterns.length + draft.synonyms.length + draft.folderPatterns.length + Object.keys(draft.lockedFields).length;
             if (totalOld > 0 && !confirm('Huidige regels overschrijven met die van het andere project?')){
               importBtn.disabled = false;
               importMsg.textContent = '';
@@ -2897,6 +3143,19 @@ const PU = (function(){
               ? cfg.filePatterns.filter(function(p){ return p && typeof p.regex === 'string' && METADATA_FIELDS.indexOf(p.field) >= 0 && typeof p.value === 'string'; })
                                  .map(function(p){ return { regex: p.regex, field: p.field, value: p.value }; })
               : [];
+            draft.folderPatterns = Array.isArray(cfg.folderPatterns)
+              ? cfg.folderPatterns.filter(function(p){ return p && typeof p.regex === 'string' && typeof p.folderId === 'string' && p.regex && p.folderId; })
+                                   .map(function(p){ return { regex: p.regex, folderId: p.folderId }; })
+              : [];
+            draft.lockedFields = {};
+            if (cfg.lockedFields && typeof cfg.lockedFields === 'object'){
+              for (const f of METADATA_FIELDS){
+                const v = cfg.lockedFields[f];
+                if (typeof v === 'string' && (ENUM_VALUES[f] || []).indexOf(v) >= 0) draft.lockedFields[f] = v;
+              }
+            }
+            // isTemplate-flag NIET overnemen: dat is een eigenschap van het bron-project zelf,
+            // niet iets dat je per kopie overneemt (anders heb je opeens twee templates).
             draft.synonyms = [];
             if (cfg.synonyms && typeof cfg.synonyms === 'object'){
               for (const f of METADATA_FIELDS){
@@ -2909,7 +3168,7 @@ const PU = (function(){
               }
             }
             importMsg.style.color = 'var(--ok)';
-            importMsg.textContent = '✓ Overgenomen: ' + draft.rules.length + ' pad-regels, ' + draft.filePatterns.length + ' patronen, ' + draft.synonyms.length + ' synoniemen — nog niet opgeslagen.';
+            importMsg.textContent = '✓ Overgenomen: ' + draft.rules.length + ' pad-regels, ' + draft.filePatterns.length + ' patronen, ' + draft.folderPatterns.length + ' map-patronen, ' + draft.synonyms.length + ' synoniemen, ' + Object.keys(draft.lockedFields).length + ' vergrendelingen — nog niet opgeslagen.';
             render();
           } catch(e){
             importMsg.style.color = 'var(--warn)';
@@ -2964,6 +3223,34 @@ const PU = (function(){
             return;
           }
         }
+        // Valideer map-patronen: regex parsebaar + folderId bestaat in writable folders
+        for (const p of draft.folderPatterns){
+          if (!p.regex || !p.folderId){
+            msgEl.style.color = 'var(--warn)';
+            msgEl.textContent = 'Een map-patroon heeft een lege regex of geen map gekozen.';
+            saveBtn.disabled = false;
+            return;
+          }
+          try { new RegExp(p.regex); }
+          catch(e){
+            msgEl.style.color = 'var(--warn)';
+            msgEl.textContent = 'Ongeldige map-regex: ' + p.regex;
+            saveBtn.disabled = false;
+            return;
+          }
+          if (!_writableFolders.find(function(f){ return f.id === p.folderId; })){
+            msgEl.style.color = 'var(--warn)';
+            msgEl.textContent = 'Map uit map-patroon bestaat niet (meer): ' + p.regex;
+            saveBtn.disabled = false;
+            return;
+          }
+        }
+        // Valideer locked-fields: alleen velden uit METADATA_FIELDS met geldige enum-waarden
+        for (const f in draft.lockedFields){
+          if (METADATA_FIELDS.indexOf(f) < 0 || (ENUM_VALUES[f] || []).indexOf(draft.lockedFields[f]) < 0){
+            delete draft.lockedFields[f];
+          }
+        }
 
         // Flat synonyms-array omzetten naar { field: { alias: canonical } }
         const synObj = {};
@@ -2975,20 +3262,43 @@ const PU = (function(){
         const previousRules = _uploadConfig.rules;
         const previousPatterns = _uploadConfig.filePatterns;
         const previousSyn = _uploadConfig.synonyms;
+        const previousFolderPatterns = _uploadConfig.folderPatterns;
+        const previousLocked = _uploadConfig.lockedFields;
+        const previousIsTemplate = _uploadConfig.isTemplate;
         _uploadConfig.rules = draft.rules;
         _uploadConfig.filePatterns = draft.filePatterns;
         _uploadConfig.synonyms = synObj;
+        _uploadConfig.folderPatterns = draft.folderPatterns || [];
+        _uploadConfig.lockedFields = draft.lockedFields || {};
+        _uploadConfig.isTemplate = !!draft.isTemplate;
         try {
           await _saveUploadConfig();
-          // Re-suggestie voor pending items met nieuwe config
+          // Template-cache bijwerken: bij aanvinken cachen, bij uitvinken
+          // verwijderen indien dit project de gecachte template was.
+          try {
+            if (_uploadConfig.isTemplate){
+              localStorage.setItem('pu-template-project-id', tcProject.id);
+              if (tcProject.name) localStorage.setItem('pu-template-project-name', tcProject.name);
+            } else if (localStorage.getItem('pu-template-project-id') === tcProject.id){
+              localStorage.removeItem('pu-template-project-id');
+              localStorage.removeItem('pu-template-project-name');
+            }
+          } catch(_){}
+          // Re-suggestie voor pending items met nieuwe config — zelfde keten als addFiles
           for (const item of _queue){
             if (item.status !== 'pending') continue;
+            // Wis auto-velden (behalve vergrendelde) zodat nieuwe regels schoon kunnen toepassen
+            item.metadataLocked = item.metadataLocked || { discipline:false, project_fase:false, document_status:false };
             for (const f of METADATA_FIELDS){
+              if (item.metadataLocked[f]) continue;
               if (item.metadataAuto[f]){ item.metadata[f] = ''; item.metadataAuto[f] = false; }
             }
+            item.folderPatternMatched = false;
             _applyFilenamePatterns(item);
-            _recomputeFolderSuggestion(item);
+            if (item.folderAuto) _applyFolderPattern(item);
+            if (item.folderAuto && !item.folderPatternMatched) _recomputeFolderSuggestion(item);
             _applyMetadataSuggestion(item);
+            _applyLockedFields(item);
           }
           renderQueue();
           backdrop.remove();
@@ -2996,6 +3306,9 @@ const PU = (function(){
           _uploadConfig.rules = previousRules;
           _uploadConfig.filePatterns = previousPatterns;
           _uploadConfig.synonyms = previousSyn;
+          _uploadConfig.folderPatterns = previousFolderPatterns;
+          _uploadConfig.lockedFields = previousLocked;
+          _uploadConfig.isTemplate = previousIsTemplate;
           msgEl.style.color = 'var(--warn)';
           msgEl.textContent = e.message;
           saveBtn.disabled = false;
@@ -3100,6 +3413,8 @@ const PU = (function(){
     for (const p of patterns){
       if (!p || !p.regex || !p.field || !p.value) continue;
       if (METADATA_FIELDS.indexOf(p.field) < 0) continue;
+      // Vergrendeld veld nooit overschrijven via pattern
+      if (item.metadataLocked && item.metadataLocked[p.field]) continue;
       // User-ingevulde waarde (niet-auto) niet overschrijven
       if (item.metadata[p.field] && !item.metadataAuto[p.field]) continue;
       let re;
@@ -3109,6 +3424,43 @@ const PU = (function(){
       const finalValue = match || p.value;
       item.metadata[p.field] = finalValue;
       item.metadataAuto[p.field] = true;
+    }
+  }
+
+  // Folder-pattern: regex op bestandsnaam matcht → suggesteer expliciete folderId.
+  // Overschrijft scoring-resultaat alleen als gebruiker niet zelf handmatig koos.
+  // Eerste matchende pattern wint; volgorde van patronen is dus betekenisvol.
+  function _applyFolderPattern(item){
+    if (!item || !item.file || !item.folderAuto) return;
+    const patterns = _uploadConfig.folderPatterns || [];
+    if (!patterns.length) return;
+    const name = item.file.name || '';
+    for (const p of patterns){
+      if (!p || !p.regex || !p.folderId) continue;
+      let re; try { re = new RegExp(p.regex, 'i'); } catch(_){ continue; }
+      if (!re.test(name)) continue;
+      if (!_writableFolders.find(function(f){ return f.id === p.folderId; })) continue;
+      item.folderId = p.folderId;
+      item.folderPatternMatched = true;
+      return;
+    }
+  }
+
+  // Vergrendelde velden: admin heeft per veld een vaste waarde geprikt.
+  // Forceer die waarde + flag het veld zodat de UI het read-only rendert
+  // en de folder-pick / bulk-bar / patterns het overslaan.
+  function _applyLockedFields(item){
+    if (!item) return;
+    const lf = _uploadConfig.lockedFields || {};
+    item.metadataLocked = item.metadataLocked || { discipline:false, project_fase:false, document_status:false };
+    for (const f of METADATA_FIELDS){
+      if (lf[f] && (ENUM_VALUES[f] || []).indexOf(lf[f]) >= 0){
+        item.metadata[f] = lf[f];
+        item.metadataAuto[f] = false;
+        item.metadataLocked[f] = true;
+      } else {
+        item.metadataLocked[f] = false;
+      }
     }
   }
 
@@ -3123,6 +3475,8 @@ const PU = (function(){
       if (idx < 0 || idx >= parts.length) continue;
       const field = rule.field;
       if (METADATA_FIELDS.indexOf(field) < 0) continue;
+      // Vergrendeld veld nooit overschrijven via pad-regel
+      if (item.metadataLocked && item.metadataLocked[field]) continue;
       if (item.metadata[field] && !item.metadataAuto[field]) continue;
       const raw = parts[idx];
       const mapped = (rule.map && rule.map[raw]) ? rule.map[raw] : raw;
@@ -3239,6 +3593,8 @@ const PU = (function(){
       for (const f of METADATA_FIELDS){
         const v = _bulkMeta[f];
         if (!v) continue;
+        // Vergrendelde velden onaantastbaar voor bulk, los van onlyEmpty-vlag
+        if (item.metadataLocked && item.metadataLocked[f]) continue;
         if (_bulkOnlyEmpty && item.metadata[f]) continue;
         item.metadata[f] = v;
         item.metadataAuto[f] = false;
@@ -3246,9 +3602,11 @@ const PU = (function(){
       if (_bulkFolderId && !(_bulkOnlyEmpty && item.folderId)){
         item.folderId = _bulkFolderId;
         item.folderAuto = false;
+        item.folderPatternMatched = false;
         item.folderPickerOpen = false;
       }
-      _recomputeFolderSuggestion(item);
+      // Alleen score-suggestie heroverwegen als de gebruiker de folder niet zelf koos
+      if (item.folderAuto && !item.folderPatternMatched) _recomputeFolderSuggestion(item);
     }
     renderQueue();
   }
@@ -3268,6 +3626,7 @@ const PU = (function(){
           '<button class="pu-cfg-btn" type="button" id="pu-cfg-btn" title="Metadata-regels instellen">⚙ Instellingen</button>' +
         '</div>' +
         '<div id="pu-warn-box"></div>' +
+        '<div id="pu-template-banner"></div>' +
         '<div class="dropzone" id="pu-dropzone">' +
           '<p><strong>Sleep bestanden hierheen</strong></p>' +
           '<p class="hint">of</p>' +
@@ -3346,11 +3705,20 @@ const PU = (function(){
         warn: null,
         metadata: { discipline:'', project_fase:'', document_status:'' },
         metadataAuto: { discipline:false, project_fase:false, document_status:false },
+        metadataLocked: { discipline:false, project_fase:false, document_status:false },
+        folderPatternMatched: false,
       };
-      // Suggestie-keten: 1) metadata uit bestandsnaam → 2) folder scoren met die metadata → 3) overige metadata uit gekozen pad
+      // Suggestie-keten:
+      //  1) metadata uit bestandsnaam (regex op naam)
+      //  2) doelmap uit folderPatterns (regex op naam → expliciete folderId)
+      //  3) als geen folderPattern matchte: folder scoren op metadata
+      //  4) overige metadata uit gekozen pad
+      //  5) locked fields forceren (overschrijft alles dat aan locked-velden raakte)
       _applyFilenamePatterns(item);
-      _recomputeFolderSuggestion(item);
+      _applyFolderPattern(item);
+      if (!item.folderPatternMatched) _recomputeFolderSuggestion(item);
       _applyMetadataSuggestion(item);
+      _applyLockedFields(item);
       // Fallback: als suggestie geen folder vindt en folderId nog null, kies projectroot
       if (!item.folderId && _writableFolders[0]) item.folderId = _writableFolders[0].id;
       _queue.push(item);
@@ -3422,9 +3790,11 @@ const PU = (function(){
         const item = _queue.find(function(i){ return i.id === id; });
         if (!item) return;
         item.description = el.value;
-        // Stage 2: description-tokens herzien filename-patterns + folder-scoring
+        // Stage 2: description-tokens herzien filename-patterns + folder-scoring.
+        // FolderPattern-match (op naam) verandert niet door description; behoud die.
         _applyFilenamePatterns(item);
-        _recomputeFolderSuggestion(item);
+        if (!item.folderPatternMatched) _recomputeFolderSuggestion(item);
+        _applyLockedFields(item);
         const caret = el.selectionStart;
         renderQueue();
         const again = qEl.querySelector('textarea[data-field=description][data-id="' + id + '"]');
@@ -3485,10 +3855,13 @@ const PU = (function(){
         const field = el.getAttribute('data-field').replace(/^meta-/,'');
         const item = _queue.find(function(i){ return i.id === id; });
         if (!item || METADATA_FIELDS.indexOf(field) < 0) return;
+        // Vergrendelde velden mogen niet via UI gewijzigd worden (disabled select dekt dit normaal,
+        // maar dubbele beveiliging voor het geval een handler los van de disabled-attr getriggerd wordt)
+        if (item.metadataLocked && item.metadataLocked[field]) return;
         item.metadata[field] = el.value;
         item.metadataAuto[field] = false;
-        // Stage 2: gewijzigde metadata her-scoort folders
-        _recomputeFolderSuggestion(item);
+        // Stage 2: gewijzigde metadata her-scoort folders, tenzij folderPattern al matchte
+        if (item.folderAuto && !item.folderPatternMatched) _recomputeFolderSuggestion(item);
         renderQueue();
       });
     });
@@ -3567,11 +3940,20 @@ const PU = (function(){
       const val = item.metadata[field] || '';
       const missing = !val;
       const auto = item.metadataAuto && item.metadataAuto[field];
+      const locked = item.metadataLocked && item.metadataLocked[field];
       const opts = ['<option value="">— kies —</option>'].concat(
         (ENUM_VALUES[field] || []).map(function(v){
           return '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
         })
       ).join('');
+      if (locked){
+        // Vergrendeld door admin — toon 🔒 in label en disabled select met vaste waarde
+        return ''
+          + '<div>'
+            + '<label title="Vergrendeld door projectbeheerder — niet aan te passen">🔒 ' + escapeHtml(FIELD_LABEL[field]) + '</label>'
+            + '<select class="locked-select" data-field="meta-' + field + '" data-id="' + item.id + '" disabled>' + opts + '</select>'
+          + '</div>';
+      }
       const icon = missing ? '<span class="warn-icon" title="Verplicht">⚠</span>' : '';
       const cls = missing ? 'warn-select' : '';
       const autoAttr = auto ? ' data-auto="1" title="Automatisch ingevuld op basis van mapstructuur of bestandsnaam"' : '';
@@ -3706,6 +4088,13 @@ const PU = (function(){
       }));
     }
     if (upBtn) upBtn.disabled = false;
+
+    // Auto-clear succesvolle items na de batch.
+    // 'done-warn' (metadata-fout) en 'error' blijven zichtbaar zodat de uploader
+    // kan zien wat er mis ging; 'pending' blijft staan als folderId ontbrak.
+    const before = _queue.length;
+    _queue = _queue.filter(function(i){ return i.status !== 'done'; });
+    if (_queue.length !== before) renderQueue();
 
     if (window.atfieltHub){
       try {
