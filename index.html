@@ -637,10 +637,15 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .rv-tree-row.rv-full{background:#e8f5e9}
 .rv-tree-row.rv-read{background:#fff8e1}
 .rv-tree-row.rv-none{color:#aaa}
+.rv-tree-row.rv-blocked{background:#fde8e8;color:#a94442}
+.rv-tree-row.rv-container{background:transparent;opacity:.55}
+.rv-tree-row.rv-container .rv-pad{font-size:13px;color:#888}
 .rv-tree-row .rv-pad{flex:1;word-break:break-word}
 .rv-badge{font-size:11px;padding:2px 8px;border-radius:8px;font-weight:500;white-space:nowrap}
 .rv-badge.full{background:#2e7d32;color:#fff}
 .rv-badge.read{background:#f57c00;color:#fff}
+.rv-badge.blocked{background:#a94442;color:#fff}
+.rv-badge.container{background:#e0e0e0;color:#555;font-style:italic}
 .rv-placeholder{padding:var(--s5);text-align:center;color:var(--g4);font-style:italic;font-size:var(--fs-sm)}
 .rv-dashboard{padding:var(--s2)}
 .rv-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s3);margin:var(--s3) 0}
@@ -5701,25 +5706,39 @@ const RV = (function(){
 
     console.log('[RV] Inheritance propagation: ' + foldersAffected + ' mappen kregen ' + subjectsAdded + ' subjects erbij van parent');
 
-    // Cleanup interne velden — niet meer nodig voor rendering
+    // _deny behouden voor expliciete NO_ACCESS-detectie in de UI (Spoor 2)
+    // _hasDirect en _inheritFromParent zijn alleen voor propagatie — opruimen
     for (const r of records){
-      delete r._deny;
       delete r._hasDirect;
       delete r._inheritFromParent;
+      // _deny blijft staan: bevat lijst van subjects die direct NO_ACCESS hebben op deze map
     }
   }
 
   // === Effective access ===
+  // Retourneert per pad een object: { level, viaGroups, denied }
+  //  - level: 'full' | 'read' | 'none'
+  //  - viaGroups: array van groepsnamen die toegang geven (positief)
+  //  - denied: array van groepsnamen met expliciete NO_ACCESS (Spoor 2)
   function _getEffectiveAccessForGroup(groupName){
     const out = {};
     if (!_data) return out;
+    const subjects = [groupName, 'Alle projectleden'];
     for (const row of _data.csvData){
-      let lvl = null;
-      if (row.full && row.full.indexOf(groupName) >= 0) lvl = 'full';
-      else if (row.read && row.read.indexOf(groupName) >= 0) lvl = 'read';
-      else if (row.full && row.full.indexOf('Alle projectleden') >= 0) lvl = 'full';
-      else if (row.read && row.read.indexOf('Alle projectleden') >= 0) lvl = 'read';
-      if (lvl) out[row.pad] = lvl;
+      let level = 'none';
+      const via = [];
+      const denied = [];
+      for (const s of subjects){
+        if (row._deny && row._deny.has(s)) denied.push(s);
+        if (row.full && row.full.indexOf(s) >= 0){
+          if (level !== 'full') level = 'full';
+          if (s === groupName) via.unshift(s); else via.push(s);
+        } else if (row.read && row.read.indexOf(s) >= 0){
+          if (level === 'none') level = 'read';
+          if (s === groupName) via.unshift(s); else via.push(s);
+        }
+      }
+      out[row.pad] = { level, viaGroups: via, denied };
     }
     return out;
   }
@@ -5730,13 +5749,24 @@ const RV = (function(){
     const userGroups = ['Alle projectleden'].concat(user.groups || []);
     const isAdmin = user.role === 'ADMIN' || user.role === 'PROJECT_ADMIN';
     for (const row of _data.csvData){
-      if (isAdmin){ out[row.pad] = 'full'; continue; }
-      let lvl = null;
-      for (const ug of userGroups){
-        if (row.full && row.full.indexOf(ug) >= 0){ lvl = 'full'; break; }
-        if (row.read && row.read.indexOf(ug) >= 0 && lvl !== 'full') lvl = 'read';
+      if (isAdmin){
+        out[row.pad] = { level: 'full', viaGroups: ['(Project-admin)'], denied: [] };
+        continue;
       }
-      if (lvl) out[row.pad] = lvl;
+      let level = 'none';
+      const via = [];
+      const denied = [];
+      for (const ug of userGroups){
+        if (row._deny && row._deny.has(ug)) denied.push(ug);
+        if (row.full && row.full.indexOf(ug) >= 0){
+          if (level !== 'full') level = 'full';
+          via.push(ug);
+        } else if (row.read && row.read.indexOf(ug) >= 0){
+          if (level === 'none') level = 'read';
+          via.push(ug);
+        }
+      }
+      out[row.pad] = { level, viaGroups: via, denied };
     }
     return out;
   }
@@ -5779,6 +5809,18 @@ const RV = (function(){
     return '<span class="rv-toggle">' + (open ? '▼' : '▶') + '</span>';
   }
 
+  // Helper: heeft deze map een sub-map waar de subject WEL toegang heeft? (Spoor 3)
+  function _hasAccessibleDescendant(rowPad, access){
+    const prefix = rowPad + '/';
+    for (const otherPad in access){
+      if (otherPad === rowPad) continue;
+      if (!otherPad.startsWith(prefix)) continue;
+      const entry = access[otherPad];
+      if (entry && (entry.level === 'full' || entry.level === 'read')) return true;
+    }
+    return false;
+  }
+
   // === Render ===
   function _renderRows(access){
     if (!access) return '<div class="rv-placeholder">Selecteer links een groep of gebruiker om mappen te tonen.</div>';
@@ -5787,14 +5829,50 @@ const RV = (function(){
     const rootDepth = rootPath ? rootPath.split('/').length : 1;
     const rows = _data.csvData.map(function(row, i){
       if (i > 0 && !_isRowVisible(row)) return '';
-      const lvl = access[row.pad];
-      const cls = lvl === 'full' ? 'rv-full' : lvl === 'read' ? 'rv-read' : 'rv-none';
+      const entry = access[row.pad] || { level: 'none', viaGroups: [], denied: [] };
+      const lvl = entry.level;
+      const via = entry.viaGroups || [];
+      const denied = entry.denied || [];
+
+      // Spoor 3 — container: geen eigen toegang maar sub-mappen wel
+      const isContainer = (lvl === 'none' && denied.length === 0 && _hasAccessibleDescendant(row.pad, access));
+      // Spoor 2 — expliciete NO_ACCESS zonder positieve grant
+      const isBlocked = (lvl === 'none' && denied.length > 0);
+
+      let cls, badge;
+      if (lvl === 'full'){
+        cls = 'rv-full';
+        badge = '<span class="rv-badge full">Volledig</span>';
+      } else if (lvl === 'read'){
+        cls = 'rv-read';
+        badge = '<span class="rv-badge read">Lezen</span>';
+      } else if (isBlocked){
+        cls = 'rv-blocked';
+        badge = '<span class="rv-badge blocked">Geblokkeerd</span>';
+      } else if (isContainer){
+        cls = 'rv-container';
+        badge = '<span class="rv-badge container">via sub-mappen</span>';
+      } else {
+        cls = 'rv-none';
+        badge = '<span class="rv-badge" style="background:#ddd;color:#666">Niet ingesteld</span>';
+      }
+
       const inhCls = row.inherited ? ' rv-inherited' : '';
-      const inhText = row.inherited ? ' (overgenomen)' : '';
-      const tooltip = ' title="' + _esc(row.pad) + inhText + '"';
-      const badge = lvl === 'full' ? '<span class="rv-badge full">Volledig</span>'
-                  : lvl === 'read' ? '<span class="rv-badge read">Lezen</span>'
-                  : '<span class="rv-badge" style="background:#ddd;color:#666">Geen</span>';
+
+      // Tooltip: pad + bron-attributie (Spoor 1) + inherited + NO_ACCESS waarschuwing
+      const tipParts = [_esc(row.pad)];
+      if (row.inherited) tipParts.push('(rechten van parent overgenomen)');
+      if (via.length){
+        const uniq = via.filter(function(v, idx){ return via.indexOf(v) === idx; });
+        tipParts.push('Toegang via: ' + _esc(uniq.join(', ')));
+      }
+      if (denied.length){
+        const uniqD = denied.filter(function(v, idx){ return denied.indexOf(v) === idx; });
+        tipParts.push((lvl === 'none' ? 'Expliciet geblokkeerd via: ' : 'Let op: ook NO_ACCESS via: ') + _esc(uniqD.join(', ')));
+      }
+      if (isContainer) tipParts.push('Sub-mappen onder deze map hebben wel toegang');
+      const tooltip = ' title="' + tipParts.join(' • ') + '"';
+
       if (i === 0){
         return '<div class="rv-tree-row ' + cls + inhCls + '" style="font-weight:600;background:var(--gr)"' + tooltip + '>'
           + '<span class="rv-pad">📂 ' + _esc(row.pad) + '</span>' + badge + '</div>';
