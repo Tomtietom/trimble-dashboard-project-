@@ -5604,12 +5604,27 @@ const RV = (function(){
     // Top-down propagatie: vul ontbrekende inheritance aan waar de TC API het niet meelevert
     _propagateInheritedPermissions(csvData.slice(1), allGroupsSet);
 
+    // Sorteer csvData hiërarchisch zodat sub-mappen direct onder hun parent staan
+    // (segment-voor-segment vergelijken met numeric-aware locale → "2" < "10")
+    csvData.sort(function(a, b){ return _padCompare(a.pad, b.pad); });
+
     return {
       csvData,
       allGroups: [...allGroupsSet].sort(function(a,b){ return a.localeCompare(b, 'nl'); }),
       allUsers: teamUsers,
       groups,
     };
+  }
+
+  function _padCompare(a, b){
+    const pa = a.split('/');
+    const pb = b.split('/');
+    const n = Math.min(pa.length, pb.length);
+    for (let i = 0; i < n; i++){
+      const c = pa[i].localeCompare(pb[i], 'nl', { numeric: true });
+      if (c !== 0) return c;
+    }
+    return pa.length - pb.length;
   }
 
   // === Top-down inheritance propagation ===
