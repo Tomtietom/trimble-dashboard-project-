@@ -665,6 +665,10 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .rv-status-badge.pending{background:#fef3e0;color:#e67e22}
 .rv-item.active .rv-status-badge{background:rgba(255,255,255,.25);color:#fff}
 .rv-tree-row.rv-inherited .rv-pad{font-style:italic;opacity:.85}
+.rv-tree-row[data-rv-toggle]{cursor:pointer}
+.rv-tree-row[data-rv-toggle]:hover{filter:brightness(.97)}
+.rv-toggle{display:inline-block;width:14px;text-align:center;font-size:10px;color:var(--g4);margin-right:4px;user-select:none}
+.rv-toggle-empty{visibility:hidden}
 @media(max-width:720px){.rv-stats{grid-template-columns:repeat(2,1fr)}.rv-split{flex-direction:column}.rv-sidebar{flex:0 0 auto}}
 
 .view-placeholder{
@@ -5375,6 +5379,8 @@ const RV = (function(){
   let _selectedGroup = null;
   let _selectedUser = null;
   let _searchQuery = '';
+  let _expandedPaths = new Set();   // welke mappen zijn uitgeklapt (collapse-state)
+  let _hasChildrenIndex = new Set(); // welke paden hebben sub-mappen
 
   function getRoot(){ return document.getElementById('view-rechten-viewer'); }
 
@@ -5703,6 +5709,44 @@ const RV = (function(){
     return out;
   }
 
+  // === Tree-helpers (collapse/expand) ===
+  function _buildTreeIndices(){
+    _hasChildrenIndex = new Set();
+    if (!_data || !_data.csvData || _data.csvData.length === 0) return;
+    const rootPath = _data.csvData[0].pad || '';
+    const rootDepth = rootPath ? rootPath.split('/').length : 1;
+    for (let i = 1; i < _data.csvData.length; i++){
+      const parts = _data.csvData[i].pad.split('/');
+      for (let j = rootDepth; j < parts.length - 1; j++){
+        _hasChildrenIndex.add(parts.slice(0, j + 1).join('/'));
+      }
+    }
+    // Default: alleen project-root is uitgeklapt → toon depth-1 mappen met toggle ▶
+    if (_expandedPaths.size === 0 && rootPath) _expandedPaths.add(rootPath);
+  }
+
+  function _isRowVisible(row){
+    const parts = row.pad.split('/');
+    for (let j = 1; j < parts.length; j++){
+      if (!_expandedPaths.has(parts.slice(0, j).join('/'))) return false;
+    }
+    return true;
+  }
+
+  function _toggleExpand(pad){
+    if (_expandedPaths.has(pad)) _expandedPaths.delete(pad);
+    else _expandedPaths.add(pad);
+    _render();
+  }
+
+  function _renderTreeToggle(row, rootPath){
+    // Project-root heeft geen toggle (altijd zichtbaar als header)
+    if (row.pad === rootPath) return '';
+    if (!_hasChildrenIndex.has(row.pad)) return '<span class="rv-toggle rv-toggle-empty"></span>';
+    const open = _expandedPaths.has(row.pad);
+    return '<span class="rv-toggle">' + (open ? '▼' : '▶') + '</span>';
+  }
+
   // === Render ===
   function _renderRows(access){
     if (!access) return '<div class="rv-placeholder">Selecteer links een groep of gebruiker om mappen te tonen.</div>';
@@ -5710,6 +5754,7 @@ const RV = (function(){
     const rootPath = (rootRow && rootRow.pad) || '';
     const rootDepth = rootPath ? rootPath.split('/').length : 1;
     const rows = _data.csvData.map(function(row, i){
+      if (i > 0 && !_isRowVisible(row)) return '';
       const lvl = access[row.pad];
       const cls = lvl === 'full' ? 'rv-full' : lvl === 'read' ? 'rv-read' : 'rv-none';
       const inhCls = row.inherited ? ' rv-inherited' : '';
@@ -5719,15 +5764,17 @@ const RV = (function(){
                   : lvl === 'read' ? '<span class="rv-badge read">Lezen</span>'
                   : '<span class="rv-badge" style="background:#ddd;color:#666">Geen</span>';
       if (i === 0){
-        // Project-root: header-stijl
         return '<div class="rv-tree-row ' + cls + inhCls + '" style="font-weight:600;background:var(--gr)"' + tooltip + '>'
           + '<span class="rv-pad">📂 ' + _esc(row.pad) + '</span>' + badge + '</div>';
       }
       const depth = Math.max(row.pad.split('/').length - rootDepth, 0);
       const name = row.pad.split('/').pop();
-      return '<div class="rv-tree-row ' + cls + inhCls + '" style="padding-left:' + (10 + depth * 18) + 'px"' + tooltip + '>'
+      const toggle = _renderTreeToggle(row, rootPath);
+      const clickable = _hasChildrenIndex.has(row.pad) ? ' data-rv-toggle="' + _esc(row.pad) + '"' : '';
+      return '<div class="rv-tree-row ' + cls + inhCls + '" style="padding-left:' + (10 + depth * 18) + 'px"' + tooltip + clickable + '>'
+        + toggle
         + '<span class="rv-pad">📁 ' + _esc(name) + '</span>' + badge + '</div>';
-    }).join('');
+    }).filter(Boolean).join('');
     return rows || '<div class="rv-placeholder">Geen mappen gevonden.</div>';
   }
 
@@ -5758,20 +5805,27 @@ const RV = (function(){
     const rootRow = _data.csvData[0];
     const rootPath = (rootRow && rootRow.pad) || (tcProject.name || 'Project');
     const rootDepth = rootPath.split('/').length;
+    const isSearching = !!q;
     const rows = _data.csvData
       .filter(function(row, i){ return i > 0; })
-      .filter(function(row){ return !q || row.pad.toLowerCase().indexOf(q) >= 0; })
+      .filter(function(row){
+        if (isSearching) return row.pad.toLowerCase().indexOf(q) >= 0;
+        return _isRowVisible(row);
+      })
       .map(function(row){
         const depth = Math.max(row.pad.split('/').length - rootDepth, 0);
         const name = row.pad.split('/').pop();
         const fullCount = (row.full || []).length;
         const readCount = (row.read || []).length;
         const inhCls = row.inherited ? ' rv-inherited' : '';
-        const inhTitle = row.inherited ? ' title="Rechten overgenomen van bovenliggende map"' : '';
+        const inhTitle = ' title="' + _esc(row.pad) + (row.inherited ? ' (rechten overgenomen)' : '') + '"';
         const fullBadge = fullCount ? '<span class="rv-badge full">' + fullCount + ' volledig</span>' : '';
         const readBadge = readCount ? '<span class="rv-badge read">' + readCount + ' lezen</span>' : '';
         const empty = (!fullCount && !readCount) ? '<span class="rv-badge" style="background:#ddd;color:#666">geen rechten</span>' : '';
-        return '<div class="rv-tree-row' + inhCls + '" style="padding-left:' + (10 + depth * 18) + 'px"' + inhTitle + '>'
+        const toggle = isSearching ? '<span class="rv-toggle rv-toggle-empty"></span>' : _renderTreeToggle(row, rootPath);
+        const clickable = (!isSearching && _hasChildrenIndex.has(row.pad)) ? ' data-rv-toggle="' + _esc(row.pad) + '"' : '';
+        return '<div class="rv-tree-row' + inhCls + '" style="padding-left:' + (10 + depth * 18) + 'px"' + inhTitle + clickable + '>'
+          + toggle
           + '<span class="rv-pad">📁 ' + _esc(name) + '</span>'
           + fullBadge + readBadge + empty
           + '</div>';
@@ -5880,6 +5934,13 @@ const RV = (function(){
       el.addEventListener('click', go);
       el.addEventListener('keydown', function(ev){ if (ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); go(); } });
     });
+    // Toggle uit-/inklappen van mappen met sub-mappen
+    root.querySelectorAll('[data-rv-toggle]').forEach(function(el){
+      el.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        _toggleExpand(el.getAttribute('data-rv-toggle'));
+      });
+    });
     root.querySelectorAll('[data-rv-group]').forEach(function(el){
       el.addEventListener('click', function(){
         _selectedGroup = el.getAttribute('data-rv-group');
@@ -5955,6 +6016,7 @@ const RV = (function(){
       const permsData = await _fetchPermissions(folders);
       const team = await _fetchTeam();
       _data = _convertData(folders, permsData, team.users, team.groups, tcProject.name || '–');
+      _buildTreeIndices();
       _isLoaded = true;
       console.log('[RV] geladen:', _data.csvData.length - 1, 'mappen,', _data.allGroups.length, 'groepen,', _data.allUsers.length, 'gebruikers');
 
