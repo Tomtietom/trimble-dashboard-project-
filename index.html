@@ -216,7 +216,27 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   border-top:1px solid var(--hl-light);
   font-size:var(--fs-sm);
 }
-.tile-stat{color:var(--g4);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile-stat{color:var(--g4);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.tile-stat.tile-loading{color:var(--af);font-weight:600}
+.tile-stat.tile-loading::before{
+  content:'';display:inline-block;width:12px;height:12px;flex-shrink:0;
+  border:2px solid var(--af);border-top-color:transparent;border-radius:50%;
+  animation:tileSpin .8s linear infinite;
+}
+.tile-stat.tile-done{color:var(--af);font-weight:600}
+.tile-stat.tile-error{color:var(--warn);font-weight:600}
+@keyframes tileSpin{to{transform:rotate(360deg)}}
+.tile{position:relative;overflow:hidden}
+.tile.tile-loading{border-color:var(--afl)}
+.tile.tile-loading::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent 0%,var(--af) 50%,transparent 100%);
+  animation:tileSweep 1.4s ease-in-out infinite;
+}
+@keyframes tileSweep{
+  0%{transform:translateX(-100%)}
+  100%{transform:translateX(100%)}
+}
 .tile-cta{color:var(--af);font-weight:600;white-space:nowrap}
 
 /* =========================================
@@ -1632,25 +1652,35 @@ const PREFETCH_LABEL = {
 function updateTilePrefetch(key, state, info){
   const el = document.querySelector('[data-stat="'+key+'"]');
   if (!el) return;
+  const tile = el.closest('.tile');
   const unit = PREFETCH_LABEL[key] || 'items';
   info = info || {};
+  // Reset alle prefetch-classes; tile-loading op tile-element voor bottom-sweep
+  el.classList.remove('tile-loading','tile-done','tile-error');
+  if (tile) tile.classList.remove('tile-loading');
+  el.style.color = '';
   if (state === 'start'){
     el.textContent = 'Laden…';
-    el.style.color = '';
+    el.classList.add('tile-loading');
+    if (tile) tile.classList.add('tile-loading');
   } else if (state === 'progress'){
     if (info.total > 0 && info.current != null){
       el.textContent = info.current + '/' + info.total + ' ' + (info.unit || unit) + '…';
+    } else if (info.current != null){
+      el.textContent = info.current + ' ' + (info.unit || unit) + '…';
     } else if (info.phase){
       el.textContent = info.phase + '…';
     } else {
       el.textContent = 'Laden…';
     }
+    el.classList.add('tile-loading');
+    if (tile) tile.classList.add('tile-loading');
   } else if (state === 'done'){
     el.textContent = (info.count != null ? info.count + ' ' : '') + (info.unit || unit) + ' klaar';
-    el.style.color = '';
+    el.classList.add('tile-done');
   } else if (state === 'error'){
     el.textContent = '⚠ klik om opnieuw';
-    el.style.color = 'var(--warn)';
+    el.classList.add('tile-error');
   }
 }
 
@@ -2469,6 +2499,14 @@ const PD = (function(){
       if (ext && ext.allowed === false) return Promise.resolve(null);
       if (_isLoaded){
         return Promise.resolve({ count: _projects.length, unit: 'projecten' });
+      }
+      // Race: gebruiker klikte tegel tijdens onze prefetch-keten — wacht tot lopende load af is
+      if (_isLoading){
+        return new Promise(function(resolve){
+          const t = setInterval(function(){
+            if (!_isLoading){ clearInterval(t); resolve({ count: _projects.length, unit: 'projecten' }); }
+          }, 100);
+        });
       }
       _prefetchProgress = onProgress;
       return load(false)
@@ -4371,8 +4409,19 @@ const PU = (function(){
         console.log('[Cockpit] PU prefetch overgeslagen (geen hub-toegang)');
         return Promise.resolve(null);
       }
+      if (_isLoaded){
+        return Promise.resolve({ count: _writableFolders.length });
+      }
+      // Race: gebruiker klikte PU-tegel — wacht op lopende load i.p.v. direct resolven
+      if (_isLoading){
+        return new Promise(function(resolve){
+          const t = setInterval(function(){
+            if (!_isLoading){ clearInterval(t); resolve({ count: _writableFolders.length }); }
+          }, 100);
+        });
+      }
       // Parallel: folders (zwaar, levert progress) + config (licht)
-      const p1 = (!_isLoaded && !_isLoading) ? loadFolders(onProgress) : Promise.resolve();
+      const p1 = loadFolders(onProgress);
       const p2 = (!_configLoaded && !_configLoading) ? _loadUploadConfig() : Promise.resolve();
       return Promise.all([p1, p2]).then(function(){
         return { count: _writableFolders.length };
@@ -5676,7 +5725,22 @@ const DL = (function(){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
       if (ext && ext.allowed === false) return Promise.resolve(null);
       if (_isLoaded){
-        return Promise.resolve({ count: _docs.length, unit: 'docs' });
+        return (_deepScanPromise || Promise.resolve()).then(function(){
+          return { count: _docs.length, unit: 'docs' };
+        });
+      }
+      // Race: gebruiker klikte DL-tegel — wacht op lopende load + deep-scan
+      if (_isLoading){
+        return new Promise(function(resolve){
+          const t = setInterval(function(){
+            if (!_isLoading){
+              clearInterval(t);
+              (_deepScanPromise || Promise.resolve()).then(function(){
+                resolve({ count: _docs.length, unit: 'docs' });
+              });
+            }
+          }, 100);
+        });
       }
       _prefetchProgress = onProgress;
       // _loadDocs schopt deep-scan async aan → bewaard in _deepScanPromise. Wij awaiten beide.
@@ -6516,6 +6580,17 @@ const RV = (function(){
       if (ext && ext.allowed === false) return Promise.resolve(null);
       if (_isLoaded){
         return Promise.resolve({ count: _data ? _data.csvData.length - 1 : 0, unit: 'mappen' });
+      }
+      // Race: gebruiker klikte RV-tegel — wacht op lopende load
+      if (_isLoading){
+        return new Promise(function(resolve){
+          const t = setInterval(function(){
+            if (!_isLoading){
+              clearInterval(t);
+              resolve({ count: _data ? _data.csvData.length - 1 : 0, unit: 'mappen' });
+            }
+          }, 100);
+        });
       }
       _prefetchProgress = onProgress;
       return _loadData()
