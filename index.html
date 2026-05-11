@@ -1795,16 +1795,26 @@ async function fetchIssuesForProject(pid){
   const trn = 'trn:2:tc:' + _tcRegionToTrn(tcRegion) + ':projects:' + pid;
   // Probeer call-varianten in volgorde van waarschijnlijkheid. Bij elke 400 loggen
   // we de ApiError body zodat we precies zien wat de server klaagt.
+  // Vorige diagnose-output: "Please provide a valid value for contextId" → waarde-fout,
+  // niet query-fout. Hypothese: encodeURIComponent zet ':' om naar '%3A' wat de Trimble
+  // parser mogelijk niet accepteert. Probeer beide encoding-stijlen.
   const variants = [
-    // V1 — minimaal: basisvelden (id, title, createdAt) volgens required fields in spec
-    { label: 'minimal', qs: 'pageSize=20' },
-    // V2 — fields als herhalende params (OpenAPI form-style explode=true, de spec-default)
-    { label: 'fields-explode', qs: 'pageSize=20&fields=status&fields=dueDate&fields=assignees&fields=priority&fields=type' },
-    // V3 — fields comma-separated (zoals het voorbeeld in de spec, explode=false)
-    { label: 'fields-csv', qs: 'pageSize=20&fields=status,dueDate,assignees,priority,type' },
+    // V1 — raw TRN (geen URL-encoding op de TRN zelf, alleen op pid)
+    { label: 'raw-trn', encode: false, qs: 'pageSize=20' },
+    // V2 — encoded TRN minimaal
+    { label: 'encoded-min', encode: true, qs: 'pageSize=20' },
+    // V3 — encoded TRN met fields explode
+    { label: 'encoded-fields-explode', encode: true, qs: 'pageSize=20&fields=status&fields=dueDate&fields=assignees&fields=priority&fields=type' },
+    // V4 — raw TRN met fields explode (combineren)
+    { label: 'raw-fields-explode', encode: false, qs: 'pageSize=20&fields=status&fields=dueDate&fields=assignees&fields=priority&fields=type' },
   ];
   for (const v of variants){
-    const url = ISSUE_API_BASE + '/context/' + encodeURIComponent(trn) + '/issues?' + v.qs;
+    // encodeURI laat ':' en '/' staan, encodeURIComponent niet. Project-ID zelf altijd
+    // veilig encoderen (kan special chars bevatten).
+    const safeTrn = v.encode
+      ? encodeURIComponent(trn)
+      : ('trn:2:tc:' + _tcRegionToTrn(tcRegion) + ':projects:' + encodeURIComponent(pid));
+    const url = ISSUE_API_BASE + '/context/' + safeTrn + '/issues?' + v.qs;
     try {
       const r = await fetch(url, {
         headers: { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' }
