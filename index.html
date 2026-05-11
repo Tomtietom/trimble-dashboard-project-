@@ -4000,11 +4000,15 @@ const PU = (function(){
     if (!uploadId) throw new Error('Geen uploadId in initiate-response');
     item.progress = 8; renderQueue();
 
-    // Stap 2: PUT bytes naar signed URL
+    // Stap 2: PUT bytes naar signed URL.
+    // GEEN Content-Type-header zetten — de signed S3/CloudFront URL accepteert alleen
+    // de headers waarvoor hij gesigneerd is. Een afwijkende Content-Type kan tot
+    // 403 SignatureDoesNotMatch leiden of (erger) wordt opgeslagen in S3 metadata
+    // waardoor de file bij download als URL-form i.p.v. binary wordt geserveerd.
+    // Spec: openapi-spec:2154 — "no other parameters/headers required".
     await new Promise(function(resolve, reject){
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', uploadUrl);
-      xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
       xhr.upload.onprogress = function(e){
         if (e.lengthComputable){
           item.progress = 8 + Math.round((e.loaded / e.total) * 82);
