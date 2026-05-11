@@ -5354,12 +5354,10 @@ const RV = (function(){
     catch(e){ console.warn('[RV] users fout:', e.message); }
 
     let groups = [];
-    for (const ep of ['/groups?projectId=' + tcProject.id, '/projects/' + tcProject.id + '/groups']){
-      try {
-        const r = await _fetchList(ep);
-        if (Array.isArray(r) && r.length > 0){ groups = r; break; }
-      } catch(_){}
-    }
+    try {
+      const r = await _fetchList('/groups?projectId=' + tcProject.id);
+      if (Array.isArray(r)) groups = r;
+    } catch(e){ console.warn('[RV] groups fout:', e.message); }
 
     // Members per groep, parallel batches van 20
     const BATCH = 20;
