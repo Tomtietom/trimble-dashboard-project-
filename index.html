@@ -4009,11 +4009,7 @@ const PU = (function(){
     return '<div class="meta-row">' + parts + '</div>';
   }
 
-  // Upload één file: TC 2-staps (POST /files/fs/upload → PUT bytes) + PSet voor metadata.
-  // De oude 3-staps flow (/files/fs/initiate + PUT + /files/fs/commit) gebruikt deprecated
-  // endpoints; de nieuwe Package File Upload API commit single-part uploads automatisch
-  // na een succesvolle PUT — geen aparte commit-POST meer nodig.
-  // Spec: openapi-spec:2376-2479.
+  // Upload één file: TC 3-staps (initiate → PUT → commit) + PSet voor metadata
   async function uploadFile(item){
     item.status = 'uploading';
     item.progress = 3;
@@ -4022,24 +4018,16 @@ const PU = (function(){
     const folder = _writableFolders.find(function(f){ return f.id === item.folderId; });
     if (!folder) throw new Error('Geen map geselecteerd');
 
-    // Stap 1: initiate via nieuwe Package File Upload API.
-    //  - parentId/parentType in query, niet in body.
-    //  - Response status 202, shape: { uploadId, id (=fileId), contents: [{ uploadUrl, format, ... }] }.
-    const initQs = '?parentId=' + encodeURIComponent(folder.id) + '&parentType=FOLDER';
-    const initResp = await _puFetch('/files/fs/upload' + initQs, {
+    // Stap 1: initiate
+    const initResp = await _puFetch('/files/fs/initiate', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'x-trimbleconnect-client':'TCWEB' },
-      body: JSON.stringify({ name: item.file.name }),
+      body: JSON.stringify({ parentId: folder.id, parentType: 'FOLDER', name: item.file.name }),
     });
-    // Defensieve veldnaam-fallbacks: response-shape kan licht variëren tussen TC-regio's.
-    const initContents = Array.isArray(initResp.contents) ? initResp.contents : [];
-    const initPart = initContents[0] || {};
-    const uploadUrl = initPart.uploadUrl || initPart.uploadURL
-                   || initResp.uploadURL || initResp.uploadUrl || initResp.url || initResp.signedUrl;
+    const uploadUrl = initResp.uploadURL || initResp.uploadUrl || initResp.url || initResp.signedUrl;
     const uploadId = initResp.uploadId || initResp.id;
-    const initFileId = initResp.id || initResp.fileId || initPart.fileId || null;
-    if (!uploadUrl) throw new Error('Geen uploadUrl in upload-response');
-    if (!uploadId) throw new Error('Geen uploadId in upload-response');
+    if (!uploadUrl) throw new Error('Geen uploadUrl in initiate-response');
+    if (!uploadId) throw new Error('Geen uploadId in initiate-response');
     item.progress = 8; renderQueue();
 
     // Stap 2: PUT bytes naar signed URL.
@@ -4066,10 +4054,14 @@ const PU = (function(){
     });
     item.progress = 92; renderQueue();
 
-    // Stap 3 (commit) bestaat niet meer: de nieuwe API commit single-part uploads
-    // automatisch na een succesvolle PUT. fileId hebben we al uit de init-response.
+    // Stap 3: commit
+    const commitResp = await _puFetch('/files/fs/commit', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'x-trimbleconnect-client':'TCWEB' },
+      body: JSON.stringify({ uploadId: uploadId }),
+    });
     item.progress = 100;
-    item.fileId = initFileId || uploadId;
+    item.fileId = commitResp.id || commitResp.fileId || commitResp.versionId || uploadId;
     console.log('[PU] upload klaar:', item.file.name, '| fileId:', item.fileId);
 
     // PSet metadata (alleen als velden ingevuld)
