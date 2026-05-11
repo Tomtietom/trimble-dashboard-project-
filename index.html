@@ -635,6 +635,17 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .rv-admin-list li{padding:8px 12px;border-bottom:1px solid var(--hl-light);font-size:13px}
 .rv-admin-list li:last-child{border-bottom:none}
 .rv-email{color:var(--g4);font-size:12px;margin-left:8px}
+.rv-section-header{padding:8px 12px;font:700 11px 'Montserrat',sans-serif;text-transform:uppercase;letter-spacing:.05em;color:var(--g4);border-bottom:1px solid var(--hl-light);background:var(--gr)}
+.rv-item.inactive{opacity:.45}
+.rv-item.inactive .rv-user-name{text-decoration:line-through}
+.rv-item.active.inactive{opacity:.7}
+.rv-item.active.inactive .rv-user-name{text-decoration:line-through;color:#fff}
+.rv-status-badge{font-size:10px;padding:2px 7px;border-radius:8px;font-weight:600;white-space:nowrap;margin-left:auto}
+.rv-status-badge.active{background:#e6f4ea;color:#2d6a4f}
+.rv-status-badge.removed{background:#fde7e7;color:#c0392b}
+.rv-status-badge.pending{background:#fef3e0;color:#e67e22}
+.rv-item.active .rv-status-badge{background:rgba(255,255,255,.25);color:#fff}
+.rv-tree-row.rv-inherited .rv-pad{font-style:italic;opacity:.85}
 @media(max-width:720px){.rv-stats{grid-template-columns:repeat(2,1fr)}.rv-split{flex-direction:column}.rv-sidebar{flex:0 0 auto}}
 
 .view-placeholder{
@@ -3428,13 +3439,18 @@ const PU = (function(){
         if (!item) return;
         item.folderId = fid;
         item.folderAuto = false;
+        item.folderPatternMatched = false;
         item.folderPickerOpen = false;
         item.folderSearch = '';
-        // Reset auto-metadata zodat nieuwe pad opnieuw wordt afgeleid
+        // Reset auto-metadata zodat nieuwe pad opnieuw wordt afgeleid.
+        // Vergrendelde velden niet wissen — die worden onveranderd opnieuw geforceerd.
         for (const f of METADATA_FIELDS){
+          if (item.metadataLocked && item.metadataLocked[f]) continue;
           if (item.metadataAuto[f]){ item.metadata[f] = ''; item.metadataAuto[f] = false; }
         }
+        _applyFilenamePatterns(item);
         _applyMetadataSuggestion(item);
+        _applyLockedFields(item);
         renderQueue();
       });
     });
@@ -4984,13 +5000,19 @@ const RV = (function(){
 
     for (const { folder, permissions } of permsData){
       const subjectAccess = {};
+      const denySet = new Set();
       let hasDirect = false, hasInherited = false;
+      let inheritFromParent = true;
 
       function applySubject(name, access, isDirect){
         if (!access || !name) return;
         const existing = subjectAccess[name];
-        if (isDirect) subjectAccess[name] = access;
-        else if (!existing || access === 'full') subjectAccess[name] = access;
+        if (isDirect){
+          subjectAccess[name] = access;
+          if (access === 'none') denySet.add(name);
+        } else if (!existing || access === 'full') {
+          subjectAccess[name] = access;
+        }
         if (access !== 'none') allGroupsSet.add(name);
       }
 
@@ -5014,6 +5036,7 @@ const RV = (function(){
           }
         }
         const dir = permissions.directPermissions;
+        if (dir && dir.inheritance === false) inheritFromParent = false;
         if (dir){
           if (dir.acl){ hasDirect = true; processAcl(dir.acl, true); }
           if (dir.defaultAccess){
@@ -5037,6 +5060,9 @@ const RV = (function(){
         pad: folder.path,
         read, full,
         inherited: !hasDirect && hasInherited,
+        _deny: denySet,
+        _hasDirect: hasDirect,
+        _inheritFromParent: inheritFromParent,
       });
     }
 
@@ -5049,13 +5075,18 @@ const RV = (function(){
         .map(function(g){ return g.name || g.displayName; })
         .filter(Boolean);
       const role = String(u.role || u.access || u.permission || u.projectRole || 'USER').toUpperCase();
+      const rawStatus = String(u.status || 'Active').toUpperCase();
+      const status = rawStatus === 'ACTIVE' ? 'Active'
+                  : rawStatus === 'REMOVED' ? 'Removed'
+                  : rawStatus === 'PENDING_ACTIVATION' ? 'Pending Activation'
+                  : (u.status || 'Active');
       return {
         id: uid,
         name: (name || '').trim(),
         email: u.email || '',
         role,
         groups: userGroups,
-        status: u.status || 'Active',
+        status,
       };
     }).sort(function(a,b){ return a.name.localeCompare(b.name, 'nl'); });
 
@@ -5064,12 +5095,80 @@ const RV = (function(){
       for (const g of u.groups) allGroupsSet.add(g);
     }
 
+    // Top-down propagatie: vul ontbrekende inheritance aan waar de TC API het niet meelevert
+    _propagateInheritedPermissions(csvData.slice(1), allGroupsSet);
+
     return {
       csvData,
       allGroups: [...allGroupsSet].sort(function(a,b){ return a.localeCompare(b, 'nl'); }),
       allUsers: teamUsers,
       groups,
     };
+  }
+
+  // === Top-down inheritance propagation ===
+  // Fix voor gevallen waarin Trimble API `inheritedPermissions` leeg/ontbrekend is.
+  // Geport van trimble-rechten-viewer (regel 1920-1993).
+  function _propagateInheritedPermissions(records, groupSet){
+    const padToRecord = {};
+    for (const r of records) padToRecord[r.pad] = r;
+
+    // Sorteer op diepte ascending → parents worden vóór kinderen verwerkt
+    const sorted = [...records].sort(function(a, b){
+      return a.pad.split('/').length - b.pad.split('/').length;
+    });
+
+    let foldersAffected = 0;
+    let subjectsAdded = 0;
+
+    for (const rec of sorted){
+      // Map heeft expliciet inheritance geblokkeerd
+      if (rec._inheritFromParent === false) continue;
+
+      const parts = rec.pad.split('/');
+      if (parts.length < 2) continue;
+      const parentPad = parts.slice(0, -1).join('/');
+      const parent = padToRecord[parentPad];
+      if (!parent) continue;
+
+      const added = [];
+
+      // Parent FULL → child FULL (tenzij denied of al aanwezig)
+      for (const s of parent.full){
+        if (rec._deny && rec._deny.has(s)) continue;
+        if (rec.full.includes(s)) continue;
+        const ri = rec.read.indexOf(s);
+        if (ri >= 0) rec.read.splice(ri, 1);
+        rec.full.push(s);
+        added.push(s);
+        subjectsAdded++;
+        if (groupSet) groupSet.add(s);
+      }
+
+      // Parent READ → child READ (tenzij denied, al read, of al full)
+      for (const s of parent.read){
+        if (rec._deny && rec._deny.has(s)) continue;
+        if (rec.full.includes(s) || rec.read.includes(s)) continue;
+        rec.read.push(s);
+        added.push(s);
+        subjectsAdded++;
+        if (groupSet) groupSet.add(s);
+      }
+
+      if (added.length){
+        foldersAffected++;
+        if (!rec._hasDirect) rec.inherited = true;
+      }
+    }
+
+    console.log('[RV] Inheritance propagation: ' + foldersAffected + ' mappen kregen ' + subjectsAdded + ' subjects erbij van parent');
+
+    // Cleanup interne velden — niet meer nodig voor rendering
+    for (const r of records){
+      delete r._deny;
+      delete r._hasDirect;
+      delete r._inheritFromParent;
+    }
   }
 
   // === Effective access ===
@@ -5110,19 +5209,21 @@ const RV = (function(){
     const rows = _data.csvData.map(function(row){
       const lvl = access[row.pad];
       const cls = lvl === 'full' ? 'rv-full' : lvl === 'read' ? 'rv-read' : 'rv-none';
+      const inhCls = row.inherited ? ' rv-inherited' : '';
+      const inhTitle = row.inherited ? ' title="Overgenomen van bovenliggende map"' : '';
       const badge = lvl === 'full' ? '<span class="rv-badge full">Volledig</span>'
                   : lvl === 'read' ? '<span class="rv-badge read">Lezen</span>'
                   : '<span class="rv-badge" style="background:#ddd;color:#666">Geen</span>';
-      return '<div class="rv-tree-row ' + cls + '"><span class="rv-pad">' + _esc(row.pad) + '</span>' + badge + '</div>';
+      return '<div class="rv-tree-row ' + cls + inhCls + '"' + inhTitle + '><span class="rv-pad">' + _esc(row.pad) + '</span>' + badge + '</div>';
     }).join('');
     return rows || '<div class="rv-placeholder">Geen mappen gevonden.</div>';
   }
 
   function _renderDashboard(){
-    const adminCount = _data.allUsers.filter(function(u){ return u.role === 'ADMIN' || u.role === 'PROJECT_ADMIN'; }).length;
+    const adminCount = _data.allUsers.filter(function(u){ return (u.role === 'ADMIN' || u.role === 'PROJECT_ADMIN') && u.status !== 'Removed'; }).length;
     const folderCount = Math.max(_data.csvData.length - 1, 0);
     const adminList = _data.allUsers
-      .filter(function(u){ return u.role === 'ADMIN' || u.role === 'PROJECT_ADMIN'; })
+      .filter(function(u){ return (u.role === 'ADMIN' || u.role === 'PROJECT_ADMIN') && u.status !== 'Removed'; })
       .map(function(u){
         return '<li>' + _esc(u.name)
           + (u.email ? '<span class="rv-email">' + _esc(u.email) + '</span>' : '')
@@ -5160,13 +5261,27 @@ const RV = (function(){
 
   function _renderGebruikers(){
     const q = _searchQuery.toLowerCase();
-    const sidebar = _data.allUsers
-      .filter(function(u){ return !q || u.name.toLowerCase().indexOf(q) >= 0 || (u.email||'').toLowerCase().indexOf(q) >= 0; })
-      .map(function(u){
-        const cls = (_selectedUser && u.id === _selectedUser.id) ? 'rv-item active' : 'rv-item';
-        const tag = (u.role === 'ADMIN' || u.role === 'PROJECT_ADMIN') ? '<span class="rv-tag">admin</span>' : '';
-        return '<div class="' + cls + '" data-rv-user="' + _esc(u.id) + '"><span>' + _esc(u.name) + '</span>' + tag + '</div>';
-      }).join('');
+    const filtered = _data.allUsers.filter(function(u){
+      return !q || u.name.toLowerCase().indexOf(q) >= 0 || (u.email||'').toLowerCase().indexOf(q) >= 0;
+    });
+    function isAdminRole(u){ return u.role === 'ADMIN' || u.role === 'PROJECT_ADMIN'; }
+    const admins    = filtered.filter(function(u){ return isAdminRole(u) && u.status !== 'Removed'; });
+    const actives   = filtered.filter(function(u){ return !isAdminRole(u) && u.status === 'Active'; });
+    const inactives = filtered.filter(function(u){ return u.status === 'Removed' || u.status === 'Pending Activation'; });
+    function userItem(u){
+      const sel = (_selectedUser && u.id === _selectedUser.id) ? ' active' : '';
+      const inact = (u.status === 'Removed' || u.status === 'Pending Activation') ? ' inactive' : '';
+      const adminTag = isAdminRole(u) ? '<span class="rv-tag">admin</span>' : '';
+      const badgeCls = u.status === 'Active' ? 'active' : u.status === 'Removed' ? 'removed' : 'pending';
+      const statusBadge = '<span class="rv-status-badge ' + badgeCls + '">' + _esc(u.status) + '</span>';
+      return '<div class="rv-item' + sel + inact + '" data-rv-user="' + _esc(u.id) + '">'
+        + '<span class="rv-user-name">' + _esc(u.name) + '</span>'
+        + adminTag + statusBadge + '</div>';
+    }
+    let sidebar = '';
+    if (admins.length)    sidebar += '<div class="rv-section-header">Beheerders (' + admins.length + ')</div>'    + admins.map(userItem).join('');
+    if (actives.length)   sidebar += '<div class="rv-section-header">Gebruikers (' + actives.length + ')</div>'   + actives.map(userItem).join('');
+    if (inactives.length) sidebar += '<div class="rv-section-header">Inactief (' + inactives.length + ')</div>'   + inactives.map(userItem).join('');
     const access = _selectedUser ? _getEffectiveAccessForUser(_selectedUser) : null;
     return '<div class="rv-split">'
       +   '<div class="rv-sidebar">'
