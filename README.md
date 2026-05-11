@@ -18,15 +18,10 @@ Open `index.html` direct in de browser. Buiten TC-context verschijnt een foutmel
 
 Bumpt automatisch `?v=<timestamp>` in `manifest.json`, commit + push. GitHub Pages rebuild 1-3 min. In TC: tab sluiten en opnieuw openen (geen gewone refresh).
 
-## Eerste opzet hub
-
-Zie `HUB-SETUP.md` voor de eenmalige setup-stappen (D1 INSERT + allowlist).
-
 ## Structuur
 
 - `index.html` — single-file vanilla JS extensie (dashboard + tegels + doorstart)
 - `manifest.json` — TC extensie-registratie
-- `icon.png` — icoon (placeholder gekopieerd uit project-dashboard; vervang door eigen design)
+- `icon.svg` / `icon.png` — extensie-iconen
 - `deploy.sh` — versiebump + git push
-- `HUB-SETUP.md` — eenmalige hub-registratie instructies
-- `CLAUDE.md` — context voor Claude in deze repo
+- `RELEASE-NOTES.md` — versiehistorie voor eindgebruikers

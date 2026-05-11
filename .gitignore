@@ -2,3 +2,13 @@
 .vscode/
 node_modules/
 *.log
+
+# Interne dev-notes — niet voor publiek repo (blijven lokaal staan)
+CLAUDE.md
+HANDOVER-PROMPT.md
+HANDOVER-PROMPT-PU.md
+HUB-SETUP.md
+REVIEW-PU-MODULE.md
+REVIEW-vs-OpenAPI.md
+_internal/
+_archief/
