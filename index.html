@@ -2805,12 +2805,29 @@ const PU = (function(){
   let _isLoaded = false;
   let _psetStats = { ok:0, fail:0 };
 
+  // Dynamische PSet-schema state.
+  // _schemaDef is null als (a) nog niet geladen of (b) project heeft geen schema.
+  // Bij (b) val ik terug op de hardcoded 3 enum-velden hierboven — geen breaking change.
+  let _schemaDef = null;
+  let _schemaLoaded = false;
+  let _schemaLoading = false;
+
+  // Naam→UUID mapping voor backwards-compat: oude config-keys waren namen
+  // (discipline / project_fase / document_status); nieuwe zijn UUIDs.
+  // Bij load van requiredFields/lockedFields vertaal ik namen naar UUIDs.
+  const NAME_TO_UUID = {
+    discipline:      PROP_UUIDS.discipline,
+    project_fase:    PROP_UUIDS.project_fase,
+    document_status: PROP_UUIDS.document_status,
+  };
+
   // Stage 2: hub-config + suggestion engine state
   // folderPatterns: regex op bestandsnaam → suggesteer specifieke folderId (bv. .ifc → 00 Modellen)
   // lockedFields: per metadata-veld een vaste waarde die door uploader NIET gewijzigd kan worden
   // requiredFields: per metadata-veld een bool — true = upload-knop disabled tot ingevuld
+  // activeFields: array van UUIDs die in de uploader-rij getoond worden. Leeg = default (alle schema-velden, of fallback-3).
   // isTemplate: dit project mag als bron-template dienen voor andere projecten (banner-flow)
-  let _uploadConfig = { rules: [], filePatterns: [], folderPatterns: [], synonyms: {}, lockedFields: {}, requiredFields: {}, isTemplate: false };
+  let _uploadConfig = { rules: [], filePatterns: [], folderPatterns: [], synonyms: {}, lockedFields: {}, requiredFields: {}, activeFields: [], isTemplate: false };
   let _configLoaded = false;
   let _configLoading = false;
   let _bulkMeta = { discipline:'', project_fase:'', document_status:'' };
@@ -2948,6 +2965,119 @@ const PU = (function(){
     try { return JSON.parse(txt); } catch(_){ return txt; }
   }
 
+  // ============================================================
+  //  Dynamische PSet-schema (Wijziging "alle metadata-velden")
+  //  Haalt de schema-definitie op uit /libs/{libId}/defs/tcfiles.
+  //  Parse-resultaat: { props (raw), labels (uuid→naam), fields (array met type-info) }.
+  //  Bij 404 / geen schema: _schemaDef blijft null, fallback-helper gebruikt
+  //  hardcoded 3 enum-velden zodat alles blijft werken in projecten zonder schema.
+  // ============================================================
+  async function _loadPsetSchema(){
+    if (_schemaLoaded || _schemaLoading) return;
+    _schemaLoading = true;
+    try {
+      const libId = 'tcproject:prod:' + tcProject.id;
+      const r = await _puFetchPSet('/libs/' + encodeURIComponent(libId) + '/defs/tcfiles');
+      if (!r || !r.schema || !r.schema.props){
+        console.log('[PU] Geen PSet-schema in dit project — fallback naar 3 hardcoded velden.');
+        _schemaLoaded = true;
+        return;
+      }
+      // i18n: pluk labels uit eerste locale die labels heeft.
+      // BVGO-schema gebruikt key "en-US" maar de waardes zijn Nederlands. Andere klanten
+      // kunnen meerdere locales bevatten; we pakken eerste locale met een props-blok.
+      const labels = {};
+      if (r.i18n && typeof r.i18n === 'object'){
+        for (const loc of Object.keys(r.i18n)){
+          const propsI18n = r.i18n[loc] && r.i18n[loc].props;
+          if (propsI18n && typeof propsI18n === 'object'){
+            for (const uuid in propsI18n){
+              if (typeof propsI18n[uuid] === 'string' && !labels[uuid]) labels[uuid] = propsI18n[uuid];
+            }
+            if (Object.keys(labels).length) break;
+          }
+        }
+      }
+      // Bouw fields-array. Per veld: type (enum/date/text) + bijbehorende info.
+      const fields = [];
+      for (const uuid in r.schema.props){
+        const def = r.schema.props[uuid] || {};
+        let type = 'text';
+        let enumValues = null;
+        if (def.enum && Array.isArray(def.enum)){
+          type = 'enum';
+          // TC's BVGO-schema gebruikt "--" als placeholder voor leeg — filter dat eruit.
+          enumValues = def.enum.filter(function(v){ return v && v !== '--'; });
+        } else if (def.format === 'date'){
+          type = 'date';
+        }
+        fields.push({
+          uuid: uuid,
+          label: labels[uuid] || uuid,
+          type: type,
+          enum: enumValues,
+          maxLength: def.maxLength || null,
+          schemaRequired: !!def.required,
+        });
+      }
+      _schemaDef = { props: r.schema.props, labels: labels, fields: fields };
+      console.log('[PU] PSet-schema geladen:', fields.length, 'velden —',
+        fields.map(function(f){ return f.label + ' (' + f.type + ')'; }).join(', '));
+      _schemaLoaded = true;
+    } catch(e){
+      // 404 = geen schema in dit project; ook andere errors → fallback gebruiken.
+      console.warn('[PU] PSet-schema laden mislukt:', e.message, '— fallback naar 3 hardcoded velden.');
+      _schemaLoaded = true;
+    } finally {
+      _schemaLoading = false;
+    }
+  }
+
+  // Geeft alle bekende velden voor dit project terug.
+  // Met schema: alle 16 (of N) uit het BVGO-schema. Zonder schema: 3 hardcoded enums.
+  function _getAllFields(){
+    if (_schemaDef && _schemaDef.fields && _schemaDef.fields.length) return _schemaDef.fields;
+    return [
+      { uuid: PROP_UUIDS.discipline,      label: 'Discipline', type: 'enum', enum: ENUM_VALUES.discipline,      maxLength: null, schemaRequired: false },
+      { uuid: PROP_UUIDS.project_fase,    label: 'Fase',       type: 'enum', enum: ENUM_VALUES.project_fase,    maxLength: null, schemaRequired: false },
+      { uuid: PROP_UUIDS.document_status, label: 'Status',     type: 'enum', enum: ENUM_VALUES.document_status, maxLength: null, schemaRequired: false },
+    ];
+  }
+
+  // Geeft de actieve velden terug — wat in de uploader-rij verschijnt.
+  // Default als activeFields leeg is: alle bekende velden (uit schema of fallback).
+  function _getActiveFields(){
+    const all = _getAllFields();
+    const active = _uploadConfig.activeFields || [];
+    if (!active.length) return all;
+    const set = new Set(active);
+    return all.filter(function(f){ return set.has(f.uuid); });
+  }
+
+  function _getFieldInfo(uuid){
+    const all = _getAllFields();
+    for (const f of all) if (f.uuid === uuid) return f;
+    return null;
+  }
+
+  function _getFieldLabel(uuid){
+    const f = _getFieldInfo(uuid);
+    return f ? f.label : uuid;
+  }
+
+  // Vertaal config-key (naam óf UUID) naar UUID. Voor backwards-compat met
+  // oude configs die nog "discipline"/"project_fase"/"document_status"-namen gebruiken.
+  function _keyToUuid(key){
+    return NAME_TO_UUID[key] || key;
+  }
+
+  function _normalizeKeyedObject(obj){
+    if (!obj || typeof obj !== 'object') return {};
+    const out = {};
+    for (const k in obj){ out[_keyToUuid(k)] = obj[k]; }
+    return out;
+  }
+
   // v2.1+skipToken folder-items via _puFetch (behoudt PU's token-refresh + retry); valt terug op v2.0.
   async function _puFetchFolderItemsAll(folderId){
     const base21 = TC_API_BASE.replace(/\/2\.0$/, '/2.1');
@@ -3059,20 +3189,20 @@ const PU = (function(){
   }
 
   // Welke verplichte velden ontbreken bij dit item?
-  // Geen requiredFields ingesteld door admin = leeg array (niets verplicht).
+  // Itereert over actieve velden (UUID-keyed); checkt requiredFields-config (ook UUID-keyed).
   function _missingRequiredFields(item){
     const req = _uploadConfig.requiredFields || {};
     const out = [];
-    for (const f of METADATA_FIELDS){
-      if (req[f] === true && !item.metadata[f]) out.push(f);
+    for (const f of _getActiveFields()){
+      if (req[f.uuid] === true && !item.metadata[f.uuid]) out.push(f.uuid);
     }
     return out;
   }
 
-  // Soft-incomplete: één of meer metadata-velden leeg.
-  // Wordt nog gebruikt door upload-batch-stats (metadataComplete/metadataWarn telling).
+  // Soft-incomplete: één of meer ACTIEVE metadata-velden leeg (UUID-keyed).
+  // Wordt gebruikt door upload-batch-stats (metadataComplete/metadataWarn telling).
   function _isMetaIncomplete(item){
-    return METADATA_FIELDS.some(function(f){ return !item.metadata[f]; });
+    return _getActiveFields().some(function(f){ return !item.metadata[f.uuid]; });
   }
 
   // Hard-block: heeft dit item een verplicht veld dat leeg is?
@@ -3138,19 +3268,29 @@ const PU = (function(){
         });
       }
       if (cfg && cfg.requiredFields && typeof cfg.requiredFields === 'object'){
+        // Accepteer zowel oude naam-keys ("discipline", ...) als nieuwe UUID-keys.
         const clean = {};
-        for (const f of METADATA_FIELDS){
-          if (cfg.requiredFields[f] === true) clean[f] = true;
+        for (const key in cfg.requiredFields){
+          if (cfg.requiredFields[key] === true) clean[_keyToUuid(key)] = true;
         }
         _uploadConfig.requiredFields = clean;
       }
       if (cfg && cfg.lockedFields && typeof cfg.lockedFields === 'object'){
+        // Accepteer oude naam-keys + nieuwe UUID-keys. Waarde-validatie tegen schema
+        // (of fallback-enums) gebeurt later in _applyLockedFields zelf zodat schema-load-
+        // volgorde niet uitmaakt.
         const clean = {};
-        for (const f of METADATA_FIELDS){
-          const v = cfg.lockedFields[f];
-          if (typeof v === 'string' && (ENUM_VALUES[f] || []).indexOf(v) >= 0) clean[f] = v;
+        for (const key in cfg.lockedFields){
+          const v = cfg.lockedFields[key];
+          if (typeof v === 'string' && v) clean[_keyToUuid(key)] = v;
         }
         _uploadConfig.lockedFields = clean;
+      }
+      if (cfg && Array.isArray(cfg.activeFields)){
+        // activeFields: array van UUIDs. Filter strings + vertaal eventuele oude namen.
+        _uploadConfig.activeFields = cfg.activeFields
+          .filter(function(k){ return typeof k === 'string' && k; })
+          .map(_keyToUuid);
       }
       if (cfg && cfg.isTemplate === true){
         _uploadConfig.isTemplate = true;
@@ -3164,7 +3304,8 @@ const PU = (function(){
       const synCount = Object.values(_uploadConfig.synonyms).reduce(function(n,m){ return n + Object.keys(m).length; }, 0);
       const lockCount = Object.keys(_uploadConfig.lockedFields || {}).length;
       const reqCount = Object.keys(_uploadConfig.requiredFields || {}).length;
-      console.log('[PU] config geladen:', _uploadConfig.rules.length, 'pad-regels,', _uploadConfig.filePatterns.length, 'patronen,', _uploadConfig.folderPatterns.length, 'map-patronen,', synCount, 'synoniemen,', lockCount, 'vergrendelingen,', reqCount, 'verplichte velden' + (_uploadConfig.isTemplate ? ' (template)' : ''));
+      const activeCount = (_uploadConfig.activeFields || []).length;
+      console.log('[PU] config geladen:', _uploadConfig.rules.length, 'pad-regels,', _uploadConfig.filePatterns.length, 'patronen,', _uploadConfig.folderPatterns.length, 'map-patronen,', synCount, 'synoniemen,', lockCount, 'vergrendelingen,', reqCount, 'verplichte velden,', activeCount, 'actieve velden' + (_uploadConfig.isTemplate ? ' (template)' : ''));
       // Re-suggest pending items zodra config beschikbaar is
       if (_isInjected){
         for (const item of _queue){
@@ -3204,6 +3345,7 @@ const PU = (function(){
         folderPatterns: _uploadConfig.folderPatterns || [],
         lockedFields: _uploadConfig.lockedFields || {},
         requiredFields: _uploadConfig.requiredFields || {},
+        activeFields: _uploadConfig.activeFields || [],
         isTemplate: !!_uploadConfig.isTemplate,
       },
       tcToken: tcToken,
@@ -3294,9 +3436,11 @@ const PU = (function(){
           for (const item of _queue){
             if (item.status !== 'pending') continue;
             item.folderPatternMatched = false;
-            for (const f of METADATA_FIELDS){
-              if (item.metadataLocked && item.metadataLocked[f]) continue;
-              if (item.metadataAuto[f]){ item.metadata[f] = ''; item.metadataAuto[f] = false; }
+            // Wis auto-velden (UUID-keyed); behoud locked-velden
+            for (const f of _getAllFields()){
+              const uuid = f.uuid;
+              if (item.metadataLocked && item.metadataLocked[uuid]) continue;
+              if (item.metadataAuto[uuid]){ item.metadata[uuid] = ''; item.metadataAuto[uuid] = false; }
             }
             _applyFilenamePatterns(item);
             if (item.folderAuto) _applyFolderPattern(item);
@@ -3336,21 +3480,25 @@ const PU = (function(){
       ? cfg.folderPatterns.filter(function(p){ return p && typeof p.regex === 'string' && typeof p.folderId === 'string' && p.regex && p.folderId; })
       : [];
     _uploadConfig.synonyms = (cfg.synonyms && typeof cfg.synonyms === 'object') ? cfg.synonyms : {};
+    // Locked + required + active overnemen, met name→UUID migratie voor backwards-compat
     const locked = {};
     if (cfg.lockedFields && typeof cfg.lockedFields === 'object'){
-      for (const f of METADATA_FIELDS){
-        const v = cfg.lockedFields[f];
-        if (typeof v === 'string' && (ENUM_VALUES[f] || []).indexOf(v) >= 0) locked[f] = v;
+      for (const key in cfg.lockedFields){
+        const v = cfg.lockedFields[key];
+        if (typeof v === 'string' && v) locked[_keyToUuid(key)] = v;
       }
     }
     _uploadConfig.lockedFields = locked;
     const required = {};
     if (cfg.requiredFields && typeof cfg.requiredFields === 'object'){
-      for (const f of METADATA_FIELDS){
-        if (cfg.requiredFields[f] === true) required[f] = true;
+      for (const key in cfg.requiredFields){
+        if (cfg.requiredFields[key] === true) required[_keyToUuid(key)] = true;
       }
     }
     _uploadConfig.requiredFields = required;
+    _uploadConfig.activeFields = Array.isArray(cfg.activeFields)
+      ? cfg.activeFields.filter(function(k){ return typeof k === 'string' && k; }).map(_keyToUuid)
+      : [];
     _uploadConfig.isTemplate = false;
     await _saveUploadConfig();
   }
@@ -3402,6 +3550,7 @@ const PU = (function(){
       folderPatterns: (_uploadConfig.folderPatterns || []).map(function(p){ return { regex: p.regex, folderId: p.folderId }; }),
       lockedFields: Object.assign({}, _uploadConfig.lockedFields || {}),
       requiredFields: Object.assign({}, _uploadConfig.requiredFields || {}),
+      activeFields: (_uploadConfig.activeFields || []).slice(),
       isTemplate: !!_uploadConfig.isTemplate,
     };
 
@@ -3483,20 +3632,55 @@ const PU = (function(){
             + '</div>';
           }).join('');
 
-      const lockedFieldsHtml = METADATA_FIELDS.map(function(f){
-        return '<div class="rule-row pattern-row">'
-          + '<label style="min-width:90px;font-size:var(--fs-sm);color:var(--dk);">🔒 ' + escapeHtml(FIELD_LABEL[f]) + '</label>'
-          + '<select data-lock-field="' + f + '" style="flex:1;">' + lockOptionsFor(f, draft.lockedFields[f] || '') + '</select>'
+      // Dynamische velden-lijst: alle bekende velden uit het PSet-schema (of fallback-3).
+      // Per veld: [Actief] [Verplicht] checkbox. Verplicht heeft Actief als voorwaarde.
+      const _allFields = _getAllFields();
+      const _isActiveInDraft = function(uuid){
+        return (!draft.activeFields || draft.activeFields.length === 0) || draft.activeFields.indexOf(uuid) >= 0;
+      };
+      const typeIcon = function(t){
+        if (t === 'enum') return '☰';
+        if (t === 'date') return '📅';
+        return '✎';
+      };
+      const fieldsConfigHtml = _allFields.map(function(f){
+        const active = _isActiveInDraft(f.uuid);
+        const required = draft.requiredFields[f.uuid] === true;
+        return '<div class="field-config-row" style="display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--hl-light);">'
+          + '<div style="flex:1;min-width:0;">'
+            + '<span style="display:inline-block;width:18px;color:var(--g5);" title="Type: ' + escapeHtml(f.type) + '">' + typeIcon(f.type) + '</span> '
+            + '<strong>' + escapeHtml(f.label) + '</strong>'
+            + '<span style="font-size:var(--fs-xs);color:var(--g5);margin-left:6px;">' + escapeHtml(f.type) + '</span>'
+          + '</div>'
+          + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:var(--fs-sm);" title="Toon dit veld in de upload-rij">'
+            + '<input type="checkbox" data-active-field="' + escapeHtml(f.uuid) + '"' + (active ? ' checked' : '') + ' style="width:15px;height:15px;cursor:pointer;">'
+            + '<span>Actief</span>'
+          + '</label>'
+          + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:var(--fs-sm);' + (active ? '' : 'opacity:.4;') + '" title="Upload-knop disabled tot dit veld is ingevuld">'
+            + '<input type="checkbox" data-req-field="' + escapeHtml(f.uuid) + '"' + (required ? ' checked' : '') + (active ? '' : ' disabled') + ' style="width:15px;height:15px;cursor:pointer;">'
+            + '<span>Verplicht</span>'
+          + '</label>'
         + '</div>';
       }).join('');
 
-      const requiredFieldsHtml = METADATA_FIELDS.map(function(f){
-        const checked = draft.requiredFields[f] === true ? ' checked' : '';
-        return '<label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--dk);cursor:pointer;padding:4px 0;">'
-          + '<input type="checkbox" data-req-field="' + f + '"' + checked + ' style="width:16px;height:16px;cursor:pointer;">'
-          + '<span><strong>' + escapeHtml(FIELD_LABEL[f]) + '</strong> verplicht invullen voor upload</span>'
-        + '</label>';
-      }).join('');
+      // Vergrendelde waarden: alleen voor enum-velden (vaste keuze uit lijst).
+      // Voor tekst/date-velden zou een vrij in te vullen vaste waarde wel kunnen,
+      // maar dat is in deze iteratie buiten scope (MVP houdt het simpel).
+      const lockableFields = _allFields.filter(function(f){ return f.type === 'enum'; });
+      const lockedFieldsHtml = lockableFields.length === 0
+        ? '<p class="sub" style="margin:8px 0 12px;">Geen enum-velden in dit schema — vergrendelde waarden niet beschikbaar.</p>'
+        : lockableFields.map(function(f){
+            const enumOpts = ['<option value="">— niet vergrendeld —</option>'].concat(
+              (f.enum || []).map(function(v){
+                const selected = (draft.lockedFields[f.uuid] === v) ? ' selected' : '';
+                return '<option value="' + escapeHtml(v) + '"' + selected + '>' + escapeHtml(v) + '</option>';
+              })
+            ).join('');
+            return '<div class="rule-row pattern-row">'
+              + '<label style="min-width:140px;font-size:var(--fs-sm);color:var(--dk);">🔒 ' + escapeHtml(f.label) + '</label>'
+              + '<select data-lock-field-uuid="' + escapeHtml(f.uuid) + '" style="flex:1;">' + enumOpts + '</select>'
+            + '</div>';
+          }).join('');
 
       modal.innerHTML =
         '<h2>Instellingen — metadata automatisch invullen</h2>'
@@ -3536,14 +3720,16 @@ const PU = (function(){
         + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Voorbeeld: <code>\\.ifc$|\\.rvt$</code> → map <code>00 Modellen</code>. Bij <code>.pdf</code> blijft de map-suggestie via de metadata-scoring werken.</p>'
         + '<div id="fpatterns-list">' + folderPatternsHtml + '</div>'
         + '<button type="button" class="add-rule" id="add-fpattern-btn">+ Map-patroon toevoegen</button>'
-        + '<h3 style="font-size:14px;margin:22px 0 4px;">5. Vergrendelde waarden</h3>'
+        + '<h3 style="font-size:14px;margin:22px 0 4px;">5. Velden voor upload</h3>'
+        + '<p class="sub" style="margin:0 0 var(--s1);">' + (_schemaDef
+            ? 'Alle <strong>' + _allFields.length + '</strong> metadata-velden uit het schema "<em>' + escapeHtml((_schemaDef && _schemaDef.props ? '' : '') + (typeof _schemaDef === 'object' && _schemaDef ? '' : '')) + '</em>" hieronder. Kies per veld of het in de upload-rij verschijnt (<strong>Actief</strong>) en of het ingevuld moet zijn voor uploaden (<strong>Verplicht</strong>).'
+            : 'Geen PSet-schema gevonden in dit project — fallback naar 3 standaardvelden (Discipline / Fase / Status). Met schema verschijnen automatisch alle 16+ velden uit het BVGO-schema.') + '</p>'
+        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Verplicht is alleen aanvinkbaar als Actief aan staat. Vergrendelde velden tellen automatisch als ingevuld.</p>'
+        + '<div id="fields-config-list">' + fieldsConfigHtml + '</div>'
+        + '<h3 style="font-size:14px;margin:22px 0 4px;">6. Vergrendelde waarden</h3>'
         + '<p class="sub" style="margin:0 0 var(--s1);">Voor projecten waar één discipline / fase / status altijd hetzelfde is (bv. een onderaannemer die alleen Constructeur-bestanden levert).</p>'
-        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Een vergrendeld veld is in de uploader read-only met 🔒-icoon — de uploader hoeft niets in te vullen.</p>'
+        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Een vergrendeld veld is in de uploader read-only met 🔒-icoon — de uploader hoeft niets in te vullen. Alleen beschikbaar voor velden met een vaste keuzelijst (enum).</p>'
         + '<div id="locked-list">' + lockedFieldsHtml + '</div>'
-        + '<h3 style="font-size:14px;margin:22px 0 4px;">6. Verplichte velden voor upload</h3>'
-        + '<p class="sub" style="margin:0 0 var(--s1);">Vink aan welke velden ingevuld <strong>moeten</strong> zijn voordat een upload mag starten. De Upload-knop blijft uit zolang er een bestand in de wachtrij een verplicht veld leeg heeft.</p>'
-        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">⚠ Stel alleen verplicht in als dit project een metadata-bibliotheek (PSet-schema) gebruikt waarin deze velden bestaan. Anders zijn de velden wel verplicht in te vullen, maar belandt de metadata mogelijk niet in Trimble Connect.</p>'
-        + '<div id="required-list">' + requiredFieldsHtml + '</div>'
         + '<h3 style="font-size:14px;margin:22px 0 4px;">7. Dit project als template</h3>'
         + '<p class="sub" style="margin:0 0 var(--s2);">Markeer dit project zodat nieuwe lege projecten in een banner kunnen kiezen om deze regels over te nemen.</p>'
         + '<label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--dk);cursor:pointer;">'
@@ -3671,21 +3857,43 @@ const PU = (function(){
         render();
       });
 
-      // === Locked-fields handlers ===
-      modal.querySelectorAll('select[data-lock-field]').forEach(function(el){
+      // === Active-fields handlers (welke velden tonen in upload-rij) ===
+      modal.querySelectorAll('input[data-active-field]').forEach(function(el){
         el.addEventListener('change', function(){
-          const f = el.getAttribute('data-lock-field');
-          if (el.value) draft.lockedFields[f] = el.value;
-          else delete draft.lockedFields[f];
+          const uuid = el.getAttribute('data-active-field');
+          // Lege array betekent "alle actief" (default). Bij eerste uitvink: initialiseer
+          // expliciet met alle UUIDs zodat we vanaf dan een werkelijke selectie hebben.
+          if (!draft.activeFields || draft.activeFields.length === 0){
+            draft.activeFields = _allFields.map(function(f){ return f.uuid; });
+          }
+          const idx = draft.activeFields.indexOf(uuid);
+          if (el.checked){
+            if (idx < 0) draft.activeFields.push(uuid);
+          } else {
+            if (idx >= 0) draft.activeFields.splice(idx, 1);
+            // Veld inactief → kan niet meer verplicht zijn
+            delete draft.requiredFields[uuid];
+          }
+          // Re-render zodat Verplicht-checkbox de juiste disabled-state krijgt
+          render();
         });
       });
 
-      // === Required-fields handlers ===
+      // === Required-fields handlers (UUID-keyed) ===
       modal.querySelectorAll('input[data-req-field]').forEach(function(el){
         el.addEventListener('change', function(){
-          const f = el.getAttribute('data-req-field');
-          if (el.checked) draft.requiredFields[f] = true;
-          else delete draft.requiredFields[f];
+          const uuid = el.getAttribute('data-req-field');
+          if (el.checked) draft.requiredFields[uuid] = true;
+          else delete draft.requiredFields[uuid];
+        });
+      });
+
+      // === Locked-fields handlers (UUID-keyed, alleen enum-velden) ===
+      modal.querySelectorAll('select[data-lock-field-uuid]').forEach(function(el){
+        el.addEventListener('change', function(){
+          const uuid = el.getAttribute('data-lock-field-uuid');
+          if (el.value) draft.lockedFields[uuid] = el.value;
+          else delete draft.lockedFields[uuid];
         });
       });
 
@@ -3747,17 +3955,20 @@ const PU = (function(){
               : [];
             draft.lockedFields = {};
             if (cfg.lockedFields && typeof cfg.lockedFields === 'object'){
-              for (const f of METADATA_FIELDS){
-                const v = cfg.lockedFields[f];
-                if (typeof v === 'string' && (ENUM_VALUES[f] || []).indexOf(v) >= 0) draft.lockedFields[f] = v;
+              for (const key in cfg.lockedFields){
+                const v = cfg.lockedFields[key];
+                if (typeof v === 'string' && v) draft.lockedFields[_keyToUuid(key)] = v;
               }
             }
             draft.requiredFields = {};
             if (cfg.requiredFields && typeof cfg.requiredFields === 'object'){
-              for (const f of METADATA_FIELDS){
-                if (cfg.requiredFields[f] === true) draft.requiredFields[f] = true;
+              for (const key in cfg.requiredFields){
+                if (cfg.requiredFields[key] === true) draft.requiredFields[_keyToUuid(key)] = true;
               }
             }
+            draft.activeFields = Array.isArray(cfg.activeFields)
+              ? cfg.activeFields.filter(function(k){ return typeof k === 'string' && k; }).map(_keyToUuid)
+              : [];
             // isTemplate-flag NIET overnemen: dat is een eigenschap van het bron-project zelf,
             // niet iets dat je per kopie overneemt (anders heb je opeens twee templates).
             draft.synonyms = [];
@@ -3849,10 +4060,13 @@ const PU = (function(){
             return;
           }
         }
-        // Valideer locked-fields: alleen velden uit METADATA_FIELDS met geldige enum-waarden
-        for (const f in draft.lockedFields){
-          if (METADATA_FIELDS.indexOf(f) < 0 || (ENUM_VALUES[f] || []).indexOf(draft.lockedFields[f]) < 0){
-            delete draft.lockedFields[f];
+        // Valideer locked-fields: alleen bekende UUIDs met (voor enums) geldige waarde.
+        // Voor tekst/date-velden accepteren we elke string als-is.
+        for (const uuid in draft.lockedFields){
+          const fieldInfo = _getFieldInfo(uuid);
+          if (!fieldInfo){ delete draft.lockedFields[uuid]; continue; }
+          if (fieldInfo.type === 'enum' && (fieldInfo.enum || []).indexOf(draft.lockedFields[uuid]) < 0){
+            delete draft.lockedFields[uuid];
           }
         }
 
@@ -3869,6 +4083,7 @@ const PU = (function(){
         const previousFolderPatterns = _uploadConfig.folderPatterns;
         const previousLocked = _uploadConfig.lockedFields;
         const previousRequired = _uploadConfig.requiredFields;
+        const previousActive = _uploadConfig.activeFields;
         const previousIsTemplate = _uploadConfig.isTemplate;
         _uploadConfig.rules = draft.rules;
         _uploadConfig.filePatterns = draft.filePatterns;
@@ -3876,6 +4091,7 @@ const PU = (function(){
         _uploadConfig.folderPatterns = draft.folderPatterns || [];
         _uploadConfig.lockedFields = draft.lockedFields || {};
         _uploadConfig.requiredFields = draft.requiredFields || {};
+        _uploadConfig.activeFields = draft.activeFields || [];
         _uploadConfig.isTemplate = !!draft.isTemplate;
         try {
           await _saveUploadConfig();
@@ -3894,10 +4110,11 @@ const PU = (function(){
           for (const item of _queue){
             if (item.status !== 'pending') continue;
             // Wis auto-velden (behalve vergrendelde) zodat nieuwe regels schoon kunnen toepassen
-            item.metadataLocked = item.metadataLocked || { discipline:false, project_fase:false, document_status:false };
-            for (const f of METADATA_FIELDS){
-              if (item.metadataLocked[f]) continue;
-              if (item.metadataAuto[f]){ item.metadata[f] = ''; item.metadataAuto[f] = false; }
+            item.metadataLocked = item.metadataLocked || {};
+            for (const f of _getAllFields()){
+              const uuid = f.uuid;
+              if (item.metadataLocked[uuid]) continue;
+              if (item.metadataAuto && item.metadataAuto[uuid]){ item.metadata[uuid] = ''; item.metadataAuto[uuid] = false; }
             }
             item.folderPatternMatched = false;
             _applyFilenamePatterns(item);
@@ -3915,6 +4132,7 @@ const PU = (function(){
           _uploadConfig.folderPatterns = previousFolderPatterns;
           _uploadConfig.lockedFields = previousLocked;
           _uploadConfig.requiredFields = previousRequired;
+          _uploadConfig.activeFields = previousActive;
           _uploadConfig.isTemplate = previousIsTemplate;
           msgEl.style.color = 'var(--warn)';
           msgEl.textContent = e.message;
@@ -3963,8 +4181,10 @@ const PU = (function(){
     if (!folder || folder.path === '(projectroot)') return 0;
     const parts = folder.path.split(' / ').map(_normalizeFolderPart);
     let score = 0;
+    // Score op de 3 hardcoded enum-velden via metadata (UUID-keyed) + synoniemen (naam-keyed in config)
     for (const f of METADATA_FIELDS){
-      const canonical = (item.metadata[f] || '').trim();
+      const uuid = _keyToUuid(f);
+      const canonical = (item.metadata[uuid] || '').trim();
       if (!canonical) continue;
       const terms = _synonymsFor(f, canonical);
       let best = 0;
@@ -4019,18 +4239,22 @@ const PU = (function(){
     const haystack = (item.file.name || '') + ' ' + (item.description || '');
     for (const p of patterns){
       if (!p || !p.regex || !p.field || !p.value) continue;
-      if (METADATA_FIELDS.indexOf(p.field) < 0) continue;
+      // p.field is een NAAM (discipline/project_fase/document_status) — vertaal naar UUID.
+      // Filename-patterns werken alleen voor enum-velden (waardes als "Concept", "VO", ...).
+      const uuid = _keyToUuid(p.field);
+      const fieldInfo = _getFieldInfo(uuid);
+      if (!fieldInfo || fieldInfo.type !== 'enum') continue;
       // Vergrendeld veld nooit overschrijven via pattern
-      if (item.metadataLocked && item.metadataLocked[p.field]) continue;
+      if (item.metadataLocked && item.metadataLocked[uuid]) continue;
       // User-ingevulde waarde (niet-auto) niet overschrijven
-      if (item.metadata[p.field] && !item.metadataAuto[p.field]) continue;
+      if (item.metadata[uuid] && !item.metadataAuto[uuid]) continue;
       let re;
       try { re = new RegExp(p.regex, 'i'); } catch(_){ continue; }
       if (!re.test(haystack)) continue;
-      const match = (ENUM_VALUES[p.field] || []).find(function(v){ return v.toLowerCase() === String(p.value).toLowerCase(); });
+      const match = (fieldInfo.enum || []).find(function(v){ return v.toLowerCase() === String(p.value).toLowerCase(); });
       const finalValue = match || p.value;
-      item.metadata[p.field] = finalValue;
-      item.metadataAuto[p.field] = true;
+      item.metadata[uuid] = finalValue;
+      item.metadataAuto[uuid] = true;
     }
   }
 
@@ -4056,18 +4280,23 @@ const PU = (function(){
   // Vergrendelde velden: admin heeft per veld een vaste waarde geprikt.
   // Forceer die waarde + flag het veld zodat de UI het read-only rendert
   // en de folder-pick / bulk-bar / patterns het overslaan.
+  // UUID-keyed. Werkt voor alle veldtypes (enum/date/text); voor enum wordt waarde
+  // gevalideerd tegen de enum-list, anders accepteren we de string as-is.
   function _applyLockedFields(item){
     if (!item) return;
     const lf = _uploadConfig.lockedFields || {};
-    item.metadataLocked = item.metadataLocked || { discipline:false, project_fase:false, document_status:false };
-    for (const f of METADATA_FIELDS){
-      if (lf[f] && (ENUM_VALUES[f] || []).indexOf(lf[f]) >= 0){
-        item.metadata[f] = lf[f];
-        item.metadataAuto[f] = false;
-        item.metadataLocked[f] = true;
-      } else {
-        item.metadataLocked[f] = false;
-      }
+    item.metadataLocked = item.metadataLocked || {};
+    // Reset lock-flags voor alle bekende velden (schema of fallback)
+    for (const f of _getAllFields()) item.metadataLocked[f.uuid] = false;
+    for (const uuid in lf){
+      const v = lf[uuid];
+      if (!v || typeof v !== 'string') continue;
+      const fieldInfo = _getFieldInfo(uuid);
+      if (!fieldInfo) continue;
+      if (fieldInfo.type === 'enum' && (fieldInfo.enum || []).indexOf(v) < 0) continue;
+      item.metadata[uuid] = v;
+      item.metadataAuto[uuid] = false;
+      item.metadataLocked[uuid] = true;
     }
   }
 
@@ -4080,28 +4309,31 @@ const PU = (function(){
     for (const rule of (_uploadConfig.rules || [])){
       const idx = (rule.depth | 0) - 1;
       if (idx < 0 || idx >= parts.length) continue;
-      const field = rule.field;
-      if (METADATA_FIELDS.indexOf(field) < 0) continue;
+      // rule.field is een NAAM — vertaal naar UUID. Suggestie alleen voor enum-velden.
+      const uuid = _keyToUuid(rule.field);
+      const fieldInfo = _getFieldInfo(uuid);
+      if (!fieldInfo || fieldInfo.type !== 'enum') continue;
       // Vergrendeld veld nooit overschrijven via pad-regel
-      if (item.metadataLocked && item.metadataLocked[field]) continue;
-      if (item.metadata[field] && !item.metadataAuto[field]) continue;
+      if (item.metadataLocked && item.metadataLocked[uuid]) continue;
+      if (item.metadata[uuid] && !item.metadataAuto[uuid]) continue;
       const raw = parts[idx];
       const mapped = (rule.map && rule.map[raw]) ? rule.map[raw] : raw;
-      const synMap = (_uploadConfig.synonyms && _uploadConfig.synonyms[field]) || {};
+      // Synonyms staan nog onder naam-keys in config — daarom rule.field gebruiken (niet uuid)
+      const synMap = (_uploadConfig.synonyms && _uploadConfig.synonyms[rule.field]) || {};
       let resolved = String(mapped);
       for (const alias in synMap){
         if (alias.toLowerCase() === resolved.toLowerCase()) { resolved = synMap[alias]; break; }
       }
       const normalized = _normalizeFolderPart(resolved);
-      const match = (ENUM_VALUES[field] || []).find(function(v){
+      const match = (fieldInfo.enum || []).find(function(v){
         return v.toLowerCase() === resolved.toLowerCase() || v.toLowerCase() === normalized;
       });
       if (match){
-        item.metadata[field] = match;
-        item.metadataAuto[field] = true;
-      } else if (item.metadataAuto[field]){
-        item.metadata[field] = '';
-        item.metadataAuto[field] = false;
+        item.metadata[uuid] = match;
+        item.metadataAuto[uuid] = true;
+      } else if (item.metadataAuto[uuid]){
+        item.metadata[uuid] = '';
+        item.metadataAuto[uuid] = false;
       }
     }
   }
@@ -4110,12 +4342,12 @@ const PU = (function(){
   //  Stage 2: Path-preview + bulk-bar
   // ============================================================
   function _renderPathPreview(item){
-    const tags = METADATA_FIELDS.map(function(field){
-      const v = item.metadata[field];
-      const lbl = escapeHtml(FIELD_LABEL[field]);
+    const tags = _getActiveFields().map(function(field){
+      const v = item.metadata[field.uuid];
+      const lbl = escapeHtml(field.label);
       if (v){
-        const cls = item.metadataAuto[field] ? 'auto-tag' : '';
-        const suffix = item.metadataAuto[field] ? ' (auto)' : '';
+        const cls = item.metadataAuto[field.uuid] ? 'auto-tag' : '';
+        const suffix = item.metadataAuto[field.uuid] ? ' (auto)' : '';
         return '<span class="' + cls + '">' + lbl + ': ' + escapeHtml(v) + suffix + '</span>';
       }
       return '<span class="missing-tag">' + lbl + ': — ontbreekt</span>';
@@ -4197,14 +4429,17 @@ const PU = (function(){
     const pending = _queue.filter(function(i){ return i.status === 'pending'; });
     if (!pending.length) return;
     for (const item of pending){
+      // _bulkMeta blijft naam-keyed voor de 3 standaard enum-velden (bulk-bar is
+      // bewust simpel gehouden). Vertaal naar UUID voor item.metadata-keys.
       for (const f of METADATA_FIELDS){
         const v = _bulkMeta[f];
         if (!v) continue;
+        const uuid = _keyToUuid(f);
         // Vergrendelde velden onaantastbaar voor bulk, los van onlyEmpty-vlag
-        if (item.metadataLocked && item.metadataLocked[f]) continue;
-        if (_bulkOnlyEmpty && item.metadata[f]) continue;
-        item.metadata[f] = v;
-        item.metadataAuto[f] = false;
+        if (item.metadataLocked && item.metadataLocked[uuid]) continue;
+        if (_bulkOnlyEmpty && item.metadata[uuid]) continue;
+        item.metadata[uuid] = v;
+        item.metadataAuto[uuid] = false;
       }
       if (_bulkFolderId && !(_bulkOnlyEmpty && item.folderId)){
         item.folderId = _bulkFolderId;
@@ -4310,9 +4545,11 @@ const PU = (function(){
         status: 'pending',
         error: null,
         warn: null,
-        metadata: { discipline:'', project_fase:'', document_status:'' },
-        metadataAuto: { discipline:false, project_fase:false, document_status:false },
-        metadataLocked: { discipline:false, project_fase:false, document_status:false },
+        // UUID-keyed metadata-state. Initieel leeg per actief veld zodat
+        // suggestie-logica en lock-flags consistent kunnen werken.
+        metadata: (function(){ const o={}; for (const f of _getActiveFields()) o[f.uuid] = ''; return o; })(),
+        metadataAuto: (function(){ const o={}; for (const f of _getActiveFields()) o[f.uuid] = false; return o; })(),
+        metadataLocked: (function(){ const o={}; for (const f of _getAllFields()) o[f.uuid] = false; return o; })(),
         folderPatternMatched: false,
       };
       // Suggestie-keten:
@@ -4437,11 +4674,12 @@ const PU = (function(){
         item.folderPatternMatched = false;
         item.folderPickerOpen = false;
         item.folderSearch = '';
-        // Reset auto-metadata zodat nieuwe pad opnieuw wordt afgeleid.
+        // Reset auto-metadata zodat nieuwe pad opnieuw wordt afgeleid (UUID-keyed).
         // Vergrendelde velden niet wissen — die worden onveranderd opnieuw geforceerd.
-        for (const f of METADATA_FIELDS){
-          if (item.metadataLocked && item.metadataLocked[f]) continue;
-          if (item.metadataAuto[f]){ item.metadata[f] = ''; item.metadataAuto[f] = false; }
+        for (const f of _getAllFields()){
+          const uuid = f.uuid;
+          if (item.metadataLocked && item.metadataLocked[uuid]) continue;
+          if (item.metadataAuto && item.metadataAuto[uuid]){ item.metadata[uuid] = ''; item.metadataAuto[uuid] = false; }
         }
         _applyFilenamePatterns(item);
         _applyMetadataSuggestion(item);
@@ -4474,20 +4712,37 @@ const PU = (function(){
         if (again){ again.focus(); try { again.setSelectionRange(caret, caret); } catch(_){} }
       });
     });
-    qEl.querySelectorAll('select[data-field^="meta-"]').forEach(function(el){
-      el.addEventListener('change', function(){
+    // Meta-input handler: werkt voor select (enum), input[type=date] (date) en input[type=text] (text).
+    // data-field bevat "meta-<UUID>" (UUID kan ook een oude veldnaam zijn voor fallback-projecten).
+    qEl.querySelectorAll('[data-field^="meta-"]').forEach(function(el){
+      const evtName = (el.tagName === 'INPUT' && el.type === 'text') ? 'input' : 'change';
+      el.addEventListener(evtName, function(){
         const id = Number(el.getAttribute('data-id'));
-        const field = el.getAttribute('data-field').replace(/^meta-/,'');
+        const uuid = el.getAttribute('data-field').replace(/^meta-/,'');
         const item = _queue.find(function(i){ return i.id === id; });
-        if (!item || METADATA_FIELDS.indexOf(field) < 0) return;
-        // Vergrendelde velden mogen niet via UI gewijzigd worden (disabled select dekt dit normaal,
-        // maar dubbele beveiliging voor het geval een handler los van de disabled-attr getriggerd wordt)
-        if (item.metadataLocked && item.metadataLocked[field]) return;
-        item.metadata[field] = el.value;
-        item.metadataAuto[field] = false;
-        // Stage 2: gewijzigde metadata her-scoort folders, tenzij folderPattern al matchte
+        if (!item) return;
+        // Veld moet bekend zijn (in schema of fallback)
+        if (!_getFieldInfo(uuid)) return;
+        // Vergrendelde velden mogen niet via UI gewijzigd worden
+        if (item.metadataLocked && item.metadataLocked[uuid]) return;
+        item.metadata[uuid] = el.value;
+        if (item.metadataAuto) item.metadataAuto[uuid] = false;
+        // Gewijzigde metadata her-scoort folders, tenzij folderPattern al matchte
         if (item.folderAuto && !item.folderPatternMatched) _recomputeFolderSuggestion(item);
-        renderQueue();
+        // Type=text input: gebruiker is mid-typing → niet renderen (anders cursor weg).
+        // Bij blur of bij select/date change: wel renderen voor Upload-knop disabled-state update.
+        if (evtName === 'input'){
+          // Alleen knop-state updaten zonder full re-render
+          const root2 = getRoot();
+          const upBtn2 = root2 && root2.querySelector('#pu-upload-btn');
+          if (upBtn2){
+            const pending = _queue.filter(function(i){ return i.status === 'pending'; });
+            const blocked = pending.filter(_hasMissingRequired).length;
+            upBtn2.disabled = blocked > 0;
+          }
+        } else {
+          renderQueue();
+        }
       });
     });
 
@@ -4585,39 +4840,53 @@ const PU = (function(){
 
   function _renderMetaRow(item){
     const req = _uploadConfig.requiredFields || {};
-    const parts = METADATA_FIELDS.map(function(field){
-      const val = item.metadata[field] || '';
+    // Render alleen actieve velden — admin bepaalt welke dat zijn.
+    // Type bepaalt input: enum=select, date=date-input, text=text-input.
+    const parts = _getActiveFields().map(function(field){
+      const uuid = field.uuid;
+      const val = item.metadata[uuid] || '';
       const missing = !val;
-      const auto = item.metadataAuto && item.metadataAuto[field];
-      const locked = item.metadataLocked && item.metadataLocked[field];
-      const required = req[field] === true;
-      const opts = ['<option value="">— kies —</option>'].concat(
-        (ENUM_VALUES[field] || []).map(function(v){
-          return '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
-        })
-      ).join('');
-      // Verplicht-marker: rode * naast veldnaam. Voor admin-config + uploader één blik dat veld moet.
+      const auto = item.metadataAuto && item.metadataAuto[uuid];
+      const locked = item.metadataLocked && item.metadataLocked[uuid];
+      const required = req[uuid] === true;
       const reqMark = required ? '<span class="req-mark" title="Verplicht — Upload-knop blijft uit tot dit veld is ingevuld">*</span>' : '';
-      if (locked){
-        // Vergrendeld door admin — toon 🔒 in label en disabled select met vaste waarde.
-        // Locked velden zijn altijd ingevuld dus voldoen automatisch aan een eventuele verplicht-eis.
-        return ''
-          + '<div>'
-            + '<label title="Vergrendeld door projectbeheerder — niet aan te passen">🔒 ' + escapeHtml(FIELD_LABEL[field]) + '</label>'
-            + '<select class="locked-select" data-field="meta-' + field + '" data-id="' + item.id + '" disabled>' + opts + '</select>'
-          + '</div>';
+
+      // Locked-rendering: alleen voor enum-velden zinvol (vaste keuze).
+      if (locked && field.type === 'enum'){
+        const opts = ['<option value="">— kies —</option>'].concat(
+          (field.enum || []).map(function(v){
+            return '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+          })
+        ).join('');
+        return '<div>'
+          + '<label title="Vergrendeld door projectbeheerder — niet aan te passen">🔒 ' + escapeHtml(field.label) + '</label>'
+          + '<select class="locked-select" data-field="meta-' + escapeHtml(uuid) + '" data-id="' + item.id + '" disabled>' + opts + '</select>'
+        + '</div>';
       }
-      // Een leeg veld dat NIET verplicht is mag enkel een grijze ⚠; een leeg VERPLICHT veld
-      // krijgt extra nadruk via class req-missing zodat de uploader meteen ziet waar het hapert.
+
       const icon = missing ? '<span class="warn-icon" title="' + (required ? 'Verplicht — moet ingevuld' : 'Ontbreekt nog') + '">⚠</span>' : '';
       let cls = missing ? 'warn-select' : '';
       if (missing && required) cls += ' req-missing';
       const autoAttr = auto ? ' data-auto="1" title="Automatisch ingevuld op basis van mapstructuur of bestandsnaam"' : '';
-      return ''
-        + '<div>'
-          + '<label>' + escapeHtml(FIELD_LABEL[field]) + reqMark + ' ' + icon + '</label>'
-          + '<select class="' + cls + '" data-field="meta-' + field + '" data-id="' + item.id + '"' + autoAttr + '>' + opts + '</select>'
-        + '</div>';
+      let inputHtml;
+      if (field.type === 'enum'){
+        const opts = ['<option value="">— kies —</option>'].concat(
+          (field.enum || []).map(function(v){
+            return '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+          })
+        ).join('');
+        inputHtml = '<select class="' + cls + '" data-field="meta-' + escapeHtml(uuid) + '" data-id="' + item.id + '"' + autoAttr + '>' + opts + '</select>';
+      } else if (field.type === 'date'){
+        inputHtml = '<input type="date" class="' + cls + '" data-field="meta-' + escapeHtml(uuid) + '" data-id="' + item.id + '" value="' + escapeHtml(val) + '"' + autoAttr + '>';
+      } else {
+        // text — maxLength uit schema
+        const maxAttr = field.maxLength ? ' maxlength="' + field.maxLength + '"' : '';
+        inputHtml = '<input type="text" class="' + cls + '" data-field="meta-' + escapeHtml(uuid) + '" data-id="' + item.id + '" value="' + escapeHtml(val) + '"' + maxAttr + autoAttr + '>';
+      }
+      return '<div>'
+        + '<label>' + escapeHtml(field.label) + reqMark + ' ' + icon + '</label>'
+        + inputHtml
+      + '</div>';
     }).join('');
     return '<div class="meta-row">' + parts + '</div>';
   }
@@ -4677,11 +4946,12 @@ const PU = (function(){
     item.fileId = commitResp.id || commitResp.fileId || commitResp.versionId || uploadId;
     console.log('[PU] upload klaar:', item.file.name, '| fileId:', item.fileId);
 
-    // PSet metadata (alleen als velden ingevuld)
+    // PSet metadata: itereer over actieve velden (UUID-keyed).
+    // Werkt voor enum, date en tekst — keys in props zijn al UUIDs.
     const props = {};
-    for (const f of METADATA_FIELDS){
-      const v = item.metadata[f];
-      if (v && PROP_UUIDS[f]) props[PROP_UUIDS[f]] = v;
+    for (const f of _getActiveFields()){
+      const v = item.metadata[f.uuid];
+      if (v) props[f.uuid] = v;
     }
     if (item.fileId && Object.keys(props).length){
       item.status = 'saving-props';
@@ -4829,6 +5099,7 @@ const PU = (function(){
       if (!_isLoaded && !_isLoading) loadFolders().then(_updateFolderHeader);
       else if (_isLoaded){ _updateFolderHeader(); renderQueue(); }
       if (!_configLoaded && !_configLoading) _loadUploadConfig();
+      if (!_schemaLoaded && !_schemaLoading) _loadPsetSchema();
     },
     prefetch: function(onProgress){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'project-upload'; });
@@ -4847,10 +5118,11 @@ const PU = (function(){
           }, 100);
         });
       }
-      // Parallel: folders (zwaar, levert progress) + config (licht)
+      // Parallel: folders (zwaar, levert progress) + config (licht) + schema (licht)
       const p1 = loadFolders(onProgress);
       const p2 = (!_configLoaded && !_configLoading) ? _loadUploadConfig() : Promise.resolve();
-      return Promise.all([p1, p2]).then(function(){
+      const p3 = (!_schemaLoaded && !_schemaLoading) ? _loadPsetSchema() : Promise.resolve();
+      return Promise.all([p1, p2, p3]).then(function(){
         return { count: _writableFolders.length };
       });
     }
