@@ -368,6 +368,15 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .release-item.clickable:hover .ext-link,
 .fav-item.clickable:hover .ext-link{opacity:1}
 
+/* Dashboard refresh button */
+.sec-head-row{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);margin-bottom:var(--s3)}
+.sec-head-row .overline{margin-bottom:0}
+.refresh-btn{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);background:#fff;color:var(--g5);font:600 var(--fs-sm) 'Poppins',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s,color .15s}
+.refresh-btn:hover{border-color:var(--af);color:var(--af)}
+.refresh-btn.busy{pointer-events:none;color:var(--g4)}
+.refresh-btn .icon{display:inline-block;font-size:14px;line-height:1}
+.refresh-btn.busy .icon{width:10px;height:10px;border:2px solid var(--af);border-top-color:transparent;border-radius:50%;animation:tileSpin .8s linear infinite;font-size:0}
+
 /* Favorites */
 .favorites{
   background:#fff;border:1px solid var(--hl-light);
@@ -1038,7 +1047,12 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
     <!-- View: Dashboard (default) -->
     <div class="view active" id="view-dashboard">
       <section class="sec">
-        <div class="overline">Project in één oogopslag</div>
+        <div class="sec-head-row">
+          <div class="overline">Project in één oogopslag</div>
+          <button class="refresh-btn" id="cp-refresh-btn" type="button" title="Ververs projectgegevens">
+            <span class="icon">↻</span><span>Ververs</span>
+          </button>
+        </div>
         <div class="big-stats" id="stats">
           <div class="bstat"><div class="lab">Leden</div><div class="val" id="st-members">–</div></div>
           <div class="bstat"><div class="lab">Mappen</div><div class="val" id="st-folders">–</div></div>
@@ -1647,9 +1661,37 @@ async function loadDashboard(){
   renderPlaceholders();
   bindTopbar(); // moet ná de access-check zodat .allowed correct in tabs landt
 
-  const pid = tcProject.id;
+  // Eerste data-load van project-context (widgets + tile-stats + user-rol)
+  await _loadProjectContext();
 
-  // Project-data eerst (voor rootId) — endpoints zoals rechten-viewer ze gebruikt
+  // Refresh-knop, tab-focus auto-refresh, en upload-event listeners
+  _initDashboardRefresh();
+
+  // Toggle todos-section zichtbaarheid op basis van gebruikersvoorkeur (configCommand setting)
+  if (typeof getSetting === 'function') {
+    const todosEl = document.getElementById('todos');
+    const todosCol = todosEl ? todosEl.closest('.ctx-col') : null;
+    if (todosCol) {
+      todosCol.style.display = (getSetting('showTodos') === false) ? 'none' : '';
+    }
+  }
+
+  // Sequentiële prefetch in vaste volgorde (PU → DL → RV → PD), met live
+  // tile-counter. Scheduled na idle zodat dashboard-render eerst klaar is.
+  if ('requestIdleCallback' in window){
+    requestIdleCallback(warmAll, { timeout: 3000 });
+  } else {
+    setTimeout(warmAll, 1500);
+  }
+}
+
+// ============================================================
+//  Project-context loader (herbruikbaar voor refresh)
+//  Trekt project-data + widgets opnieuw zonder de hub-check of prefetch.
+// ============================================================
+async function _loadProjectContext(){
+  const pid = tcProject.id;
+  // Project-data eerst (voor rootId)
   const projData = await tcFetchSafe('/projects/'+pid, null);
   const rootId = projData && projData.rootId;
 
@@ -1658,12 +1700,9 @@ async function loadDashboard(){
     tcFetchSafe('/projects/'+pid+'/users', []),
     tcFetchSafe('/groups?projectId='+pid, []),
     rootId ? tcFetchFolderItems(rootId).catch(function(e){ console.warn('[Cockpit] root items fout:', e.message); return []; }) : Promise.resolve([]),
-    // /projects: Range-header pagination (v2.0 spec) i.p.v. niet-bestaande pageSize/showSubProjects query
     tcFetchRange('/projects', 500).catch(function(e){ console.warn('[Cockpit] projects fetch fout:', e.message); return []; }),
     tcFetchSafe('/releases?projectId='+pid+'&pageSize=10', []),
-    // Issues via Issue Management API (BCF-compatible, vervangt oude /todos)
     fetchIssuesForProject(pid),
-    // Shares: openstaande gedeelde links
     tcFetchSafe('/shares?projectId='+pid+'&pageSize=20', []),
   ]);
 
@@ -1678,7 +1717,7 @@ async function loadDashboard(){
   $('st-folders').textContent = foldersCount || '–';
   $('st-groups').textContent  = groupsCount  || '–';
 
-  // Gebruikersrol bepalen
+  // Gebruikersrol opnieuw bepalen (kan veranderd zijn sinds vorige load)
   const rolePill = $('userRole');
   let role = null;
   if (Array.isArray(users) && currentUserEmail){
@@ -1702,36 +1741,66 @@ async function loadDashboard(){
   });
   const lastUploadStr = latestUpload ? formatDate(latestUpload.toISOString()) : 'nog geen uploads';
 
-  // Kerngetallen naar tegels — echte data per extensie. Bij ontbrekende data: '–' (eerlijk, geen statisch label).
   updateTileStat('project-dashboard', projectsCount ? projectsCount+' projecten' : '–');
   updateTileStat('rechten-viewer',    foldersCount  ? foldersCount+' mappen · '+groupsCount+' groepen' : '–');
   updateTileStat('documentenlijst',   filesInRoot   ? filesInRoot+' bestanden in root' : '–');
   updateTileStat('project-upload',    latestUpload  ? 'Laatste upload: '+lastUploadStr : '–');
 
-  // Laatste activiteit + uploads + todos + releases + shares + favorites
   renderActivity(rootList);
   renderUploads(rootList);
   renderTodos(todos);
   renderReleases(releases);
   renderShares(shares);
   renderFavorites();
+}
 
-  // Toggle todos-section zichtbaarheid op basis van gebruikersvoorkeur (configCommand setting)
-  if (typeof getSetting === 'function') {
-    const todosEl = document.getElementById('todos');
-    const todosCol = todosEl ? todosEl.closest('.ctx-col') : null;
-    if (todosCol) {
-      todosCol.style.display = (getSetting('showTodos') === false) ? 'none' : '';
+// ============================================================
+//  Dashboard refresh: knop + tab-focus + upload-event
+//  Drie triggers, één pad: refreshDashboard() roept _loadProjectContext.
+// ============================================================
+let _lastRefreshTs = 0;
+const _REFRESH_THROTTLE_MS = 15000; // tab-focus: max 1x per 15s
+
+async function refreshDashboard(reason){
+  _lastRefreshTs = Date.now();
+  const btn = document.getElementById('cp-refresh-btn');
+  if (btn) btn.classList.add('busy');
+  console.log('[Cockpit] Dashboard ververst (' + (reason || 'manual') + ')');
+  try {
+    await _loadProjectContext();
+  } catch(e){
+    console.warn('[Cockpit] Refresh fout:', e.message);
+  } finally {
+    if (btn){
+      btn.classList.remove('busy');
+      const t = new Date().toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'});
+      btn.title = 'Laatst ververst: ' + t + ' — klik om opnieuw te verversen';
     }
   }
+}
 
-  // Sequentiële prefetch in vaste volgorde (PU → DL → RV → PD), met live
-  // tile-counter. Scheduled na idle zodat dashboard-render eerst klaar is.
-  if ('requestIdleCallback' in window){
-    requestIdleCallback(warmAll, { timeout: 3000 });
-  } else {
-    setTimeout(warmAll, 1500);
-  }
+function _initDashboardRefresh(){
+  _lastRefreshTs = Date.now();
+  // 1. Manual refresh-button
+  const btn = document.getElementById('cp-refresh-btn');
+  if (btn) btn.addEventListener('click', function(){ refreshDashboard('button'); });
+
+  // 2. Tab-focus refresh (throttled): vangt uploads van anderen op wanneer
+  //    de gebruiker terugkomt naar de cockpit-tab na elders bezig te zijn.
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState !== 'visible') return;
+    const elapsed = Date.now() - _lastRefreshTs;
+    if (elapsed >= _REFRESH_THROTTLE_MS) refreshDashboard('tab-focus');
+  });
+
+  // 3. Eigen upload klaar: PU dispatcht cockpit:upload-done. Dashboard verfrissen
+  //    + DL-cache wissen zodat de net-geüploade bestanden in de lijst komen.
+  document.addEventListener('cockpit:upload-done', function(e){
+    const n = (e && e.detail && e.detail.count) || 0;
+    console.log('[Cockpit] cockpit:upload-done event (' + n + ' bestanden) — invalidate caches');
+    if (typeof DL !== 'undefined' && typeof DL.invalidateCache === 'function') DL.invalidateCache();
+    refreshDashboard('upload-done');
+  });
 }
 
 // ============================================================
@@ -2700,8 +2769,9 @@ const PU = (function(){
   // Stage 2: hub-config + suggestion engine state
   // folderPatterns: regex op bestandsnaam → suggesteer specifieke folderId (bv. .ifc → 00 Modellen)
   // lockedFields: per metadata-veld een vaste waarde die door uploader NIET gewijzigd kan worden
+  // requiredFields: per metadata-veld een bool — true = upload-knop disabled tot ingevuld
   // isTemplate: dit project mag als bron-template dienen voor andere projecten (banner-flow)
-  let _uploadConfig = { rules: [], filePatterns: [], folderPatterns: [], synonyms: {}, lockedFields: {}, isTemplate: false };
+  let _uploadConfig = { rules: [], filePatterns: [], folderPatterns: [], synonyms: {}, lockedFields: {}, requiredFields: {}, isTemplate: false };
   let _configLoaded = false;
   let _configLoading = false;
   let _bulkMeta = { discipline:'', project_fase:'', document_status:'' };
@@ -3009,6 +3079,13 @@ const PU = (function(){
         _uploadConfig.folderPatterns = cfg.folderPatterns.filter(function(p){
           return p && typeof p.regex === 'string' && typeof p.folderId === 'string' && p.regex && p.folderId;
         });
+      }
+      if (cfg && cfg.requiredFields && typeof cfg.requiredFields === 'object'){
+        const clean = {};
+        for (const f of METADATA_FIELDS){
+          if (cfg.requiredFields[f] === true) clean[f] = true;
+        }
+        _uploadConfig.requiredFields = clean;
       }
       if (cfg && cfg.lockedFields && typeof cfg.lockedFields === 'object'){
         const clean = {};
@@ -4563,6 +4640,16 @@ const PU = (function(){
           metadataComplete: metaComplete, metadataWarn: metaWarn,
           psetOk: _psetStats.ok, psetFail: _psetStats.fail,
         });
+      } catch(_){}
+    }
+
+    // Dashboard + DL signaal: jouw uploads zijn klaar, hun caches zijn stale.
+    // Cockpit luistert hierop (_initDashboardRefresh) en wist + ververst.
+    if (ok > 0){
+      try {
+        document.dispatchEvent(new CustomEvent('cockpit:upload-done', {
+          detail: { count: ok, failed: fail, bytes: totalBytes }
+        }));
       } catch(_){}
     }
   }
@@ -6851,6 +6938,22 @@ const DL = (function(){
       injectHtml();
       if (!_isLoaded && !_isLoading) _loadDocs();
       else if (_isLoaded) _renderTable();
+    },
+    invalidateCache: function(){
+      // Aangeroepen door cockpit na cockpit:upload-done event. Wist localStorage
+      // cache + module-state, en laadt direct opnieuw als DL nu zichtbaar is.
+      try { localStorage.removeItem(_cacheKey()); } catch(_){}
+      _isLoaded = false;
+      _isLoading = false;
+      _deepScanPromise = null;
+      _docs = [];
+      const view = document.getElementById('view-documentenlijst');
+      if (_isInjected && view && view.classList.contains('active')){
+        console.log('[DL] cache geïnvalideerd — herlaad direct (view actief)');
+        _loadDocs();
+      } else {
+        console.log('[DL] cache geïnvalideerd — herlaad bij eerstvolgende activate');
+      }
     },
     prefetch: function(onProgress){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
