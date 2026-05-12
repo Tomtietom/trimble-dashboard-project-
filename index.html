@@ -640,6 +640,37 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-selection-count{font-weight:600;font-size:14px;flex:1}
 .dl-selection-btn{padding:6px 12px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;cursor:pointer;transition:background .15s}
 .dl-selection-btn:hover{background:rgba(255,255,255,.3)}
+.dl-selection-btn-primary{background:#fff;color:var(--af);border-color:#fff;font-weight:600}
+.dl-selection-btn-primary:hover{background:var(--afl);color:var(--af2)}
+.dl-share-modal{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif}
+.dl-share-backdrop{position:absolute;inset:0;background:rgba(34,34,34,.4);animation:dl-fade-in .15s ease-out}
+.dl-share-panel{position:relative;width:520px;max-width:92vw;max-height:88vh;background:#fff;border-radius:var(--r-md);box-shadow:0 8px 32px rgba(0,0,0,.2);display:flex;flex-direction:column;overflow:hidden;animation:dl-slide-in .2s ease-out}
+.dl-share-head{display:flex;align-items:center;gap:var(--s3);padding:var(--s4);border-bottom:1px solid var(--hl-light);background:var(--gr)}
+.dl-share-title{flex:1;margin:0;font-family:'Montserrat',sans-serif;font-weight:700;font-size:18px;color:var(--dk)}
+.dl-share-close{width:32px;height:32px;border:none;background:transparent;border-radius:50%;font-size:24px;line-height:1;cursor:pointer;color:var(--g5);transition:all .15s}
+.dl-share-close:hover{background:var(--hl);color:var(--dk)}
+.dl-share-body{flex:1;overflow:auto;padding:var(--s4)}
+.dl-share-label{display:block;font-size:13px;color:var(--g6);font-weight:500;margin-bottom:var(--s3)}
+.dl-share-input{display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;background:#fff;box-sizing:border-box}
+.dl-share-input:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 3px var(--afl)}
+.dl-share-mode-info{padding:8px 12px;border-radius:var(--r-sm);font-size:13px;margin:-4px 0 var(--s3) 0;line-height:1.4}
+.dl-share-files{margin-top:var(--s3);padding:var(--s3);background:var(--gr);border-radius:var(--r-sm);border:1px solid var(--hl-light)}
+.dl-share-files-head{font-size:12px;color:var(--g5);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.dl-share-files-list{list-style:none;margin:0;padding:0;max-height:140px;overflow:auto;font-size:13px;color:var(--dk)}
+.dl-share-files-list li{padding:3px 0;border-bottom:1px dotted var(--hl-light)}
+.dl-share-files-list li:last-child{border-bottom:none}
+.dl-share-foot{display:flex;justify-content:flex-end;gap:8px;padding:var(--s3) var(--s4);border-top:1px solid var(--hl-light);background:var(--gr)}
+.dl-share-btn{padding:8px 16px;border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;font-weight:500;cursor:pointer;border:1px solid var(--hl);background:#fff;color:var(--dk);transition:all .15s}
+.dl-share-btn:hover:not(:disabled){border-color:var(--af);background:var(--afl)}
+.dl-share-btn:disabled{opacity:.5;cursor:wait}
+.dl-share-btn-primary{background:var(--af);color:#fff;border-color:var(--af)}
+.dl-share-btn-primary:hover:not(:disabled){background:var(--af2);border-color:var(--af2)}
+.dl-share-success-msg{padding:12px 14px;background:#d4edda;border:1px solid #c3e6cb;border-left:3px solid #28a745;border-radius:var(--r-sm);color:#155724;font-size:14px;margin-bottom:var(--s3)}
+.dl-share-links{display:flex;flex-direction:column;gap:6px}
+.dl-share-link-item{padding:8px 10px;background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm);font-size:13px}
+.dl-share-link-item .name{font-weight:500;color:var(--dk);display:block;margin-bottom:4px}
+.dl-share-link-item a{color:var(--af);font-size:11px;text-decoration:none;word-break:break-all}
+.dl-share-link-item a:hover{text-decoration:underline}
 .dl-tbl th.dl-th-cb,.dl-tbl td.dl-cell-cb{width:36px;padding:8px 6px;text-align:center;cursor:default;vertical-align:middle}
 .dl-tbl th.dl-th-cb input,.dl-tbl td.dl-cell-cb input{cursor:pointer;margin:0;vertical-align:middle}
 .dl-tbl tbody tr.dl-row.dl-row-selected{background:var(--afl)}
@@ -5927,6 +5958,193 @@ const DL = (function(){
     }
   }
 
+  // === Share-modal (iter B) ===
+  // Toont modal, popt selectie-bestanden in, reset form, vult voorbeeld-vervaldatum (+14 dagen).
+  function _openShareDialog(){
+    const modal = document.getElementById('dl-share-modal');
+    if (!modal) return;
+    const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+    if (!selDocs.length){
+      alert('Selecteer eerst bestanden om te delen.');
+      return;
+    }
+    // Reset form-state
+    const form = document.getElementById('dl-share-form');
+    const success = document.getElementById('dl-share-success');
+    if (form) form.style.display = '';
+    if (success) success.style.display = 'none';
+    const submitBtn = document.getElementById('dl-share-submit');
+    const copyBtn = document.getElementById('dl-share-copy');
+    if (submitBtn){ submitBtn.style.display = ''; submitBtn.disabled = false; submitBtn.textContent = 'Delen'; }
+    if (copyBtn) copyBtn.style.display = 'none';
+    const mode = document.getElementById('dl-share-mode'); if (mode) mode.value = 'REGISTERED_USERS';
+    const perm = document.getElementById('dl-share-perm'); if (perm) perm.value = 'VIEW';
+    const msg = document.getElementById('dl-share-msg'); if (msg) msg.value = '';
+    const emails = document.getElementById('dl-share-emails'); if (emails) emails.value = '';
+    const expiry = document.getElementById('dl-share-expiry');
+    if (expiry){
+      const d = new Date(); d.setDate(d.getDate() + 14);
+      expiry.value = d.toISOString().split('T')[0];
+    }
+    _updateShareModeInfo();
+    // Vul bestandenlijst
+    const count = document.getElementById('dl-share-count');
+    if (count) count.textContent = selDocs.length + ' bestand' + (selDocs.length === 1 ? '' : 'en');
+    const list = document.getElementById('dl-share-files-list');
+    if (list){
+      list.innerHTML = selDocs.map(function(d){
+        return '<li>' + _esc(d.bestandsnaam || '–') + '</li>';
+      }).join('');
+    }
+    modal.style.display = '';
+  }
+
+  function _closeShareDialog(){
+    const modal = document.getElementById('dl-share-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function _updateShareModeInfo(){
+    const sel = document.getElementById('dl-share-mode');
+    const el = document.getElementById('dl-share-mode-info');
+    if (!sel || !el) return;
+    const m = sel.value;
+    if (m === 'REGISTERED_USERS'){
+      el.style.background = '#cce5ff'; el.style.color = '#004085';
+      el.innerHTML = '🔒 Ontvanger moet inloggen met een Trimble ID. Toegang wordt gelogd.';
+    } else if (m === 'PUBLIC'){
+      el.style.background = '#fff3cd'; el.style.color = '#856404';
+      el.innerHTML = '⚠️ <b>Openbaar!</b> Iedereen met de link kan de bestanden openen zonder login. Alleen de aanmaak wordt gelogd, niet wie het opent.';
+    } else {
+      el.style.background = '#d4edda'; el.style.color = '#155724';
+      el.innerHTML = '🔒 Alleen bestaande projectleden kunnen deze bestanden openen.';
+    }
+  }
+
+  async function _submitShare(){
+    const submitBtn = document.getElementById('dl-share-submit');
+    const modeEl = document.getElementById('dl-share-mode');
+    const permEl = document.getElementById('dl-share-perm');
+    const expiryEl = document.getElementById('dl-share-expiry');
+    const msgEl = document.getElementById('dl-share-msg');
+    const emailsEl = document.getElementById('dl-share-emails');
+    if (!submitBtn || !modeEl || !permEl) return;
+
+    const shareMode = modeEl.value;
+    const permission = permEl.value;
+    const message = (msgEl && msgEl.value || '').trim();
+    const expiryDate = expiryEl && expiryEl.value ? (expiryEl.value + 'T23:59:00+0000') : null;
+    const emails = (emailsEl && emailsEl.value || '').split(',').map(function(e){ return e.trim(); }).filter(function(e){ return e && e.indexOf('@') > 0; });
+
+    if (shareMode === 'PROJECT_USERS' && emails.length){
+      console.log('[DL] Share: emails worden genegeerd bij mode PROJECT_USERS');
+    }
+
+    const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+    if (!selDocs.length){ alert('Geen bestanden geselecteerd.'); return; }
+
+    // Bouw doclijst-samenvatting in bericht
+    const docSummary = '\n\n--- Documentenlijst ---\n' + selDocs.map(function(d){
+      return d.bestandsnaam + (d.document_status ? ' [' + d.document_status + ']' : '') + (d.revisie ? ' rev.' + d.revisie : '');
+    }).join('\n');
+    const fullMsg = (message + docSummary).substring(0, 1024);
+
+    const body = {
+      mode: shareMode,
+      projectId: tcProject.id,
+      permission: permission,
+      message: fullMsg,
+      objects: selDocs.map(function(d){ return { id: d._vid, type: 'FILE' }; }),
+    };
+    if (expiryDate) body.expiryDate = expiryDate;
+    if (emails.length) body.notify = emails.map(function(e){ return { type: 'EMAIL', id: e }; });
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Verzenden…';
+    try {
+      const url = TC_API_BASE + '/shares';
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + tcToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok){
+        const txt = await r.text().catch(function(){ return ''; });
+        throw new Error('HTTP ' + r.status + ': ' + txt.slice(0, 300));
+      }
+      const result = await r.json();
+      console.log('[DL] Share aangemaakt:', result);
+
+      // Bouw per-bestand link
+      const shareObjects = (result && result.objects) || [];
+      const links = selDocs.map(function(d, i){
+        const so = shareObjects[i];
+        const url = so && so.url ? 'https://web.connect.trimble.com' + so.url : '';
+        return { name: d.bestandsnaam, url: url };
+      });
+      _renderShareSuccess(links, shareMode, selDocs.length, emails);
+    } catch(e){
+      console.error('[DL] Share fout:', e);
+      alert('Delen mislukt: ' + e.message);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Delen';
+    }
+  }
+
+  function _renderShareSuccess(links, shareMode, count, emails){
+    const form = document.getElementById('dl-share-form');
+    const success = document.getElementById('dl-share-success');
+    const successMsg = document.getElementById('dl-share-success-msg');
+    const linksEl = document.getElementById('dl-share-links');
+    const submitBtn = document.getElementById('dl-share-submit');
+    const copyBtn = document.getElementById('dl-share-copy');
+    if (form) form.style.display = 'none';
+    if (success) success.style.display = '';
+    if (submitBtn) submitBtn.style.display = 'none';
+    if (copyBtn) copyBtn.style.display = '';
+    if (successMsg){
+      const modeText = shareMode === 'PUBLIC' ? 'openbaar' : (shareMode === 'PROJECT_USERS' ? 'met projectleden' : 'met geregistreerde gebruikers');
+      const emailText = emails.length ? ' Verstuurd via TC naar: ' + emails.join(', ') + '.' : '';
+      successMsg.textContent = '✓ ' + count + ' bestand' + (count === 1 ? '' : 'en') + ' gedeeld ' + modeText + '.' + emailText;
+    }
+    if (linksEl){
+      linksEl.innerHTML = links.map(function(l){
+        const url = _esc(l.url);
+        const name = _esc(l.name);
+        return '<div class="dl-share-link-item">'
+          + '<span class="name">' + name + '</span>'
+          + (l.url ? '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>' : '<span style="color:var(--g5);font-size:11px">Geen link beschikbaar</span>')
+          + '</div>';
+      }).join('');
+    }
+    // Save kopieerbare tekst op de copy-knop
+    if (copyBtn){
+      const copyText = links.map(function(l){ return l.name + (l.url ? '\n  ' + l.url : ''); }).join('\n');
+      copyBtn.dataset.copyText = copyText;
+    }
+  }
+
+  function _copyShareLinks(){
+    const copyBtn = document.getElementById('dl-share-copy');
+    if (!copyBtn) return;
+    const text = copyBtn.dataset.copyText || '';
+    if (!text) return;
+    if (navigator.clipboard){
+      navigator.clipboard.writeText(text).then(function(){
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = '✓ Gekopieerd';
+        setTimeout(function(){ copyBtn.textContent = orig; }, 2000);
+      });
+    } else {
+      // Fallback
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch(_){}
+      document.body.removeChild(ta);
+    }
+  }
+
   // Header "select all" checkbox: aan = alle gefilterde in selectie, mixed = indeterminate
   function _updateSelectAllState(){
     const selAll = document.getElementById('dl-select-all');
@@ -6007,6 +6225,7 @@ const DL = (function(){
         '<div id="dl-meta-banner" class="dl-meta-banner" style="display:none"><strong>Geen metadata-schema in dit project.</strong> Filters en metadata-kolommen zijn uitgeschakeld. Bestandsnaam, versie, datum en map blijven beschikbaar.</div>' +
         '<div id="dl-selection-bar" class="dl-selection-bar" style="display:none">' +
           '<span class="dl-selection-count" id="dl-selection-count">0 geselecteerd</span>' +
+          '<button type="button" id="dl-share-btn" class="dl-selection-btn dl-selection-btn-primary">📤 Delen</button>' +
           '<button type="button" id="dl-selection-clear" class="dl-selection-btn">Selectie wissen</button>' +
         '</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
@@ -6020,6 +6239,56 @@ const DL = (function(){
               '<tbody id="dl-tbody"></tbody>' +
             '</table>' +
             '<div id="dl-no-results" class="dl-no-results" style="display:none">Geen documenten gevonden</div>' +
+          '</div>' +
+        '</div>' +
+        // Share modal (hidden default; toggled door _openShareDialog/_closeShareDialog)
+        '<div id="dl-share-modal" class="dl-share-modal" style="display:none">' +
+          '<div class="dl-share-backdrop" id="dl-share-backdrop"></div>' +
+          '<div class="dl-share-panel" role="dialog" aria-label="Bestanden delen">' +
+            '<div class="dl-share-head">' +
+              '<h3 class="dl-share-title">Bestanden delen</h3>' +
+              '<button type="button" id="dl-share-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
+            '</div>' +
+            '<div class="dl-share-body">' +
+              '<div id="dl-share-form">' +
+                '<label class="dl-share-label">Met wie delen' +
+                  '<select id="dl-share-mode" class="dl-share-input">' +
+                    '<option value="REGISTERED_USERS">Geregistreerde gebruikers (login vereist)</option>' +
+                    '<option value="PUBLIC">Openbare link (zonder login)</option>' +
+                    '<option value="PROJECT_USERS">Alleen projectleden</option>' +
+                  '</select>' +
+                '</label>' +
+                '<div id="dl-share-mode-info" class="dl-share-mode-info"></div>' +
+                '<label class="dl-share-label">Rechten' +
+                  '<select id="dl-share-perm" class="dl-share-input">' +
+                    '<option value="VIEW">Alleen bekijken</option>' +
+                    '<option value="DOWNLOAD">Bekijken + downloaden</option>' +
+                  '</select>' +
+                '</label>' +
+                '<label class="dl-share-label">Vervalt op (optioneel)' +
+                  '<input type="date" id="dl-share-expiry" class="dl-share-input">' +
+                '</label>' +
+                '<label class="dl-share-label">Bericht (optioneel)' +
+                  '<textarea id="dl-share-msg" class="dl-share-input" rows="3" placeholder="Bericht dat meegestuurd wordt..."></textarea>' +
+                '</label>' +
+                '<label class="dl-share-label">Verstuur via TC naar emails (optioneel, komma-gescheiden)' +
+                  '<input type="text" id="dl-share-emails" class="dl-share-input" placeholder="naam@bedrijf.nl, andere@bedrijf.nl">' +
+                '</label>' +
+                '<div class="dl-share-files">' +
+                  '<div class="dl-share-files-head"><strong id="dl-share-count">0 bestanden</strong></div>' +
+                  '<ul id="dl-share-files-list" class="dl-share-files-list"></ul>' +
+                '</div>' +
+              '</div>' +
+              '<div id="dl-share-success" style="display:none">' +
+                '<div class="dl-share-success-msg" id="dl-share-success-msg"></div>' +
+                '<div class="dl-share-links" id="dl-share-links"></div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="dl-share-foot">' +
+              '<button type="button" id="dl-share-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
+              '<button type="button" id="dl-share-copy" class="dl-share-btn dl-share-btn-secondary" style="display:none">Kopieer links</button>' +
+              '<button type="button" id="dl-share-submit" class="dl-share-btn dl-share-btn-primary">Delen</button>' +
+            '</div>' +
           '</div>' +
         '</div>' +
       '</section>';
@@ -6215,6 +6484,24 @@ const DL = (function(){
         _renderTable();
       });
     }
+    // Share-dialog openen vanuit selection-bar
+    const shareBtn = root.querySelector('#dl-share-btn');
+    if (shareBtn){
+      shareBtn.addEventListener('click', _openShareDialog);
+    }
+    // Share-dialog binnenkant: alle controls binden
+    const shareClose = root.querySelector('#dl-share-close');
+    if (shareClose) shareClose.addEventListener('click', _closeShareDialog);
+    const shareCancel = root.querySelector('#dl-share-cancel');
+    if (shareCancel) shareCancel.addEventListener('click', _closeShareDialog);
+    const shareBackdrop = root.querySelector('#dl-share-backdrop');
+    if (shareBackdrop) shareBackdrop.addEventListener('click', _closeShareDialog);
+    const shareSubmit = root.querySelector('#dl-share-submit');
+    if (shareSubmit) shareSubmit.addEventListener('click', _submitShare);
+    const shareModeSel = root.querySelector('#dl-share-mode');
+    if (shareModeSel) shareModeSel.addEventListener('change', _updateShareModeInfo);
+    const shareCopy = root.querySelector('#dl-share-copy');
+    if (shareCopy) shareCopy.addEventListener('click', _copyShareLinks);
     // Kolom-picker: knop opent/sluit popover, outside-click sluit, reset-knop herstelt defaults
     const colsBtn = root.querySelector('#dl-cols-btn');
     const colsPicker = root.querySelector('#dl-cols-picker');
