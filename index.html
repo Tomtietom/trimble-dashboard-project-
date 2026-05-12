@@ -5872,10 +5872,12 @@ const DL = (function(){
       try { await _loadMetadata(); } catch(e){ console.warn('[DL] metadata-load fout:', e.message); }
       _metadataFetchComplete = true;
       _renderTable(); // bulk binnen, eerste 100 docs hebben metadata
+      _buildDatalists();
       // Deep-scan voor de rest (bulk geeft max 100/project) — async, niet awaiten
       if (_docs.length > 0){
         _deepScanPromise = _deepScanMetadata().then(function(){
           _writeCache(_buildCacheFromDocs());
+          _buildDatalists(); // rebuilden zodat deep-scan-waarden ook beschikbaar zijn
           console.log('[DL] cache geschreven voor', _docs.length, 'docs (24u TTL)');
         }).catch(function(e){ console.warn('[DL] deep-scan fout:', e.message); });
       }
