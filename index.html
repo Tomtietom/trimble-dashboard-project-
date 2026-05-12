@@ -6415,6 +6415,176 @@ const DL = (function(){
     }
   }
 
+  // === Bulk-edit modal ===
+  // Werkt op alle geselecteerde bestanden: 1 veld → 1 waarde voor allemaal in één /psets/changeset call.
+  function _openBulkEditDialog(){
+    const modal = document.getElementById('dl-bulk-modal');
+    if (!modal) return;
+    const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+    if (!selDocs.length){ alert('Selecteer eerst bestanden om te wijzigen.'); return; }
+    if (!_hasMetaSchema){ alert('Dit project heeft geen metadata-schema; bulk-edit is niet beschikbaar.'); return; }
+    // Reset form
+    const form = document.getElementById('dl-bulk-form');
+    const success = document.getElementById('dl-bulk-success');
+    if (form) form.style.display = '';
+    if (success) success.style.display = 'none';
+    const submitBtn = document.getElementById('dl-bulk-submit');
+    if (submitBtn){ submitBtn.style.display = ''; submitBtn.disabled = false; submitBtn.textContent = 'Opslaan'; }
+    // Vul veld-dropdown met alle editable velden in volgorde van DETAIL_ORDER
+    const fieldSel = document.getElementById('dl-bulk-field');
+    if (fieldSel){
+      fieldSel.innerHTML = '<option value="">— Kies veld —</option>';
+      const editableKeys = DETAIL_ORDER.filter(_isEditableField);
+      editableKeys.forEach(function(k){
+        const o = document.createElement('option');
+        o.value = k;
+        o.textContent = FIELD_LABEL[k] || k;
+        fieldSel.appendChild(o);
+      });
+      fieldSel.value = '';
+    }
+    // Reset waarde-slot
+    _renderBulkValueInput('');
+    // Vul bestandenlijst
+    const count = document.getElementById('dl-bulk-count');
+    if (count) count.textContent = selDocs.length + ' bestand' + (selDocs.length === 1 ? '' : 'en');
+    const list = document.getElementById('dl-bulk-files-list');
+    if (list){
+      list.innerHTML = selDocs.map(function(d){ return '<li>' + _esc(d.bestandsnaam || '–') + '</li>'; }).join('');
+    }
+    modal.style.display = '';
+  }
+
+  function _closeBulkEditDialog(){
+    const modal = document.getElementById('dl-bulk-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  // Render het waarde-input element afhankelijk van veldtype (enum/date/text).
+  function _renderBulkValueInput(fieldKey){
+    const slot = document.getElementById('dl-bulk-value-slot');
+    if (!slot) return;
+    slot.innerHTML = '';
+    if (!fieldKey) return;
+    const enumVals = ENUM_VALUES[fieldKey];
+    const isDate = /datum/.test(fieldKey);
+    let input;
+    if (enumVals && enumVals.length){
+      input = document.createElement('select');
+      input.className = 'dl-share-input';
+      const blank = document.createElement('option');
+      blank.value = ''; blank.textContent = '— Kies waarde —';
+      input.appendChild(blank);
+      enumVals.forEach(function(v){
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        input.appendChild(o);
+      });
+    } else {
+      input = document.createElement('input');
+      input.type = isDate ? 'date' : 'text';
+      input.className = 'dl-share-input';
+      input.placeholder = isDate ? 'JJJJ-MM-DD' : 'Nieuwe waarde…';
+      if (input.type === 'text' && document.getElementById('dl-list-' + fieldKey)){
+        input.setAttribute('list', 'dl-list-' + fieldKey);
+      }
+    }
+    input.id = 'dl-bulk-value';
+    slot.appendChild(input);
+  }
+
+  async function _submitBulkEdit(){
+    const fieldSel = document.getElementById('dl-bulk-field');
+    const valEl = document.getElementById('dl-bulk-value');
+    const submitBtn = document.getElementById('dl-bulk-submit');
+    if (!fieldSel || !submitBtn) return;
+    const fieldKey = fieldSel.value;
+    if (!fieldKey){ alert('Kies eerst een veld.'); return; }
+    if (!valEl){ alert('Vul een waarde in.'); return; }
+    const newValue = valEl.value;
+    const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+    if (!selDocs.length){ alert('Geen bestanden geselecteerd.'); return; }
+    if (!confirm('Veld "' + (FIELD_LABEL[fieldKey] || fieldKey) + '" wordt voor ' + selDocs.length + ' bestand' + (selDocs.length === 1 ? '' : 'en') + ' gewijzigd naar "' + (newValue || '(leeg)') + '". Doorgaan?')){
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Opslaan…';
+    // Bouw één changeset met alle items — TC accepteert tot N items per call.
+    let propId = null;
+    for (const id in PROP_MAP){ if (PROP_MAP[id] === fieldKey){ propId = id; break; } }
+    if (!propId){ alert('Geen UUID gevonden voor veld ' + fieldKey); submitBtn.disabled = false; submitBtn.textContent = 'Opslaan'; return; }
+    const libId = 'tcproject:prod:' + tcProject.id;
+    const items = selDocs.map(function(d){
+      // UNION-merge per doc
+      const props = {};
+      for (const id in PROP_MAP){
+        const fn = PROP_MAP[id];
+        if (fn && d[fn]) props[id] = d[fn];
+      }
+      if (newValue === '' || newValue == null){ delete props[propId]; }
+      else { props[propId] = String(newValue); }
+      return { link: d._psetLink || ('frn:tcfile:' + d._vid), libId: libId, defId: 'tcfiles', props: props };
+    });
+    try {
+      const resp = await _dlPostPSet('/psets/changeset', { items: items });
+      const respItems = (resp && resp.items) || [];
+      let ok = 0, fout = 0;
+      const failed = [];
+      for (let i = 0; i < selDocs.length; i++){
+        const ri = respItems[i];
+        const itemErr = ri && (ri.error || ri.errorMessage);
+        if (itemErr){
+          fout++;
+          failed.push({ name: selDocs[i].bestandsnaam, err: itemErr });
+        } else {
+          ok++;
+          // Lokale state syncen
+          const serverProps = ri && ri.props;
+          if (serverProps){
+            for (const id in PROP_MAP){
+              const fn = PROP_MAP[id];
+              const v = serverProps[id];
+              if (fn && v && v !== '--') selDocs[i][fn] = String(v).trim();
+            }
+          } else {
+            // Fallback: alleen het gewijzigde veld lokaal updaten
+            if (newValue === '' || newValue == null) delete selDocs[i][fieldKey];
+            else selDocs[i][fieldKey] = newValue;
+          }
+        }
+      }
+      console.log('[DL] bulk-edit klaar — ok:', ok, ', fout:', fout);
+      // Toon resultaat in success-view
+      const form = document.getElementById('dl-bulk-form');
+      const success = document.getElementById('dl-bulk-success');
+      const successMsg = document.getElementById('dl-bulk-success-msg');
+      const failList = document.getElementById('dl-bulk-fail-list');
+      if (form) form.style.display = 'none';
+      if (success) success.style.display = '';
+      if (submitBtn) submitBtn.style.display = 'none';
+      if (successMsg){
+        successMsg.textContent = '✓ ' + ok + ' bestand' + (ok === 1 ? '' : 'en') + ' bijgewerkt' + (fout ? ', ' + fout + ' fout' + (fout === 1 ? '' : 'en') + '.' : '.');
+      }
+      if (failList){
+        failList.innerHTML = failed.length
+          ? failed.map(function(f){
+              return '<div class="dl-share-link-item"><span class="name">' + _esc(f.name) + '</span><span style="color:#ef4444;font-size:11px">' + _esc(f.err) + '</span></div>';
+            }).join('')
+          : '';
+      }
+      // Tabel + cache vernieuwen
+      _renderTable();
+      _writeCache(_buildCacheFromDocs());
+      // Datalist incrementeel uitbreiden
+      try { _addDatalistValue(fieldKey, newValue); } catch(_){}
+    } catch(e){
+      console.error('[DL] bulk-edit fout:', e);
+      alert('Bulk wijzigen mislukt: ' + e.message);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Opslaan';
+    }
+  }
+
   // === Share-modal (iter B) ===
   // Toont modal, popt selectie-bestanden in, reset form, vult voorbeeld-vervaldatum (+14 dagen).
   function _openShareDialog(){
@@ -6683,6 +6853,7 @@ const DL = (function(){
         '<div id="dl-selection-bar" class="dl-selection-bar" style="display:none">' +
           '<span class="dl-selection-count" id="dl-selection-count">0 geselecteerd</span>' +
           '<button type="button" id="dl-share-btn" class="dl-selection-btn dl-selection-btn-primary">📤 Delen</button>' +
+          '<button type="button" id="dl-bulk-edit-btn" class="dl-selection-btn dl-selection-btn-primary">✏️ Bulk wijzigen</button>' +
           '<button type="button" id="dl-selection-clear" class="dl-selection-btn">Selectie wissen</button>' +
         '</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
@@ -6747,6 +6918,40 @@ const DL = (function(){
               '<button type="button" id="dl-share-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
               '<button type="button" id="dl-share-copy" class="dl-share-btn dl-share-btn-secondary" style="display:none">Kopieer links</button>' +
               '<button type="button" id="dl-share-submit" class="dl-share-btn dl-share-btn-primary">Delen</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        // Bulk-edit modal (hidden default; toggled door _openBulkEditDialog/_closeBulkEditDialog)
+        '<div id="dl-bulk-modal" class="dl-share-modal" style="display:none">' +
+          '<div class="dl-share-backdrop" id="dl-bulk-backdrop"></div>' +
+          '<div class="dl-share-panel" role="dialog" aria-label="Metadata bulk wijzigen">' +
+            '<div class="dl-share-head">' +
+              '<h3 class="dl-share-title">Metadata bulk wijzigen</h3>' +
+              '<button type="button" id="dl-bulk-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
+            '</div>' +
+            '<div class="dl-share-body">' +
+              '<div id="dl-bulk-form">' +
+                '<label class="dl-share-label">Veld' +
+                  '<select id="dl-bulk-field" class="dl-share-input">' +
+                    '<option value="">— Kies veld —</option>' +
+                  '</select>' +
+                '</label>' +
+                '<div id="dl-bulk-value-wrap" class="dl-share-label">Waarde' +
+                  '<div id="dl-bulk-value-slot"></div>' +
+                '</div>' +
+                '<div class="dl-share-files">' +
+                  '<div class="dl-share-files-head"><strong id="dl-bulk-count">0 bestanden</strong></div>' +
+                  '<ul id="dl-bulk-files-list" class="dl-share-files-list"></ul>' +
+                '</div>' +
+              '</div>' +
+              '<div id="dl-bulk-success" style="display:none">' +
+                '<div class="dl-share-success-msg" id="dl-bulk-success-msg"></div>' +
+                '<div id="dl-bulk-fail-list" class="dl-share-links"></div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="dl-share-foot">' +
+              '<button type="button" id="dl-bulk-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
+              '<button type="button" id="dl-bulk-submit" class="dl-share-btn dl-share-btn-primary">Opslaan</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -6961,6 +7166,19 @@ const DL = (function(){
     if (shareModeSel) shareModeSel.addEventListener('change', _updateShareModeInfo);
     const shareCopy = root.querySelector('#dl-share-copy');
     if (shareCopy) shareCopy.addEventListener('click', _copyShareLinks);
+    // Bulk-edit dialog
+    const bulkBtn = root.querySelector('#dl-bulk-edit-btn');
+    if (bulkBtn) bulkBtn.addEventListener('click', _openBulkEditDialog);
+    const bulkClose = root.querySelector('#dl-bulk-close');
+    if (bulkClose) bulkClose.addEventListener('click', _closeBulkEditDialog);
+    const bulkCancel = root.querySelector('#dl-bulk-cancel');
+    if (bulkCancel) bulkCancel.addEventListener('click', _closeBulkEditDialog);
+    const bulkBackdrop = root.querySelector('#dl-bulk-backdrop');
+    if (bulkBackdrop) bulkBackdrop.addEventListener('click', _closeBulkEditDialog);
+    const bulkField = root.querySelector('#dl-bulk-field');
+    if (bulkField) bulkField.addEventListener('change', function(){ _renderBulkValueInput(bulkField.value); });
+    const bulkSubmit = root.querySelector('#dl-bulk-submit');
+    if (bulkSubmit) bulkSubmit.addEventListener('click', _submitBulkEdit);
     // Kolom-picker: knop opent/sluit popover, outside-click sluit, reset-knop herstelt defaults
     const colsBtn = root.querySelector('#dl-cols-btn');
     const colsPicker = root.querySelector('#dl-cols-picker');
