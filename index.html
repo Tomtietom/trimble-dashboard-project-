@@ -675,6 +675,12 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl th.dl-th-cb input,.dl-tbl td.dl-cell-cb input{cursor:pointer;margin:0;vertical-align:middle}
 .dl-tbl tbody tr.dl-row.dl-row-selected{background:var(--afl)}
 .dl-tbl tbody tr.dl-row.dl-row-selected:hover{background:var(--afl)}
+.dl-tbl tbody td.dl-cell-editable{cursor:cell;user-select:none}
+.dl-tbl tbody td.dl-cell-editable:hover{background:rgba(212,130,26,.06);box-shadow:inset 0 0 0 1px var(--af)}
+.dl-tbl tbody td.dl-cell-editing{padding:2px 4px;background:#fff!important}
+.dl-cell-input{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--af);border-radius:3px;font:inherit;background:#fff;color:var(--dk);outline:none}
+.dl-cell-input:focus{box-shadow:0 0 0 2px var(--afl)}
+.dl-tbl tbody tr.dl-row-editing{background:#fffaf2}
 .dl-filter{padding:6px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;background:#fff;cursor:pointer;min-width:140px}
 .dl-filter:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 2px var(--afl)}
 .dl-filter-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 13px 'Poppins',sans-serif;color:var(--g5);transition:all .15s}
@@ -4697,6 +4703,12 @@ const DL = (function(){
   // Kolommen die NIET als per-kolom filter beschikbaar zijn (vrij-tekst, datums, technical)
   const SKIP_FILTER = new Set(['bestandsnaam', 'document_nummer', 'titel', 'revisie', 'document_datum', 'document_aanmaak_datum', '_versie', '_modified', '_created', 'file_location', 'ifc_timestamp']);
   function _isMetaCol(k){ return !!k && k.charAt(0) !== '_' && k !== 'bestandsnaam' && k !== 'file_location'; }
+  // Een veld is inline-editbaar als het een PSet-UUID heeft in PROP_MAP (dwz. echt metadata is).
+  function _isEditableField(k){
+    if (!k) return false;
+    for (const id in PROP_MAP){ if (PROP_MAP[id] === k) return true; }
+    return false;
+  }
   // 3D-bestanden openen in TC's 3D viewer; alle andere in 2D viewer (PDF, images, office).
   const EXT_3D = ['ifc','rvt','nwd','nwc','dgn','dwg','skp','fbx','obj','3ds'];
   function _tcFileUrl(doc){
@@ -4945,6 +4957,74 @@ const DL = (function(){
     const txt = await r.text();
     if (!txt) return null;
     try { return JSON.parse(txt); } catch(_){ return txt; }
+  }
+
+  // POST naar PSet API met JSON body. Voor /psets/changeset (write metadata).
+  async function _dlPostPSet(path, body){
+    const headers = {
+      'Authorization': 'Bearer ' + tcToken,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    };
+    const r = await fetch(_getPsetBase() + path, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(body),
+    });
+    if (!r.ok){
+      const txt = await r.text().catch(function(){ return ''; });
+      throw new Error('PSet POST ' + r.status + ' ' + path + ' — ' + txt.slice(0, 300));
+    }
+    if (r.status === 204) return null;
+    const txt = await r.text();
+    if (!txt) return null;
+    try { return JSON.parse(txt); } catch(_){ return txt; }
+  }
+
+  // Save één metadata-veld naar TC's PSet API.
+  // UNION-merge: alle bekende props uit doc verzamelen + de nieuwe waarde toepassen.
+  // Anders gooit TC's replace-semantiek velden weg die we niet meesturen.
+  async function _saveCell(doc, fieldKey, newValue){
+    let propId = null;
+    for (const id in PROP_MAP){
+      if (PROP_MAP[id] === fieldKey){ propId = id; break; }
+    }
+    if (!propId) throw new Error('Geen UUID voor veld "' + fieldKey + '" in PROP_MAP');
+    const props = {};
+    for (const id in PROP_MAP){
+      const fn = PROP_MAP[id];
+      if (fn && doc[fn]) props[id] = doc[fn];
+    }
+    if (newValue === '' || newValue == null){
+      delete props[propId];
+    } else {
+      props[propId] = String(newValue);
+    }
+    const libId = 'tcproject:prod:' + tcProject.id;
+    const link = doc._psetLink || ('frn:tcfile:' + doc._vid);
+    const body = { items: [{ link: link, libId: libId, defId: 'tcfiles', props: props }] };
+    console.log('[DL] save cell:', doc.bestandsnaam, fieldKey, '=', newValue, '— props:', Object.keys(props).length);
+    const resp = await _dlPostPSet('/psets/changeset', body);
+    // TC kan 200 OK retourneren met per-item fouten — check errorCount
+    if (resp && resp.errorCount > 0){
+      const item = resp.items && resp.items[0] || {};
+      const itemErr = item.error || item.errorMessage || 'Onbekende fout';
+      throw new Error('TC weigerde: ' + itemErr);
+    }
+    // Sync local doc-state met server-response (server is canonical)
+    const serverProps = resp && resp.items && resp.items[0] && resp.items[0].props;
+    if (serverProps){
+      for (const id in PROP_MAP){
+        const fn = PROP_MAP[id];
+        if (!fn) continue;
+        const v = serverProps[id];
+        if (v && v !== '--') doc[fn] = String(v).trim();
+      }
+    } else {
+      // Fallback: alleen het gewijzigde veld lokaal updaten
+      doc[fieldKey] = newValue;
+    }
+    return resp;
   }
 
   async function _loadMetadata(){
@@ -5226,6 +5306,107 @@ const DL = (function(){
       console.warn('[DL] versies ophalen mislukt:', vid, '— error:', e.message);
       _versionsCache.set(vid, null);
       return null;
+    }
+  }
+
+  // Vervang een tabelcel door een input/select. Op blur of Enter → save, op Escape → cancel.
+  // Visuele feedback: oranje rand tijdens save, groen bij succes, rood bij fout.
+  function _makeCellEditable(td, doc, fieldKey){
+    if (td.classList.contains('dl-cell-editing')) return;
+    const tr = td.closest('tr.dl-row');
+    if (tr) tr.classList.add('dl-row-editing');
+    td.classList.add('dl-cell-editing');
+    const origHtml = td.innerHTML;
+    const curVal = doc[fieldKey] != null ? String(doc[fieldKey]) : '';
+    const isDate = /datum/.test(fieldKey);
+    const enumVals = ENUM_VALUES[fieldKey];
+    let input;
+    if (enumVals && enumVals.length){
+      input = document.createElement('select');
+      input.className = 'dl-cell-input';
+      const optBlank = document.createElement('option');
+      optBlank.value = ''; optBlank.textContent = '–';
+      input.appendChild(optBlank);
+      enumVals.forEach(function(v){
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        if (v === curVal) o.selected = true;
+        input.appendChild(o);
+      });
+      if (!enumVals.includes(curVal) && curVal){
+        // Bestaande waarde valt buiten enum — toon hem ook
+        const o = document.createElement('option');
+        o.value = curVal; o.textContent = curVal + ' (custom)'; o.selected = true;
+        input.insertBefore(o, input.children[1] || null);
+      }
+    } else {
+      input = document.createElement('input');
+      input.type = isDate ? 'date' : 'text';
+      input.className = 'dl-cell-input';
+      input.value = curVal;
+    }
+    td.innerHTML = '';
+    td.appendChild(input);
+    setTimeout(function(){
+      input.focus();
+      if (input.select) try { input.select(); } catch(_){}
+    }, 0);
+
+    let done = false;
+    const cleanup = function(){
+      td.classList.remove('dl-cell-editing');
+      if (tr) tr.classList.remove('dl-row-editing');
+    };
+    const revert = function(){
+      if (done) return;
+      done = true;
+      td.innerHTML = origHtml;
+      cleanup();
+    };
+    const save = async function(){
+      if (done) return;
+      const newVal = input.value;
+      if (newVal === curVal){ revert(); return; }
+      done = true;
+      input.disabled = true;
+      td.style.borderLeft = '3px solid var(--af)';
+      td.style.background = 'rgba(212,130,26,.08)';
+      try {
+        await _saveCell(doc, fieldKey, newVal);
+        // Re-render alleen deze cell met de nieuwe waarde
+        const updated = doc[fieldKey] != null ? String(doc[fieldKey]) : '';
+        td.innerHTML = _esc(updated);
+        td.style.background = '#f0fdf4';
+        td.style.borderLeft = '3px solid #22c55e';
+        setTimeout(function(){
+          td.style.background = '';
+          td.style.borderLeft = '';
+        }, 1500);
+        cleanup();
+        // Cache invalideren zodat refresh nieuwe waarde leest
+        _writeCache(_buildCacheFromDocs());
+      } catch(e){
+        console.warn('[DL] save mislukt:', e.message);
+        td.innerHTML = origHtml;
+        td.style.background = '#fef2f2';
+        td.style.borderLeft = '3px solid #ef4444';
+        setTimeout(function(){
+          td.style.background = '';
+          td.style.borderLeft = '';
+        }, 2500);
+        cleanup();
+        alert('Opslaan mislukt: ' + e.message);
+      }
+    };
+
+    input.addEventListener('keydown', function(e){
+      if (e.key === 'Enter'){ e.preventDefault(); input.blur(); }
+      else if (e.key === 'Escape'){ e.preventDefault(); revert(); }
+    });
+    input.addEventListener('blur', save);
+    if (input.tagName === 'SELECT'){
+      // Voor select: bij change ook saven (mobile/quick UX)
+      input.addEventListener('change', function(){ input.blur(); });
     }
   }
 
@@ -5780,6 +5961,7 @@ const DL = (function(){
     for (const c of _getActiveCols()){
       let v = d[c.k];
       let cls = '';
+      let extraAttrs = '';
       if (c.k === '_created' || c.k === '_modified'){ v = _formatDate(v); cls = 'dl-cell-date'; }
       else if (c.k === 'bestandsnaam'){
         const naam = _esc(v == null ? '' : v);
@@ -5790,8 +5972,15 @@ const DL = (function(){
         cls = 'dl-cell-name';
       }
       else if (c.k === 'file_location'){ v = _esc(v == null ? '' : v); cls = 'dl-cell-folder'; }
-      else { v = _esc(v == null ? '' : v); }
-      html += '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</td>';
+      else {
+        v = _esc(v == null ? '' : v);
+        // Metadata-velden zijn inline-editbaar: dubbelklik markeert ze.
+        if (_isEditableField(c.k)){
+          cls = (cls ? cls + ' ' : '') + 'dl-cell-editable';
+          extraAttrs = ' data-editable="' + _esc(c.k) + '" title="Dubbelklik om te bewerken"';
+        }
+      }
+      html += '<td' + (cls ? ' class="' + cls + '"' : '') + extraAttrs + '>' + v + '</td>';
     }
     return html + '</tr>';
   }
@@ -5913,15 +6102,34 @@ const DL = (function(){
     // Klik op rij → detail-paneel openen (filter group-rows uit)
     // Klik op bestandsnaam-link → opent file in TC (new tab); detail-paneel niet openen.
     // Klik op checkbox of checkbox-cel → selectie wijzigen; detail-paneel niet openen.
+    // Klik op editable cell of input daarin → niet openen (gebruiker is aan het editen).
     tbody.querySelectorAll('tr.dl-row').forEach(function(tr){
       tr.addEventListener('click', function(e){
         if (e.target.closest('.dl-cell-link')) return;
         if (e.target.closest('.dl-row-cb')) return;
         if (e.target.closest('.dl-cell-cb')) return;
+        if (e.target.closest('.dl-cell-editing')) return;
+        if (e.target.closest('.dl-cell-input')) return;
+        if (tr.classList.contains('dl-row-editing')) return;
         const vid = tr.getAttribute('data-dl-vid');
         if (!vid) return;
         const doc = _docs.find(function(x){ return x._vid === vid; });
         if (doc) _openDetail(doc);
+      });
+    });
+
+    // Dubbelklik op editable cell → inline edit mode
+    tbody.querySelectorAll('td[data-editable]').forEach(function(td){
+      td.addEventListener('dblclick', function(e){
+        e.stopPropagation();
+        e.preventDefault();
+        const fieldKey = td.getAttribute('data-editable');
+        const tr = td.closest('tr.dl-row');
+        const vid = tr && tr.getAttribute('data-dl-vid');
+        if (!vid) return;
+        const doc = _docs.find(function(x){ return x._vid === vid; });
+        if (!doc) return;
+        _makeCellEditable(td, doc, fieldKey);
       });
     });
 
