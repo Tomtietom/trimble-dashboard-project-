@@ -652,6 +652,14 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:var(--s3);padding:10px var(--s3);background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm)}
 .dl-meta-banner{padding:10px 14px;background:#eef4fb;border:1px solid #c8d9ea;border-left:3px solid #4a82c1;border-radius:var(--r-sm);margin-bottom:var(--s3);font-size:var(--fs-sm);color:#2a4d72}
 .dl-meta-banner strong{color:#1a3d62}
+.dl-updates-banner{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff3cd;border:1px solid #ffeaa7;border-left:3px solid #e58e26;border-radius:var(--r-sm);margin-bottom:var(--s3);font-size:var(--fs-sm);color:#856404;animation:dl-fade-in .2s ease-out}
+.dl-updates-icon{font-size:16px;line-height:1;animation:dlSpin 2s linear infinite;color:#856404;display:inline-block}
+.dl-updates-text{flex:1;color:#856404}
+.dl-updates-text strong{color:#5d4204}
+.dl-updates-btn{padding:5px 12px;border:1px solid #856404;background:#fff;color:#856404;border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;cursor:pointer;transition:all .15s}
+.dl-updates-btn:hover{background:#856404;color:#fff}
+.dl-updates-btn-primary{background:#e58e26;color:#fff;border-color:#e58e26;font-weight:500}
+.dl-updates-btn-primary:hover{background:#c97919;border-color:#c97919}
 .dl-selection-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--af);color:#fff;border-radius:var(--r-sm);margin-bottom:var(--s3);box-shadow:0 2px 8px rgba(0,0,0,.08);font-family:'Poppins',sans-serif}
 .dl-selection-count{font-weight:600;font-size:14px;flex:1}
 .dl-selection-btn{padding:6px 12px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;cursor:pointer;transition:background .15s}
@@ -5165,6 +5173,10 @@ const DL = (function(){
   let _projectDefaultVisible = null; // null = nog niet geladen; array = hub default; [] = leeg in hub
   let _projectDefaultOrder = null;
   let _isProjectAdmin = false;
+  // Auto-refresh + updates-banner
+  let _autoRefreshTimer = null;
+  let _isCheckingUpdates = false;
+  let _updatesSnapshot = null; // { nieuw: [vids], gewijzigd: [vids], aantal: N }
   // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
   // 24u TTL — voorkomt 13s wachten op deep-scan bij elk her-openen van de tab.
   const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -5847,6 +5859,8 @@ const DL = (function(){
         _writeCache(_buildCacheFromDocs());
       } catch(e){
         console.warn('[DL] save mislukt:', e.message);
+        // Voeg toe aan offline-buffer voor automatische retry bij volgende load.
+        try { _editBufAdd(doc._vid, fieldKey, newVal); } catch(_){}
         td.innerHTML = origHtml;
         td.style.background = '#fef2f2';
         td.style.borderLeft = '3px solid #ef4444';
@@ -5855,7 +5869,7 @@ const DL = (function(){
           td.style.borderLeft = '';
         }, 2500);
         cleanup();
-        alert('Opslaan mislukt: ' + e.message);
+        alert('Opslaan mislukt: ' + e.message + '\n\nDe wijziging is bewaard en wordt automatisch opnieuw geprobeerd bij de volgende load.');
       }
     };
 
@@ -6051,6 +6065,7 @@ const DL = (function(){
       _docs = result;
       _isLoaded = true;
       console.log('[DL] geladen:', _docs.length, 'documenten');
+      _setupAutoRefresh(); // eenmaal opzetten; timer draait daarna in achtergrond
       if (typeof _prefetchProgress === 'function'){
         try { _prefetchProgress({ current: _docs.length, total: _docs.length, phase: 'docs gevonden', unit: 'docs' }); } catch(_){}
       }
@@ -6069,6 +6084,8 @@ const DL = (function(){
           console.log('[DL] cache hit:', hits, '/', _docs.length, 'docs (' + withMeta + ' met metadata) — bulk + deep-scan overgeslagen');
           _renderTable();
           _buildDatalists();
+          // Retry pending edits ook bij cache-hit (anders wachten ze tot volgende force-refresh)
+          _retryPendingEdits().catch(function(e){ console.warn('[DL] edit-buffer retry fout:', e.message); });
           // Schedule background revalidate van NIEUWE docs (sinds cache) als die er zijn
           const newDocs = _docs.filter(function(d){ return !d._matchedFromBulk; });
           if (newDocs.length > 0){
@@ -6087,6 +6104,8 @@ const DL = (function(){
       _metadataFetchComplete = true;
       _renderTable(); // bulk binnen, eerste 100 docs hebben metadata
       _buildDatalists();
+      // Retry pending edits uit offline-buffer (failed saves van eerdere sessie)
+      _retryPendingEdits().catch(function(e){ console.warn('[DL] edit-buffer retry fout:', e.message); });
       // Deep-scan voor de rest (bulk geeft max 100/project) — async, niet awaiten
       if (_docs.length > 0){
         _deepScanPromise = _deepScanMetadata().then(function(){
@@ -6627,6 +6646,168 @@ const DL = (function(){
       bar.style.display = '';
       if (counter) counter.textContent = n + ' geselecteerd';
     }
+  }
+
+  // === PSet edit-buffer (offline retry) ===
+  // Bij een mislukte inline-edit wordt de wijziging in localStorage gezet zodat een latere
+  // load 'm automatisch opnieuw probeert. Buffer-entries ouder dan 30 dagen worden verwijderd.
+  const EDIT_BUF_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  function _editBufKey(){ return 'dl-editbuf-' + (tcProject && tcProject.id || 'unknown'); }
+  function _editBufGetAll(){
+    try {
+      const raw = localStorage.getItem(_editBufKey());
+      if (!raw) return {};
+      const obj = JSON.parse(raw);
+      return (obj && typeof obj === 'object') ? obj : {};
+    } catch(_){ return {}; }
+  }
+  function _editBufWriteAll(obj){
+    try {
+      // Verwijder lege entries
+      for (const k in obj){
+        if (!obj[k] || !obj[k].fields || Object.keys(obj[k].fields).length === 0) delete obj[k];
+      }
+      if (Object.keys(obj).length === 0){
+        localStorage.removeItem(_editBufKey());
+      } else {
+        localStorage.setItem(_editBufKey(), JSON.stringify(obj));
+      }
+    } catch(_){}
+  }
+  function _editBufAdd(vid, fieldKey, value){
+    const all = _editBufGetAll();
+    if (!all[vid]) all[vid] = { fields: {}, ts: Date.now() };
+    all[vid].fields[fieldKey] = value;
+    all[vid].ts = Date.now();
+    _editBufWriteAll(all);
+    console.log('[DL] edit toegevoegd aan offline-buffer:', vid, fieldKey, '=', value);
+  }
+  function _editBufRemove(vid, fieldKey){
+    const all = _editBufGetAll();
+    if (!all[vid]) return;
+    if (fieldKey){
+      delete all[vid].fields[fieldKey];
+      if (Object.keys(all[vid].fields).length === 0) delete all[vid];
+    } else {
+      delete all[vid];
+    }
+    _editBufWriteAll(all);
+  }
+  async function _retryPendingEdits(){
+    const all = _editBufGetAll();
+    const now = Date.now();
+    let ok = 0, fail = 0, expired = 0;
+    for (const vid in all){
+      const entry = all[vid];
+      // Verlopen entries opruimen
+      if (!entry || !entry.ts || (now - entry.ts) > EDIT_BUF_TTL_MS){
+        delete all[vid];
+        expired++;
+        continue;
+      }
+      const doc = _docs.find(function(d){ return d._vid === vid; });
+      if (!doc){
+        // Doc niet meer in lijst; laat staan voor het geval gebruiker later weer bij dit project komt
+        continue;
+      }
+      for (const fieldKey in (entry.fields || {})){
+        const value = entry.fields[fieldKey];
+        try {
+          await _saveCell(doc, fieldKey, value);
+          delete entry.fields[fieldKey];
+          ok++;
+        } catch(e){
+          console.warn('[DL] retry edit mislukt:', doc.bestandsnaam, fieldKey, '—', e.message);
+          fail++;
+        }
+      }
+      if (Object.keys(entry.fields || {}).length === 0) delete all[vid];
+    }
+    _editBufWriteAll(all);
+    if (ok + fail + expired > 0){
+      console.log('[DL] offline-buffer retry — ok:', ok, '— fail:', fail, '— verlopen:', expired);
+    }
+    if (ok > 0){
+      // Cache verversen + render zodat opgesynced wijzigingen zichtbaar zijn
+      try { _writeCache(_buildCacheFromDocs()); } catch(_){}
+      _renderTable();
+    }
+  }
+
+  // === Auto-refresh + updates-banner ===
+  // 10-min interval + visibilitychange check. Bij detectie van nieuwe/gewijzigde docs
+  // toont een banner — gebruiker beslist zelf wanneer te vernieuwen.
+  function _setupAutoRefresh(){
+    if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+    _autoRefreshTimer = setInterval(_checkForUpdates, 10 * 60 * 1000); // 10 min
+    if (!window._dlAutoRefreshVisHandler){
+      window._dlAutoRefreshVisHandler = function(){
+        if (document.visibilityState === 'visible' && _isLoaded) _checkForUpdates();
+      };
+      document.addEventListener('visibilitychange', window._dlAutoRefreshVisHandler);
+    }
+  }
+
+  async function _checkForUpdates(){
+    if (!tcProject || !tcProject.id || !tcToken || _isCheckingUpdates || !_isLoaded) return;
+    _isCheckingUpdates = true;
+    try {
+      const proj = await tcFetch('/projects/' + tcProject.id);
+      const projInfo = proj && proj._partial ? proj._data : proj;
+      const rootId = projInfo && (projInfo.rootId || projInfo.rootFolderId
+        || (projInfo.rootFolder && projInfo.rootFolder.id)
+        || (projInfo.root && projInfo.root.id));
+      if (!rootId) return;
+      // Verse fetch in tijdelijke buffer (overschrijf _folderIdByPath NIET — anders breaken
+      // huidige map-links). Restore na de check.
+      const savedFolderMap = _folderIdByPath;
+      _folderIdByPath = {};
+      const probeFiles = [];
+      try {
+        await _fetchItemsRecursive(rootId, '', probeFiles);
+      } finally {
+        _folderIdByPath = savedFolderMap;
+      }
+      // Diff op vid + modified-timestamp
+      const oldMap = {};
+      _docs.forEach(function(d){ oldMap[d._vid] = d._modified || ''; });
+      const nieuw = [];
+      const gewijzigd = [];
+      probeFiles.forEach(function(f){
+        if (!f._vid) return;
+        if (!oldMap.hasOwnProperty(f._vid)) nieuw.push(f._vid);
+        else if ((f._modified || '') !== oldMap[f._vid]) gewijzigd.push(f._vid);
+      });
+      if (nieuw.length + gewijzigd.length > 0){
+        _updatesSnapshot = { nieuw: nieuw, gewijzigd: gewijzigd, aantal: nieuw.length + gewijzigd.length };
+        _renderUpdatesBanner();
+      } else if (_updatesSnapshot){
+        _hideUpdatesBanner();
+        _updatesSnapshot = null;
+      }
+    } catch(e){
+      console.warn('[DL] checkForUpdates mislukt:', e.message);
+    } finally {
+      _isCheckingUpdates = false;
+    }
+  }
+
+  function _renderUpdatesBanner(){
+    const banner = document.getElementById('dl-updates-banner');
+    const text = document.getElementById('dl-updates-text');
+    if (!banner || !text || !_updatesSnapshot) return;
+    const n = _updatesSnapshot.nieuw.length;
+    const g = _updatesSnapshot.gewijzigd.length;
+    const delen = [];
+    if (n) delen.push(n + ' nieuw');
+    if (g) delen.push(g + ' gewijzigd');
+    text.innerHTML = '<strong>' + _updatesSnapshot.aantal + ' wijziging' + (_updatesSnapshot.aantal === 1 ? '' : 'en') + ' gedetecteerd</strong> — ' + _esc(delen.join(', '));
+    banner.style.display = 'flex';
+  }
+
+  function _hideUpdatesBanner(){
+    const banner = document.getElementById('dl-updates-banner');
+    if (banner) banner.style.display = 'none';
   }
 
   // === Project-kolom-config via hub (admin-defaults) ===
@@ -7601,6 +7782,12 @@ const DL = (function(){
         '<div id="dl-error" class="dl-error" style="display:none"></div>' +
         '<div id="dl-loading" class="dl-loading" style="display:none">Documenten laden…</div>' +
         '<div id="dl-meta-banner" class="dl-meta-banner" style="display:none"><strong>Geen metadata-schema in dit project.</strong> Filters en metadata-kolommen zijn uitgeschakeld. Bestandsnaam, versie, datum en map blijven beschikbaar.</div>' +
+        '<div id="dl-updates-banner" class="dl-updates-banner" style="display:none">' +
+          '<span class="dl-updates-icon">↻</span>' +
+          '<span class="dl-updates-text" id="dl-updates-text"></span>' +
+          '<button type="button" id="dl-updates-refresh" class="dl-updates-btn dl-updates-btn-primary">Vernieuwen</button>' +
+          '<button type="button" id="dl-updates-close" class="dl-updates-btn" title="Banner sluiten">×</button>' +
+        '</div>' +
         '<div id="dl-selection-bar" class="dl-selection-bar" style="display:none">' +
           '<span class="dl-selection-count" id="dl-selection-count">0 geselecteerd</span>' +
           '<button type="button" id="dl-share-btn" class="dl-selection-btn dl-selection-btn-primary">📤 Delen</button>' +
@@ -8016,6 +8203,28 @@ const DL = (function(){
     if (addRelTarget) addRelTarget.addEventListener('change', _toggleAddRelNewFields);
     const addRelSubmit = root.querySelector('#dl-addrel-submit');
     if (addRelSubmit) addRelSubmit.addEventListener('click', _submitAddToRelease);
+    // Updates-banner: Vernieuwen-knop = force-refresh; X = banner dicht
+    const updRefresh = root.querySelector('#dl-updates-refresh');
+    if (updRefresh){
+      updRefresh.addEventListener('click', async function(){
+        updRefresh.disabled = true;
+        updRefresh.textContent = '⏳ Bezig…';
+        try { await _forceRefresh(); }
+        finally {
+          _updatesSnapshot = null;
+          _hideUpdatesBanner();
+          updRefresh.disabled = false;
+          updRefresh.textContent = 'Vernieuwen';
+        }
+      });
+    }
+    const updClose = root.querySelector('#dl-updates-close');
+    if (updClose){
+      updClose.addEventListener('click', function(){
+        _updatesSnapshot = null;
+        _hideUpdatesBanner();
+      });
+    }
     // Kolom-picker: knop opent/sluit popover, outside-click sluit, reset-knop herstelt defaults
     const colsBtn = root.querySelector('#dl-cols-btn');
     const colsPicker = root.querySelector('#dl-cols-picker');
