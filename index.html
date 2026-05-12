@@ -5481,6 +5481,8 @@ const DL = (function(){
 
   async function _loadMetadata(){
     const libId = 'tcproject:prod:' + tcProject.id;
+    // Eerst PSet-schema laden (UUID-mapping) — anders matcht bulk-fetch tegen verkeerde PROP_MAP
+    await _loadPSetSchema();
     let allInstances = [];
     let skiptoken = null;
     let pages = 0;
@@ -7907,6 +7909,9 @@ const DL = (function(){
   // Force refresh: wis cache + reset state + herlaad. Triggert nieuwe bulk+deep-scan.
   async function _forceRefresh(){
     try { localStorage.removeItem(_cacheKey()); } catch(_){}
+    try { localStorage.removeItem(_psetDefCacheKey()); } catch(_){} // PSet-schema cache ook leeg
+    PROP_MAP = Object.assign({}, PROP_MAP_DEFAULT); // back to defaults — wordt heropgebouwd door _loadPSetSchema
+    ENUM_VALUES = Object.assign({}, ENUM_VALUES_DEFAULT);
     _docs = [];
     _isLoaded = false;
     _isLoading = false;
