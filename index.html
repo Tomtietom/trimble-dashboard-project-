@@ -4174,10 +4174,12 @@ const PU = (function(){
     }
 
     let listBlock = '';
-    if (shortlist.length){
+    const shortlistTop = shortlist.slice(0, 5);
+    const shortlistIds = new Set(shortlistTop.map(function(s){ return s.folder.id; }));
+    if (shortlistTop.length){
       listBlock = '<div class="folder-hint">Voorstel op basis van metadata en bestandsnaam — klik om te kiezen:</div>'
         + '<div class="folder-list">'
-        + shortlist.slice(0, 5).map(function(s, i){
+        + shortlistTop.map(function(s, i){
             const isCurrent = s.folder.id === item.folderId;
             return '<div class="folder-option ' + (isCurrent ? 'selected' : '') + '" data-folder-pick="' + s.folder.id + '" data-id="' + item.id + '">'
               + '<span>' + escapeHtml(s.folder.path || s.folder.name) + '</span>'
@@ -4199,7 +4201,28 @@ const PU = (function(){
       listBlock = '<div class="folder-hint">Vul Discipline/Fase/Status hierboven in voor een voorstel, of zoek hieronder.</div>';
     }
 
-    const showSearch = _writableFolders.length > 20 || item.folderSearch;
+    // Toon ook overige mappen onder de shortlist (folders die niet in de shortlist zitten).
+    // Voor projecten met >20 schrijfbare mappen leunen we op het zoekveld, anders worden het
+    // te veel klikbare regels. Met ≤20 is de volledige lijst behapbaar en direct klikbaar.
+    if (shortlistTop.length && _writableFolders.length <= 20){
+      const extras = _writableFolders.filter(function(f){
+        return f.path !== '(projectroot)' && !shortlistIds.has(f.id);
+      });
+      if (extras.length){
+        listBlock += '<div class="folder-hint" style="margin-top:var(--s2);">Overige mappen:</div>'
+          + '<div class="folder-list">'
+          + extras.map(function(f){
+              return '<div class="folder-option ' + (f.id === item.folderId ? 'selected' : '') + '" data-folder-pick="' + f.id + '" data-id="' + item.id + '">'
+                + '<span>' + escapeHtml(f.path || f.name) + '</span>'
+                + '</div>';
+            }).join('')
+          + '</div>';
+      }
+    }
+
+    // Zoekbalk vanaf 5 mappen (was 20). Bij kleine projecten staan alle mappen al klikbaar
+    // hierboven; bij grotere is de zoek de enige praktische manier om snel te vinden.
+    const showSearch = _writableFolders.length > 5 || item.folderSearch;
     const searchBlock = showSearch
       ? '<input type="text" class="folder-search" data-folder-search="' + item.id + '"'
         + ' placeholder="Zoek in alle ' + _writableFolders.length + ' mappen…"'
