@@ -5079,6 +5079,7 @@ const DL = (function(){
       const res = await tcFetch('/comments?objectId=' + encodeURIComponent(vid) + '&objectType=FILE');
       const body = res && res._partial ? res._data : res;
       const items = Array.isArray(body) ? body : (body && body.items) || [];
+      console.log('[DL] comments fetch', vid, '→ status:', res && res._partial ? '206' : '200', '— items:', items.length, items.length ? '— eerste body:' : '', items.length ? (items[0] && items[0].description || '').slice(0, 60) : '');
       if (!items.length){ _commentCache.set(vid, null); return null; }
       items.sort(function(a, b){
         const da = a && a.createdOn ? String(a.createdOn) : '';
@@ -5089,7 +5090,7 @@ const DL = (function(){
       _commentCache.set(vid, first);
       return first;
     } catch(e){
-      console.warn('[DL] eerste comment ophalen mislukt:', vid, e.message);
+      console.warn('[DL] eerste comment ophalen mislukt:', vid, '— error:', e.message);
       return null;
     }
   }
@@ -5165,13 +5166,11 @@ const DL = (function(){
       return '<tr><th>' + _esc(r.l) + '</th><td>' + cell + '</td></tr>';
     }
 
-    // Twee knoppen: viewer (direct in 2D/3D viewer) en TC file-detail (file in Connect file-UI met preview)
+    // Eén knop: viewer (direct in 2D/3D viewer). Eerdere "Toon in Connect" knop (/files/{vid})
+    // bleek een blanco tabblad te openen — TC ondersteunt die route niet meer als deep-link.
     let openBtns = '';
     if (fileUrl){
       openBtns += '<a class="dl-detail-open" href="' + _esc(fileUrl) + '" target="_blank" rel="noopener" title="Open in 2D/3D viewer">Open in viewer ↗</a>';
-    }
-    if (fileDetailUrl){
-      openBtns += '<a class="dl-detail-open dl-detail-open-secondary" href="' + _esc(fileDetailUrl) + '" target="_blank" rel="noopener" title="Open in Trimble Connect file-overzicht (met map-context)">Toon in Connect ↗</a>';
     }
 
     overlay.innerHTML =
