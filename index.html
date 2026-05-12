@@ -681,6 +681,14 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-detail-comment-loading{padding:var(--s2) 0;color:var(--g5);font-size:13px;font-style:italic}
 .dl-detail-comment-meta{font-size:11px;color:var(--g5);margin-bottom:4px}
 .dl-detail-comment-body{font-size:13px;color:var(--dk);white-space:pre-wrap;line-height:1.5;padding:8px 12px;background:var(--gr);border-radius:var(--r-sm);border-left:3px solid var(--af)}
+.dl-detail-version{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--hl-light);font-size:13px}
+.dl-detail-version:last-child{border-bottom:none}
+.dl-detail-version-latest{background:var(--afl);padding:6px 10px;border-radius:var(--r-sm);border-bottom:none;margin-bottom:4px}
+.dl-detail-version-info{flex:1;min-width:0}
+.dl-detail-version-label{color:var(--dk);font-weight:500}
+.dl-detail-version-meta{color:var(--g5);font-size:11px;margin-top:2px}
+.dl-detail-version-link{color:var(--af);text-decoration:none;font-size:16px;padding:4px 6px;border-radius:var(--r-sm)}
+.dl-detail-version-link:hover{background:var(--afl)}
 @media(max-width:720px){.dl-detail-panel{width:100%;max-width:100vw}}
 
 /* RV — Rechten Viewer (Phase B-2 MVP) */
@@ -4699,6 +4707,7 @@ const DL = (function(){
   let _selectedDoc = null;   // huidige doc in detail-paneel ('_vid' van geselecteerde rij)
   let _escListener = null;   // escape-key handler tijdens panel open
   const _commentCache = new Map(); // vid → first-comment object | null (in-memory, lifetime = page-load)
+  const _versionsCache = new Map(); // vid → array van versies | null (in-memory, lifetime = page-load)
   // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
   // 24u TTL — voorkomt 13s wachten op deep-scan bij elk her-openen van de tab.
   const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -5092,6 +5101,25 @@ const DL = (function(){
     }
   }
 
+  // Versies van een bestand ophalen (lazy, op verzoek). Cached in-memory voor de sessie.
+  // Endpoint: GET /files/{vid}/versions?tokenThumburl=false
+  // Response: array van { versionId, revision, createdOn, createdBy, ... }, nieuwste eerst.
+  async function _fetchVersions(vid){
+    if (!vid) return null;
+    if (_versionsCache.has(vid)) return _versionsCache.get(vid);
+    try {
+      const res = await tcFetch('/files/' + encodeURIComponent(vid) + '/versions?tokenThumburl=false');
+      const body = res && res._partial ? res._data : res;
+      const arr = Array.isArray(body) ? body : (body && body.items) || [];
+      _versionsCache.set(vid, arr);
+      return arr;
+    } catch(e){
+      console.warn('[DL] versies ophalen mislukt:', vid, '— error:', e.message);
+      _versionsCache.set(vid, null);
+      return null;
+    }
+  }
+
   // === Detail-paneel (iter B) ===
   function _openDetail(doc){
     _selectedDoc = doc;
@@ -5182,6 +5210,10 @@ const DL = (function(){
           (metaRows.length
             ? '<h4 class="dl-detail-section">Metadata</h4><table class="dl-detail-table">' + metaRows.map(rowHtml).join('') + '</table>'
             : '<h4 class="dl-detail-section">Metadata</h4><div class="dl-detail-empty">Geen metadata ingevuld voor dit bestand.</div>') +
+          '<div id="dl-detail-versions" style="display:none">' +
+            '<h4 class="dl-detail-section">Versies</h4>' +
+            '<div id="dl-detail-versions-body"></div>' +
+          '</div>' +
           '<h4 class="dl-detail-section">Eerste opmerking</h4>' +
           '<div id="dl-detail-comment"><div class="dl-detail-comment-loading">Laden…</div></div>' +
           openBtns +
@@ -5208,6 +5240,43 @@ const DL = (function(){
       } else {
         el.innerHTML = '<div class="dl-detail-empty">Geen opmerkingen.</div>';
       }
+    });
+
+    // Async: versies ophalen. Toon sectie alleen bij >1 versie (minder visuele ruis).
+    _fetchVersions(d._vid).then(function(versions){
+      if (_selectedDoc !== targetDoc) return;
+      const wrapper = overlay.querySelector('#dl-detail-versions');
+      if (!wrapper) return;
+      if (!versions || versions.length <= 1){
+        wrapper.style.display = 'none';
+        return;
+      }
+      const body = overlay.querySelector('#dl-detail-versions-body');
+      if (!body) return;
+      body.innerHTML = versions.map(function(v, i){
+        const isLatest = i === 0;
+        const dt = v.createdOn ? _formatDate(v.createdOn) : '';
+        const cb = v.createdBy || {};
+        const by = (typeof cb === 'string') ? cb : ((cb.firstName || '') + ' ' + (cb.lastName || '')).trim();
+        const metaParts = [];
+        if (dt) metaParts.push(dt);
+        if (by) metaParts.push(by);
+        const labelText = 'Versie ' + (v.revision || (versions.length - i)) + (isLatest ? ' (laatste)' : '');
+        const tcUrl = tcProject && tcProject.id && v.versionId
+          ? 'https://web.connect.trimble.com/projects/' + encodeURIComponent(tcProject.id) + '/viewer/2D?id=' + encodeURIComponent(d._vid) + '&version=' + encodeURIComponent(v.versionId)
+          : '';
+        const link = tcUrl
+          ? '<a class="dl-detail-version-link" href="' + _esc(tcUrl) + '" target="_blank" rel="noopener" title="Open deze versie in Trimble Connect">↗</a>'
+          : '';
+        return '<div class="dl-detail-version' + (isLatest ? ' dl-detail-version-latest' : '') + '">'
+          +   '<div class="dl-detail-version-info">'
+          +     '<div class="dl-detail-version-label">' + _esc(labelText) + '</div>'
+          +     '<div class="dl-detail-version-meta">' + _esc(metaParts.join(' — ')) + '</div>'
+          +   '</div>'
+          +   link
+          + '</div>';
+      }).join('');
+      wrapper.style.display = '';
     });
   }
 
