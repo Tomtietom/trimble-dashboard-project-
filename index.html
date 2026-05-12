@@ -3349,6 +3349,37 @@ const PU = (function(){
   //  Stage 2B: Settings-modal — admin bewerkt rules / patterns / synonyms
   // ============================================================
   function _openConfigModal(){
+    // 🔬 Diagnose: haal PSet-schema-definitie op om de werkelijke veld-structuur te zien.
+    // Async fire-and-forget, geen UI-impact. Output gaat naar console voor analyse.
+    // Bedoeld om de feature "admin kiest welke metadata-velden actief zijn" te kunnen
+    // bouwen op basis van echte response-shapes per project, niet op aannames.
+    (async function diagnose(){
+      try {
+        const libId = 'tcproject:prod:' + tcProject.id;
+        const r = await _puFetchPSet('/libs/' + encodeURIComponent(libId) + '/defs/tcfiles');
+        console.log('%c[PU] 🔬 PSet-schema diagnose voor lib:', 'color:#D4821A;font-weight:bold', libId);
+        console.log('[PU] 🔬 Raw response:', r);
+        if (r && r.schema){
+          const props = r.schema.props || r.schema.properties || {};
+          const propKeys = Object.keys(props);
+          console.log('[PU] 🔬 schema.props sleutels:', propKeys.length, propKeys);
+          if (propKeys.length){
+            console.log('[PU] 🔬 Eerste prop (volledige structuur):', propKeys[0], '→', props[propKeys[0]]);
+            console.log('[PU] 🔬 Alle props compact:', propKeys.map(function(k){
+              const p = props[k] || {};
+              return { uuid: k, title: p.title || p.name, type: p.type, enum: p.enum, required: p.required };
+            }));
+          }
+        }
+        if (r && r.i18n){
+          console.log('[PU] 🔬 i18n top-level keys:', Object.keys(r.i18n));
+          console.log('[PU] 🔬 i18n raw:', r.i18n);
+        }
+      } catch(e){
+        console.warn('[PU] 🔬 PSet-schema diagnose mislukt (waarschijnlijk geen schema in dit project):', e.message);
+      }
+    })();
+
     // Werkkopie voor in-modal editing (cancel = discard)
     // synoniemen worden platgeslagen tot een array [{field, alias, canonical}] zodat editor-UI simpel is
     const flatSynonyms = [];
@@ -4830,9 +4861,10 @@ const PU = (function(){
 //  duplicatie aanvaarden boven refactor-risico van PU's net-stabiele code)
 // ============================================================
 const DL = (function(){
-  // PSet metadata: UUID → veldnaam mapping (VW BVGO schema, volledige set uit
-  // standalone tc-viewer regel 1753). Detail-paneel toont alle gevulde velden.
-  const PROP_MAP = {
+  // PSet metadata: UUID → veldnaam mapping. Default = VW BVGO schema (16 velden). Wordt bij
+  // _loadPSetSchema() vervangen door de runtime-gefetchde mapping uit /libs/{lib}/defs/tcfiles —
+  // zo werkt cockpit ook voor klanten met een ander PSet-schema.
+  const PROP_MAP_DEFAULT = {
     '79715f10-055a-11ea-9ee0-4f66993176e1': 'document_datum',
     '3d82d630-c1a6-11ed-a3ee-5d6c31021d9f': 'document_aanmaak_datum',
     'a442e490-d47a-11ee-8133-af31c2576a74': 'revisie',
@@ -4850,11 +4882,45 @@ const DL = (function(){
     '33075090-c1a7-11ed-a3ee-5d6c31021d9f': 'bedrijf',
     'f9961070-6f6a-11eb-84a6-c3eae4856606': 'ifc_timestamp',
   };
-  const ENUM_VALUES = {
+  const ENUM_VALUES_DEFAULT = {
     discipline: ['Opdrachtgever','Architect','Constructeur','Installateur','Adviseur','Hoofdaannemer','Onderaannemer','Leverancier','Overheid','Nuts','Directievoering','Overig'],
     project_fase: ['Initiatief','Project definitie','Structuur ontwerp','Voorlopig ontwerp','Definitief ontwerp','Technisch ontwerp','Prijs en contractvorming','Uitvoeringsgereed ontwerp','Realisatie','Gebruik en exploitatie','Project (alle fasen)'],
     document_status: ['Concept','Voorlopig','Definitief','Vervallen','Voor ontwerp','Voor uitvoering','As built','Intern'],
   };
+  // Runtime mappings — starten als kopie van defaults, vervangen bij _loadPSetSchema succes.
+  let PROP_MAP = Object.assign({}, PROP_MAP_DEFAULT);
+  let ENUM_VALUES = Object.assign({}, ENUM_VALUES_DEFAULT);
+  // TCM = naam → interne fieldKey. Gebruikt om i18n-property-namen aan interne velden te koppelen.
+  const TCM_MAP = {
+    'File location': 'file_location',
+    'Bestandsnaam': 'bestandsnaam',
+    'Document nummer': 'document_nummer',
+    'Project fase': 'project_fase',
+    'Document datum': 'document_datum',
+    'Revisie': 'revisie',
+    'Document status': 'document_status',
+    'Bedrijf': 'bedrijf',
+    'Bouwdeel': 'bouwdeel',
+    'Bouwnummer': 'bouwnummer',
+    'Contract status': 'contract_status',
+    'Controlestatus (door controlerende partij)': 'controlestatus',
+    'Controleverzoek': 'controleverzoek',
+    'Discipline': 'discipline',
+    'Document aanmaak datum': 'document_aanmaak_datum',
+    'Document soort': 'document_soort',
+    'IFC timestamp': 'ifc_timestamp',
+    'Tags': 'tags',
+    'Titel': 'titel',
+  };
+  function _matchTCM(name){
+    if (!name) return null;
+    if (TCM_MAP[name]) return TCM_MAP[name];
+    const lc = name.toLowerCase().replace(/[^a-z]/g, '');
+    for (const k in TCM_MAP){
+      if (k.toLowerCase().replace(/[^a-z]/g, '') === lc) return TCM_MAP[k];
+    }
+    return null;
+  }
   const FIELD_LABEL = {
     document_status: 'Status',
     discipline: 'Discipline',
@@ -5295,6 +5361,122 @@ const DL = (function(){
       doc[fieldKey] = newValue;
     }
     return resp;
+  }
+
+  // PSet-definitie cache (7d TTL): project schema verandert zelden, scheelt grote fetch per load.
+  const _PSET_DEF_TTL = 7 * 24 * 60 * 60 * 1000;
+  function _psetDefCacheKey(){ return 'dl-psetdef-' + (tcProject && tcProject.id || 'unknown'); }
+  function _psetDefCacheGet(){
+    try {
+      const raw = localStorage.getItem(_psetDefCacheKey());
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || typeof obj.ts !== 'number') return null;
+      if ((Date.now() - obj.ts) > _PSET_DEF_TTL){
+        try { localStorage.removeItem(_psetDefCacheKey()); } catch(_){}
+        return null;
+      }
+      return obj.def;
+    } catch(_){ return null; }
+  }
+  function _psetDefCacheSet(def){
+    try { localStorage.setItem(_psetDefCacheKey(), JSON.stringify({ def: def, ts: Date.now() })); } catch(_){}
+  }
+
+  // Bouw PROP_MAP + ENUM_VALUES dynamisch uit het PSet-schema van het project.
+  // Strategie:
+  //   1. /libs/{libId}/defs/tcfiles ophalen (cache 7d).
+  //   2. i18n-tree doorlopen → UUID → naam mapping.
+  //   3. Naam → interne fieldKey via TCM_MAP (bv. "Document status" → document_status).
+  //   4. Enum-waarden uit i18n extracten per UUID.
+  // Fallback: bij failure blijft PROP_MAP de hardcoded VW BVGO mapping.
+  async function _loadPSetSchema(){
+    if (!tcProject || !tcProject.id) return;
+    const libId = 'tcproject:prod:' + tcProject.id;
+    let defResp = _psetDefCacheGet();
+    if (defResp){
+      console.log('[DL] PSet-definitie uit cache (7d TTL)');
+    } else {
+      try {
+        defResp = await _dlFetchPSet('/libs/' + encodeURIComponent(libId) + '/defs/tcfiles');
+        if (defResp) _psetDefCacheSet(defResp);
+      } catch(e){
+        console.warn('[DL] PSet-definitie niet ophaalbaar:', e.message, '— hardcoded mapping als fallback');
+        return;
+      }
+    }
+    if (!defResp) return;
+    const schema = defResp.schema || {};
+    const schemaProps = schema.props || schema.properties || {};
+    const propIds = Object.keys(schemaProps).filter(function(k){ return k.indexOf('-') > 0; });
+    const i18n = defResp.i18n || {};
+    // Extract UUID → naam uit i18n. Format kan variëren — recursief alle string-values onder UUID-keys verzamelen.
+    const i18nNames = {};
+    function extractI18nNames(obj){
+      if (!obj || typeof obj !== 'object') return;
+      for (const key in obj){
+        const val = obj[key];
+        const isUUID = key.length >= 8 && key.indexOf('-') > 0 && key.indexOf('.') === -1 && /\d/.test(key);
+        if (isUUID && typeof val === 'string'){ i18nNames[key] = val; continue; }
+        if (isUUID && val && typeof val === 'object' && val.name){ i18nNames[key] = val.name; continue; }
+        if (!isUUID && typeof val === 'object') extractI18nNames(val);
+      }
+    }
+    extractI18nNames(i18n);
+    // Bouw nieuwe PROP_MAP via TCM-name-matching
+    const newPropMap = {};
+    for (const uuid in i18nNames){
+      const veld = _matchTCM(i18nNames[uuid]);
+      if (veld) newPropMap[uuid] = veld;
+    }
+    // Methode 2: probeer schema.props.{uuid}.title/name/description als i18n niks oplevert
+    if (Object.keys(newPropMap).length === 0 && propIds.length){
+      propIds.forEach(function(pid){
+        const pd = schemaProps[pid] || {};
+        const naam = pd.title || pd.name || pd.description || '';
+        const veld = _matchTCM(naam);
+        if (veld) newPropMap[pid] = veld;
+      });
+    }
+    if (Object.keys(newPropMap).length){
+      PROP_MAP = newPropMap;
+      console.log('[DL] PROP_MAP dynamisch uit project-schema:', Object.keys(PROP_MAP).length, 'velden');
+    } else {
+      console.log('[DL] Geen TCM-mapping uit project-schema gevonden; behoud hardcoded fallback');
+    }
+    // Bouw ENUM_VALUES dynamisch uit i18n (pattern "{uuid}.enum.{key}": "DisplayWaarde")
+    const enumSets = {};
+    function extractEnums(obj, parentKey){
+      if (!obj || typeof obj !== 'object') return;
+      for (const key in obj){
+        const val = obj[key];
+        if (typeof val === 'string'){
+          // Probeer key te parsen als {uuid}.enum.{keyName} — niet alle i18n volgt dit format,
+          // dus we proberen ook samengevoegde keys
+          const compositeKey = parentKey ? (parentKey + '.' + key) : key;
+          const m = compositeKey.match(/^([0-9a-f-]{36})\.[^.]*\.(.+)$/);
+          if (m){
+            const uuid = m[1];
+            const fieldName = PROP_MAP[uuid];
+            if (fieldName){
+              if (!enumSets[fieldName]) enumSets[fieldName] = new Set();
+              enumSets[fieldName].add(val);
+            }
+          }
+        } else if (typeof val === 'object'){
+          extractEnums(val, parentKey ? (parentKey + '.' + key) : key);
+        }
+      }
+    }
+    extractEnums(i18n, '');
+    const enumOut = {};
+    for (const f in enumSets){
+      enumOut[f] = Array.from(enumSets[f]).sort(function(a, b){ return a.localeCompare(b, 'nl'); });
+    }
+    if (Object.keys(enumOut).length){
+      ENUM_VALUES = enumOut;
+      console.log('[DL] ENUM_VALUES dynamisch uit project-schema:', Object.keys(ENUM_VALUES).length, 'velden');
+    }
   }
 
   async function _loadMetadata(){
