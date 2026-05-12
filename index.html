@@ -607,7 +607,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-cols-row input:disabled{cursor:not-allowed}
 .dl-cols-row label{cursor:pointer;font-size:14px;color:var(--dk);user-select:none;flex:1;margin:0}
 .dl-cols-row input:disabled+label{color:var(--g5);cursor:not-allowed}
-.dl-cols-picker-foot{padding:8px 14px;border-top:1px solid var(--hl-light);display:flex;justify-content:flex-end}
+.dl-cols-picker-foot{padding:8px 14px;border-top:1px solid var(--hl-light);display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}
 .dl-cols-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;background:#fff;color:var(--dk);cursor:pointer}
 .dl-cols-reset:hover{border-color:var(--af);background:var(--afl)}
 .dl-loading{padding:var(--s5);text-align:center;color:var(--g5);font-size:var(--fs-sm)}
@@ -3503,7 +3503,7 @@ const PU = (function(){
         + '<div id="locked-list">' + lockedFieldsHtml + '</div>'
         + '<h3 style="font-size:14px;margin:22px 0 4px;">6. Verplichte velden voor upload</h3>'
         + '<p class="sub" style="margin:0 0 var(--s1);">Vink aan welke velden ingevuld <strong>moeten</strong> zijn voordat een upload mag starten. De Upload-knop blijft uit zolang er een bestand in de wachtrij een verplicht veld leeg heeft.</p>'
-        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">⚠ Stel alleen verplicht in als dit project de BVGO-metadata-bibliotheek (of een vergelijkbaar PSet-schema) gebruikt. Anders zijn velden wel verplicht in te vullen, maar belandt de metadata mogelijk niet in Trimble Connect.</p>'
+        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">⚠ Stel alleen verplicht in als dit project een metadata-bibliotheek (PSet-schema) gebruikt waarin deze velden bestaan. Anders zijn de velden wel verplicht in te vullen, maar belandt de metadata mogelijk niet in Trimble Connect.</p>'
         + '<div id="required-list">' + requiredFieldsHtml + '</div>'
         + '<h3 style="font-size:14px;margin:22px 0 4px;">7. Dit project als template</h3>'
         + '<p class="sub" style="margin:0 0 var(--s2);">Markeer dit project zodat nieuwe lege projecten in een banner kunnen kiezen om deze regels over te nemen.</p>'
@@ -5092,6 +5092,13 @@ const DL = (function(){
   const _commentCache = new Map(); // vid → first-comment object | null (in-memory, lifetime = page-load)
   const _versionsCache = new Map(); // vid → array van versies | null (in-memory, lifetime = page-load)
   const _releasesCache = { all: null, byId: new Map() }; // in-memory, lifetime = page-load
+  // Hub-config: project-standaard kolom-set die admin kan opslaan voor alle gebruikers
+  const HUB_CONFIG_URL_DL = 'https://atfielt-extension-hub.tom-da0.workers.dev/api/extension-config';
+  const HUB_SESSION_KEY_DL = 'atfielt-hub-session';
+  const EXTENSION_SLUG_DL = 'documentenlijst';
+  let _projectDefaultVisible = null; // null = nog niet geladen; array = hub default; [] = leeg in hub
+  let _projectDefaultOrder = null;
+  let _isProjectAdmin = false;
   // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
   // 24u TTL — voorkomt 13s wachten op deep-scan bij elk her-openen van de tab.
   const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -6438,6 +6445,127 @@ const DL = (function(){
     }
   }
 
+  // === Project-kolom-config via hub (admin-defaults) ===
+  function _getHubSessionTokenDL(){
+    try { return sessionStorage.getItem(HUB_SESSION_KEY_DL) || ''; }
+    catch(_){ return ''; }
+  }
+
+  // Laad project-standaard kolommen vanuit hub. Toepassen pas wanneer gebruiker zelf nog geen
+  // localStorage-config heeft (anders overschrijven we persoonlijke keuze).
+  async function _loadProjectColConfig(){
+    if (!tcProject || !tcProject.id) return;
+    const session = _getHubSessionTokenDL();
+    if (!session) { console.log('[DL] geen hub-session, skip project-defaults'); return; }
+    try {
+      const url = HUB_CONFIG_URL_DL + '?slug=' + encodeURIComponent(EXTENSION_SLUG_DL)
+        + '&project=' + encodeURIComponent(tcProject.id) + '&key=default_columns';
+      const r = await fetch(url, { headers: { 'X-Session': session, 'Accept': 'application/json' } });
+      if (r.status === 404 || r.status === 401){ console.log('[DL] geen project-default kolommen ingesteld'); return; }
+      if (!r.ok){ console.warn('[DL] hub-config fout:', r.status); return; }
+      const data = await r.json();
+      if (!data || !data.found || !data.value){ console.log('[DL] hub-response: geen waarde'); return; }
+      const cfg = data.value;
+      if (cfg.visible && Array.isArray(cfg.visible)) _projectDefaultVisible = cfg.visible;
+      if (cfg.order && Array.isArray(cfg.order)) _projectDefaultOrder = cfg.order;
+      console.log('[DL] project-defaults geladen vanuit hub:', (_projectDefaultVisible || []).length, 'velden, opgeslagen door', data.updatedBy || '(onbekend)');
+      // Toepassen alleen als gebruiker nog géén persoonlijke config heeft
+      const raw = localStorage.getItem(_colsConfigKey());
+      if (!raw){
+        if (_projectDefaultVisible){
+          _visibleColKeys = new Set(_projectDefaultVisible);
+          _visibleColKeys.add('bestandsnaam');
+        }
+        if (_projectDefaultOrder){
+          _colOrder = _projectDefaultOrder.slice();
+        }
+        // UI sync — als tabel al gerenderd is
+        try { _renderColPicker(); _renderFilterBar(); _renderTableHeader(); _renderTable(); } catch(_){}
+      }
+    } catch(e){
+      console.warn('[DL] project-config laden mislukt:', e.message);
+    }
+  }
+
+  async function _saveProjectColConfig(){
+    if (!_isProjectAdmin){ alert('Alleen project-admins kunnen project-standaarden opslaan.'); return; }
+    const session = _getHubSessionTokenDL();
+    if (!session){ alert('Geen hub-sessie. Herlaad de cockpit.'); return; }
+    const config = {
+      visible: Array.from(_visibleColKeys),
+      order: _colOrder.length ? _colOrder.slice() : ALL_COLS.map(function(c){ return c.k; }),
+    };
+    try {
+      const r = await fetch(HUB_CONFIG_URL_DL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Session': session, 'Accept': 'application/json' },
+        body: JSON.stringify({ slug: EXTENSION_SLUG_DL, project: tcProject.id, key: 'default_columns', value: config, tcToken: tcToken }),
+      });
+      const data = await r.json().catch(function(){ return {}; });
+      if (!r.ok){
+        alert('Opslaan mislukt: ' + (data && data.error || r.status));
+        return;
+      }
+      _projectDefaultVisible = config.visible;
+      _projectDefaultOrder = config.order;
+      alert('Project-standaard opgeslagen.\n\nAlle gebruikers die nog geen persoonlijke kolom-config hebben krijgen deze instellingen.');
+      console.log('[DL] project-standaard opgeslagen:', config.visible.length, 'kolommen');
+    } catch(e){
+      console.error('[DL] save project-config fout:', e);
+      alert('Opslaan mislukt: ' + e.message);
+    }
+  }
+
+  // Check of huidige gebruiker ADMIN-rol heeft in dit project. Asynchroon — knop toonbaarheid
+  // wordt gerefreshed zodra check klaar is.
+  async function _checkProjectAdmin(){
+    if (!tcProject || !tcProject.id || !tcToken) return;
+    try {
+      // Email proberen uit Hub-context óf via Workspace API user
+      let myEmail = '';
+      try { myEmail = (window.atfieltTcContext && window.atfieltTcContext.userEmail || '').toLowerCase(); } catch(_){}
+      if (!myEmail){
+        try {
+          const meRes = await tcFetch('/users/me');
+          const me = meRes && meRes._partial ? meRes._data : meRes;
+          if (me && me.email) myEmail = me.email.toLowerCase();
+        } catch(_){}
+      }
+      if (!myEmail){ console.log('[DL] admin-check: eigen email onbekend, skip'); return; }
+      // Range-pagination over /projects/{id}/users tot we onze user vinden
+      let start = 0;
+      const pageSize = 100;
+      let safety = 0;
+      while (safety++ < 30){
+        const headers = { 'Authorization': 'Bearer ' + tcToken, 'Accept': 'application/json', 'Range': 'items=' + start + '-' + (start + pageSize - 1) };
+        const r = await fetch(TC_API_BASE + '/projects/' + encodeURIComponent(tcProject.id) + '/users', { headers: headers });
+        if (!r.ok) break;
+        const users = await r.json();
+        if (!Array.isArray(users) || !users.length) break;
+        const me = users.find(function(u){ return (u.email || '').toLowerCase() === myEmail; });
+        if (me){
+          const role = (me.role || '').toUpperCase();
+          _isProjectAdmin = role === 'ADMIN';
+          console.log('[DL] project-rol:', role, '| admin:', _isProjectAdmin);
+          // UI sync: knop tonen/verbergen in picker als die open is
+          try { _updateAdminSaveButton(); } catch(_){}
+          return;
+        }
+        if (users.length < pageSize) break;
+        start += pageSize;
+      }
+    } catch(e){
+      console.warn('[DL] admin-check fout:', e.message);
+    }
+  }
+
+  // Toon "Opslaan voor project" knop in kolom-picker footer alleen voor project-admins
+  function _updateAdminSaveButton(){
+    const btn = document.getElementById('dl-cols-save-project');
+    if (!btn) return;
+    btn.style.display = _isProjectAdmin ? '' : 'none';
+  }
+
   // === Releases ===
   async function _fetchReleases(){
     if (_releasesCache.all) return _releasesCache.all;
@@ -7249,6 +7377,9 @@ const DL = (function(){
     if (!root) return;
     // Laad kolom-config (per project) vóór eerste render
     _loadColsConfig();
+    // Async: hub project-defaults + admin-check (UI past zich aan zodra binnen)
+    _loadProjectColConfig().catch(function(e){ console.warn('[DL] project-config laden mislukt:', e.message); });
+    _checkProjectAdmin().catch(function(e){ console.warn('[DL] admin-check mislukt:', e.message); });
     // Initiële render: gebruik _getActiveCols() zodat we direct de juiste kolom-set
     // tonen. Bij verandering van _hasMetaSchema later updateert _renderTableHeader().
     const initialCols = _getActiveCols();
@@ -7277,6 +7408,7 @@ const DL = (function(){
               '<div class="dl-cols-picker-head">Kolommen tonen</div>' +
               '<div class="dl-cols-picker-body" id="dl-cols-picker-body"></div>' +
               '<div class="dl-cols-picker-foot">' +
+                '<button type="button" class="dl-cols-reset" id="dl-cols-save-project" style="display:none;background:var(--af);color:#fff;border-color:var(--af)" title="Sla huidige kolom-instellingen op als project-standaard (alle gebruikers krijgen deze defaults)">Opslaan voor project</button>' +
                 '<button type="button" class="dl-cols-reset" id="dl-cols-reset">Standaard herstellen</button>' +
               '</div>' +
             '</div>' +
@@ -7458,6 +7590,8 @@ const DL = (function(){
   function _renderColPicker(){
     const body = document.getElementById('dl-cols-picker-body');
     if (!body) return;
+    // Update admin-knop zichtbaarheid (als admin-check al klaar is)
+    _updateAdminSaveButton();
     // Render in volgorde van _colOrder (indien gezet), anders ALL_COLS volgorde.
     let cols = ALL_COLS.slice();
     if (_colOrder.length){
@@ -7720,7 +7854,16 @@ const DL = (function(){
       const colsReset = root.querySelector('#dl-cols-reset');
       if (colsReset){
         colsReset.addEventListener('click', function(){
-          _visibleColKeys = new Set(DEFAULT_VISIBLE);
+          // Reset naar project-default (uit hub) wanneer beschikbaar, anders hardcoded DEFAULT_VISIBLE
+          if (_projectDefaultVisible){
+            _visibleColKeys = new Set(_projectDefaultVisible);
+            _visibleColKeys.add('bestandsnaam');
+            _colOrder = _projectDefaultOrder ? _projectDefaultOrder.slice() : [];
+          } else {
+            _visibleColKeys = new Set(DEFAULT_VISIBLE);
+            _colOrder = [];
+          }
+          _colWidths = {};
           _filters = {};
           _saveColsConfig();
           _renderColPicker();
@@ -7728,6 +7871,10 @@ const DL = (function(){
           _renderTableHeader();
           _renderTable();
         });
+      }
+      const colsSaveProj = root.querySelector('#dl-cols-save-project');
+      if (colsSaveProj){
+        colsSaveProj.addEventListener('click', _saveProjectColConfig);
       }
     }
     root.querySelectorAll('.dl-th').forEach(function(th){
