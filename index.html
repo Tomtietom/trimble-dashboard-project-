@@ -6171,6 +6171,7 @@ const DL = (function(){
     _metadataFetchComplete = false;
     _deepScanState = null;
     _folderIdByPath = {};
+    _selectedVids.clear();
     const tbody = document.getElementById('dl-tbody');
     if (tbody) tbody.innerHTML = '';
     const count = document.getElementById('dl-count');
@@ -6204,6 +6205,14 @@ const DL = (function(){
           refresh.classList.remove('busy');
           refresh.disabled = false;
         }
+      });
+    }
+    // Selectie wissen knop in de selection-bar
+    const selClear = root.querySelector('#dl-selection-clear');
+    if (selClear){
+      selClear.addEventListener('click', function(){
+        _selectedVids.clear();
+        _renderTable();
       });
     }
     // Kolom-picker: knop opent/sluit popover, outside-click sluit, reset-knop herstelt defaults
