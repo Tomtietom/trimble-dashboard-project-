@@ -549,6 +549,13 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .queue-item .locked-select{background:#f3eee5;color:var(--dk);border-color:#d8c9aa;cursor:not-allowed;opacity:1}
 .queue-item .locked-select:disabled{-webkit-appearance:none;appearance:none;padding-right:10px}
 
+/* Verplichte metadata-velden: rode * achter label, en extra nadruk op leeg */
+.meta-row .req-mark{color:#c0392b;font-weight:700;margin-left:2px}
+.meta-row .req-missing{border-color:#c0392b;background:#fbeae8}
+.meta-row .req-missing:focus{border-color:#c0392b}
+/* Upload-knop disabled door verplichte velden: visueel duidelijk + cursor */
+#pu-upload-btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+
 /* Settings-modal (admin: hub-config bewerken) */
 .pu-app-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s3);margin-bottom:var(--s3)}
 .pu-app-head>div{flex:1;min-width:0}
@@ -3019,8 +3026,26 @@ const PU = (function(){
     return (n/1073741824).toFixed(2) + ' GB';
   }
 
+  // Welke verplichte velden ontbreken bij dit item?
+  // Geen requiredFields ingesteld door admin = leeg array (niets verplicht).
+  function _missingRequiredFields(item){
+    const req = _uploadConfig.requiredFields || {};
+    const out = [];
+    for (const f of METADATA_FIELDS){
+      if (req[f] === true && !item.metadata[f]) out.push(f);
+    }
+    return out;
+  }
+
+  // Soft-incomplete: één of meer metadata-velden leeg.
+  // Wordt nog gebruikt door upload-batch-stats (metadataComplete/metadataWarn telling).
   function _isMetaIncomplete(item){
     return METADATA_FIELDS.some(function(f){ return !item.metadata[f]; });
+  }
+
+  // Hard-block: heeft dit item een verplicht veld dat leeg is?
+  function _hasMissingRequired(item){
+    return _missingRequiredFields(item).length > 0;
   }
 
   // ============================================================
@@ -3106,7 +3131,8 @@ const PU = (function(){
       _configLoaded = true;
       const synCount = Object.values(_uploadConfig.synonyms).reduce(function(n,m){ return n + Object.keys(m).length; }, 0);
       const lockCount = Object.keys(_uploadConfig.lockedFields || {}).length;
-      console.log('[PU] config geladen:', _uploadConfig.rules.length, 'pad-regels,', _uploadConfig.filePatterns.length, 'patronen,', _uploadConfig.folderPatterns.length, 'map-patronen,', synCount, 'synoniemen,', lockCount, 'vergrendelingen' + (_uploadConfig.isTemplate ? ' (template)' : ''));
+      const reqCount = Object.keys(_uploadConfig.requiredFields || {}).length;
+      console.log('[PU] config geladen:', _uploadConfig.rules.length, 'pad-regels,', _uploadConfig.filePatterns.length, 'patronen,', _uploadConfig.folderPatterns.length, 'map-patronen,', synCount, 'synoniemen,', lockCount, 'vergrendelingen,', reqCount, 'verplichte velden' + (_uploadConfig.isTemplate ? ' (template)' : ''));
       // Re-suggest pending items zodra config beschikbaar is
       if (_isInjected){
         for (const item of _queue){
@@ -3145,6 +3171,7 @@ const PU = (function(){
         synonyms: _uploadConfig.synonyms,
         folderPatterns: _uploadConfig.folderPatterns || [],
         lockedFields: _uploadConfig.lockedFields || {},
+        requiredFields: _uploadConfig.requiredFields || {},
         isTemplate: !!_uploadConfig.isTemplate,
       },
       tcToken: tcToken,
@@ -3285,6 +3312,13 @@ const PU = (function(){
       }
     }
     _uploadConfig.lockedFields = locked;
+    const required = {};
+    if (cfg.requiredFields && typeof cfg.requiredFields === 'object'){
+      for (const f of METADATA_FIELDS){
+        if (cfg.requiredFields[f] === true) required[f] = true;
+      }
+    }
+    _uploadConfig.requiredFields = required;
     _uploadConfig.isTemplate = false;
     await _saveUploadConfig();
   }
@@ -3306,6 +3340,7 @@ const PU = (function(){
       synonyms: flatSynonyms,
       folderPatterns: (_uploadConfig.folderPatterns || []).map(function(p){ return { regex: p.regex, folderId: p.folderId }; }),
       lockedFields: Object.assign({}, _uploadConfig.lockedFields || {}),
+      requiredFields: Object.assign({}, _uploadConfig.requiredFields || {}),
       isTemplate: !!_uploadConfig.isTemplate,
     };
 
@@ -3394,6 +3429,14 @@ const PU = (function(){
         + '</div>';
       }).join('');
 
+      const requiredFieldsHtml = METADATA_FIELDS.map(function(f){
+        const checked = draft.requiredFields[f] === true ? ' checked' : '';
+        return '<label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--dk);cursor:pointer;padding:4px 0;">'
+          + '<input type="checkbox" data-req-field="' + f + '"' + checked + ' style="width:16px;height:16px;cursor:pointer;">'
+          + '<span><strong>' + escapeHtml(FIELD_LABEL[f]) + '</strong> verplicht invullen voor upload</span>'
+        + '</label>';
+      }).join('');
+
       modal.innerHTML =
         '<h2>Instellingen — metadata automatisch invullen</h2>'
         + '<p class="sub" style="margin-bottom:var(--s3);">Vertel de uploader hoe je bestanden herkend moeten worden, dan stelt hij de juiste map voor en vult Discipline / Fase / Status alvast in.</p>'
@@ -3436,7 +3479,11 @@ const PU = (function(){
         + '<p class="sub" style="margin:0 0 var(--s1);">Voor projecten waar één discipline / fase / status altijd hetzelfde is (bv. een onderaannemer die alleen Constructeur-bestanden levert).</p>'
         + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">Een vergrendeld veld is in de uploader read-only met 🔒-icoon — de uploader hoeft niets in te vullen.</p>'
         + '<div id="locked-list">' + lockedFieldsHtml + '</div>'
-        + '<h3 style="font-size:14px;margin:22px 0 4px;">6. Dit project als template</h3>'
+        + '<h3 style="font-size:14px;margin:22px 0 4px;">6. Verplichte velden voor upload</h3>'
+        + '<p class="sub" style="margin:0 0 var(--s1);">Vink aan welke velden ingevuld <strong>moeten</strong> zijn voordat een upload mag starten. De Upload-knop blijft uit zolang er een bestand in de wachtrij een verplicht veld leeg heeft.</p>'
+        + '<p class="sub" style="margin:0 0 var(--s3);font-size:var(--fs-xs);">⚠ Stel alleen verplicht in als dit project de BVGO-metadata-bibliotheek (of een vergelijkbaar PSet-schema) gebruikt. Anders zijn velden wel verplicht in te vullen, maar belandt de metadata mogelijk niet in Trimble Connect.</p>'
+        + '<div id="required-list">' + requiredFieldsHtml + '</div>'
+        + '<h3 style="font-size:14px;margin:22px 0 4px;">7. Dit project als template</h3>'
         + '<p class="sub" style="margin:0 0 var(--s2);">Markeer dit project zodat nieuwe lege projecten in een banner kunnen kiezen om deze regels over te nemen.</p>'
         + '<label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--dk);cursor:pointer;">'
           + '<input type="checkbox" id="cfg-is-template"' + (draft.isTemplate ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer;">'
@@ -3572,6 +3619,15 @@ const PU = (function(){
         });
       });
 
+      // === Required-fields handlers ===
+      modal.querySelectorAll('input[data-req-field]').forEach(function(el){
+        el.addEventListener('change', function(){
+          const f = el.getAttribute('data-req-field');
+          if (el.checked) draft.requiredFields[f] = true;
+          else delete draft.requiredFields[f];
+        });
+      });
+
       // === Template-checkbox ===
       const tplCheck = modal.querySelector('#cfg-is-template');
       if (tplCheck) tplCheck.addEventListener('change', function(){ draft.isTemplate = tplCheck.checked; });
@@ -3635,6 +3691,12 @@ const PU = (function(){
                 if (typeof v === 'string' && (ENUM_VALUES[f] || []).indexOf(v) >= 0) draft.lockedFields[f] = v;
               }
             }
+            draft.requiredFields = {};
+            if (cfg.requiredFields && typeof cfg.requiredFields === 'object'){
+              for (const f of METADATA_FIELDS){
+                if (cfg.requiredFields[f] === true) draft.requiredFields[f] = true;
+              }
+            }
             // isTemplate-flag NIET overnemen: dat is een eigenschap van het bron-project zelf,
             // niet iets dat je per kopie overneemt (anders heb je opeens twee templates).
             draft.synonyms = [];
@@ -3649,7 +3711,7 @@ const PU = (function(){
               }
             }
             importMsg.style.color = 'var(--ok)';
-            importMsg.textContent = '✓ Overgenomen: ' + draft.rules.length + ' pad-regels, ' + draft.filePatterns.length + ' patronen, ' + draft.folderPatterns.length + ' map-patronen, ' + draft.synonyms.length + ' synoniemen, ' + Object.keys(draft.lockedFields).length + ' vergrendelingen — nog niet opgeslagen.';
+            importMsg.textContent = '✓ Overgenomen: ' + draft.rules.length + ' pad-regels, ' + draft.filePatterns.length + ' patronen, ' + draft.folderPatterns.length + ' map-patronen, ' + draft.synonyms.length + ' synoniemen, ' + Object.keys(draft.lockedFields).length + ' vergrendelingen, ' + Object.keys(draft.requiredFields).length + ' verplichte velden — nog niet opgeslagen.';
             render();
           } catch(e){
             importMsg.style.color = 'var(--warn)';
@@ -3745,12 +3807,14 @@ const PU = (function(){
         const previousSyn = _uploadConfig.synonyms;
         const previousFolderPatterns = _uploadConfig.folderPatterns;
         const previousLocked = _uploadConfig.lockedFields;
+        const previousRequired = _uploadConfig.requiredFields;
         const previousIsTemplate = _uploadConfig.isTemplate;
         _uploadConfig.rules = draft.rules;
         _uploadConfig.filePatterns = draft.filePatterns;
         _uploadConfig.synonyms = synObj;
         _uploadConfig.folderPatterns = draft.folderPatterns || [];
         _uploadConfig.lockedFields = draft.lockedFields || {};
+        _uploadConfig.requiredFields = draft.requiredFields || {};
         _uploadConfig.isTemplate = !!draft.isTemplate;
         try {
           await _saveUploadConfig();
@@ -3789,6 +3853,7 @@ const PU = (function(){
           _uploadConfig.synonyms = previousSyn;
           _uploadConfig.folderPatterns = previousFolderPatterns;
           _uploadConfig.lockedFields = previousLocked;
+          _uploadConfig.requiredFields = previousRequired;
           _uploadConfig.isTemplate = previousIsTemplate;
           msgEl.style.color = 'var(--warn)';
           msgEl.textContent = e.message;
@@ -4220,6 +4285,23 @@ const PU = (function(){
     }
     if (actions) actions.style.display = '';
 
+    // Upload-knop dynamisch disabled wanneer één of meer pending items een verplicht veld missen.
+    // Tooltip toont aantallen zodat de uploader meteen ziet waarom de knop niet werkt.
+    const upBtn = root.querySelector('#pu-upload-btn');
+    if (upBtn){
+      const pendingItems = _queue.filter(function(i){ return i.status === 'pending'; });
+      const blockedCount = pendingItems.filter(_hasMissingRequired).length;
+      if (blockedCount > 0){
+        upBtn.disabled = true;
+        upBtn.setAttribute('title', blockedCount === 1
+          ? '1 bestand mist een verplicht veld — Upload-knop blijft uit tot het is ingevuld.'
+          : blockedCount + ' bestanden missen verplichte velden — Upload-knop blijft uit tot ze zijn ingevuld.');
+      } else {
+        upBtn.disabled = false;
+        upBtn.removeAttribute('title');
+      }
+    }
+
     qEl.innerHTML = _queue.map(function(item){
       const selectedFolder = _writableFolders.find(function(f){ return f.id === item.folderId; });
       const disabled = item.status !== 'pending' ? 'disabled' : '';
@@ -4441,30 +4523,38 @@ const PU = (function(){
   }
 
   function _renderMetaRow(item){
+    const req = _uploadConfig.requiredFields || {};
     const parts = METADATA_FIELDS.map(function(field){
       const val = item.metadata[field] || '';
       const missing = !val;
       const auto = item.metadataAuto && item.metadataAuto[field];
       const locked = item.metadataLocked && item.metadataLocked[field];
+      const required = req[field] === true;
       const opts = ['<option value="">— kies —</option>'].concat(
         (ENUM_VALUES[field] || []).map(function(v){
           return '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
         })
       ).join('');
+      // Verplicht-marker: rode * naast veldnaam. Voor admin-config + uploader één blik dat veld moet.
+      const reqMark = required ? '<span class="req-mark" title="Verplicht — Upload-knop blijft uit tot dit veld is ingevuld">*</span>' : '';
       if (locked){
-        // Vergrendeld door admin — toon 🔒 in label en disabled select met vaste waarde
+        // Vergrendeld door admin — toon 🔒 in label en disabled select met vaste waarde.
+        // Locked velden zijn altijd ingevuld dus voldoen automatisch aan een eventuele verplicht-eis.
         return ''
           + '<div>'
             + '<label title="Vergrendeld door projectbeheerder — niet aan te passen">🔒 ' + escapeHtml(FIELD_LABEL[field]) + '</label>'
             + '<select class="locked-select" data-field="meta-' + field + '" data-id="' + item.id + '" disabled>' + opts + '</select>'
           + '</div>';
       }
-      const icon = missing ? '<span class="warn-icon" title="Verplicht">⚠</span>' : '';
-      const cls = missing ? 'warn-select' : '';
+      // Een leeg veld dat NIET verplicht is mag enkel een grijze ⚠; een leeg VERPLICHT veld
+      // krijgt extra nadruk via class req-missing zodat de uploader meteen ziet waar het hapert.
+      const icon = missing ? '<span class="warn-icon" title="' + (required ? 'Verplicht — moet ingevuld' : 'Ontbreekt nog') + '">⚠</span>' : '';
+      let cls = missing ? 'warn-select' : '';
+      if (missing && required) cls += ' req-missing';
       const autoAttr = auto ? ' data-auto="1" title="Automatisch ingevuld op basis van mapstructuur of bestandsnaam"' : '';
       return ''
         + '<div>'
-          + '<label>' + escapeHtml(FIELD_LABEL[field]) + ' ' + icon + '</label>'
+          + '<label>' + escapeHtml(FIELD_LABEL[field]) + reqMark + ' ' + icon + '</label>'
           + '<select class="' + cls + '" data-field="meta-' + field + '" data-id="' + item.id + '"' + autoAttr + '>' + opts + '</select>'
         + '</div>';
     }).join('');
@@ -4587,12 +4677,23 @@ const PU = (function(){
   async function uploadAll(){
     const pending = _queue.filter(function(i){ return i.status === 'pending' && i.folderId; });
     if (!pending.length) return;
+    // Hard-block: als admin verplichte velden heeft ingesteld, mag er niets door
+    // tot ze allemaal gevuld zijn. Knop is normaal disabled (renderQueue regelt dat),
+    // maar als de check faalt sluipt er ook geen klik door via keyboard / scripted event.
+    const blocked = pending.filter(_hasMissingRequired);
+    if (blocked.length){
+      const root0 = getRoot();
+      const upBtn0 = root0 && root0.querySelector('#pu-upload-btn');
+      if (upBtn0){
+        upBtn0.disabled = true;
+        upBtn0.setAttribute('title', blocked.length + ' bestand(en) missen verplichte metadata.');
+      }
+      return;
+    }
+    // Soft incomplete (alleen voor batch-statistiek; geen confirm meer — verplicht is verplicht).
     const incomplete = pending.filter(_isMetaIncomplete);
     if (incomplete.length){
-      const msg = (incomplete.length === 1
-        ? '1 bestand heeft geen volledige metadata (discipline/fase/status). Toch uploaden?'
-        : incomplete.length + ' bestanden hebben geen volledige metadata (discipline/fase/status). Toch uploaden?');
-      if (!confirm(msg)) return;
+      console.log('[PU] ' + incomplete.length + ' bestand(en) starten zonder volledige metadata (geen veld is verplicht ingesteld).');
     }
     const root = getRoot();
     const upBtn = root && root.querySelector('#pu-upload-btn');
@@ -4795,6 +4896,58 @@ const DL = (function(){
     if (!k) return false;
     for (const id in PROP_MAP){ if (PROP_MAP[id] === k) return true; }
     return false;
+  }
+  // Vrij-tekstvelden waarvoor autocomplete-voorstellen zinvol zijn (geen enum, geen datum).
+  function _autocompleteFields(){
+    const out = [];
+    for (const id in PROP_MAP){
+      const k = PROP_MAP[id];
+      if (!k) continue;
+      if (ENUM_VALUES[k]) continue;
+      if (/datum/.test(k) || /timestamp/.test(k)) continue;
+      out.push(k);
+    }
+    return out;
+  }
+  // Volledige rebuild van datalists — bij initiële data-load. NIET vanuit edit-flow aanroepen
+  // (innerHTML-thrashing terwijl gebruiker in input-veld zit kan focus-loss veroorzaken).
+  function _buildDatalists(){
+    const pool = document.getElementById('dl-datalist-pool');
+    if (!pool) return;
+    const fields = _autocompleteFields();
+    const waarden = {};
+    fields.forEach(function(k){ waarden[k] = new Set(); });
+    for (const d of _docs){
+      for (const k of fields){
+        const v = (d[k] || '').toString().trim();
+        if (v && v !== '--') waarden[k].add(v);
+      }
+    }
+    while (pool.firstChild) pool.removeChild(pool.firstChild);
+    fields.forEach(function(k){
+      const dl = document.createElement('datalist');
+      dl.id = 'dl-list-' + k;
+      Array.from(waarden[k]).sort(function(a, b){ return a.localeCompare(b, 'nl'); }).forEach(function(v){
+        const opt = document.createElement('option');
+        opt.value = v;
+        dl.appendChild(opt);
+      });
+      pool.appendChild(dl);
+    });
+    console.log('[DL] datalists gebouwd voor', fields.length, 'velden');
+  }
+  // Incrementele update — veilig na save zonder reflow-storm
+  function _addDatalistValue(field, value){
+    const v = (value || '').toString().trim();
+    if (!v || v === '--' || !field) return;
+    const dl = document.getElementById('dl-list-' + field);
+    if (!dl) return;
+    for (let i = 0; i < dl.options.length; i++){
+      if (dl.options[i].value === v) return;
+    }
+    const opt = document.createElement('option');
+    opt.value = v;
+    dl.appendChild(opt);
   }
   // 3D-bestanden openen in TC's 3D viewer; alle andere in 2D viewer (PDF, images, office).
   const EXT_3D = ['ifc','rvt','nwd','nwc','dgn','dwg','skp','fbx','obj','3ds'];
@@ -5431,6 +5584,10 @@ const DL = (function(){
       input.type = isDate ? 'date' : 'text';
       input.className = 'dl-cell-input';
       input.value = curVal;
+      // Datalist-koppeling voor vrij-tekstvelden (autocomplete-voorstellen)
+      if (input.type === 'text' && document.getElementById('dl-list-' + fieldKey)){
+        input.setAttribute('list', 'dl-list-' + fieldKey);
+      }
     }
     td.innerHTML = '';
     td.appendChild(input);
@@ -5470,6 +5627,8 @@ const DL = (function(){
           td.style.borderLeft = '';
         }, 1500);
         cleanup();
+        // Datalist incrementeel uitbreiden zodat suggestie direct beschikbaar is voor volgende edits
+        try { _addDatalistValue(fieldKey, doc[fieldKey] != null ? String(doc[fieldKey]) : newVal); } catch(_){}
         // Cache invalideren zodat refresh nieuwe waarde leest
         _writeCache(_buildCacheFromDocs());
       } catch(e){
@@ -5695,6 +5854,7 @@ const DL = (function(){
           _metadataFetchComplete = true;
           console.log('[DL] cache hit:', hits, '/', _docs.length, 'docs (' + withMeta + ' met metadata) — bulk + deep-scan overgeslagen');
           _renderTable();
+          _buildDatalists();
           // Schedule background revalidate van NIEUWE docs (sinds cache) als die er zijn
           const newDocs = _docs.filter(function(d){ return !d._matchedFromBulk; });
           if (newDocs.length > 0){
@@ -6536,6 +6696,8 @@ const DL = (function(){
             '<div id="dl-no-results" class="dl-no-results" style="display:none">Geen documenten gevonden</div>' +
           '</div>' +
         '</div>' +
+        // Pool voor autocomplete <datalist> elements (verborgen, geen visuele rendering)
+        '<div id="dl-datalist-pool" style="display:none"></div>' +
         // Share modal (hidden default; toggled door _openShareDialog/_closeShareDialog)
         '<div id="dl-share-modal" class="dl-share-modal" style="display:none">' +
           '<div class="dl-share-backdrop" id="dl-share-backdrop"></div>' +
