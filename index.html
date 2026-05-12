@@ -3366,22 +3366,20 @@ const PU = (function(){
         const libId = 'tcproject:prod:' + tcProject.id;
         const r = await _puFetchPSet('/libs/' + encodeURIComponent(libId) + '/defs/tcfiles');
         console.log('%c[PU] 🔬 PSet-schema diagnose voor lib:', 'color:#D4821A;font-weight:bold', libId);
-        console.log('[PU] 🔬 Raw response:', r);
+        // JSON.stringify zodat de hele response als platte tekst in de console staat —
+        // dan kan de inhoud in één keer gekopieerd worden zonder objecten uit te klappen.
+        try {
+          console.log('[PU] 🔬 RAW JSON (kopieer dit hele blok):\n' + JSON.stringify(r, null, 2));
+        } catch(_){
+          console.log('[PU] 🔬 Stringify mislukt — raw object:', r);
+        }
         if (r && r.schema){
           const props = r.schema.props || r.schema.properties || {};
           const propKeys = Object.keys(props);
           console.log('[PU] 🔬 schema.props sleutels:', propKeys.length, propKeys);
-          if (propKeys.length){
-            console.log('[PU] 🔬 Eerste prop (volledige structuur):', propKeys[0], '→', props[propKeys[0]]);
-            console.log('[PU] 🔬 Alle props compact:', propKeys.map(function(k){
-              const p = props[k] || {};
-              return { uuid: k, title: p.title || p.name, type: p.type, enum: p.enum, required: p.required };
-            }));
-          }
         }
         if (r && r.i18n){
           console.log('[PU] 🔬 i18n top-level keys:', Object.keys(r.i18n));
-          console.log('[PU] 🔬 i18n raw:', r.i18n);
         }
       } catch(e){
         console.warn('[PU] 🔬 PSet-schema diagnose mislukt (waarschijnlijk geen schema in dit project):', e.message);
