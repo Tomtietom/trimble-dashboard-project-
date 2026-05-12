@@ -6905,6 +6905,9 @@ const DL = (function(){
         if (e.target.closest('.dl-cell-editing')) return;
         if (e.target.closest('.dl-cell-input')) return;
         if (tr.classList.contains('dl-row-editing')) return;
+        // In edit-mode: single-click op editable cel mag het detail-paneel NIET openen,
+        // anders steelt deze handler de dblclick voordat de gebruiker kan editen.
+        if (_editMode && e.target.closest('.dl-cell-editable')) return;
         const vid = tr.getAttribute('data-dl-vid');
         if (!vid) return;
         const doc = _docs.find(function(x){ return x._vid === vid; });
