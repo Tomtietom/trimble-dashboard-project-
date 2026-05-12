@@ -4271,11 +4271,16 @@ const PU = (function(){
     const folder = _writableFolders.find(function(f){ return f.id === item.folderId; });
     if (!folder) throw new Error('Geen map geselecteerd');
 
-    // Stap 1: initiate
+    // Stap 1: initiate.
+    // description (door de gebruiker in het BESCHRIJVING-veld getypt) gaat hier mee
+    // als optioneel veld in de body — TC slaat dat op als file-description.
+    // Alleen meesturen als niet-leeg om geen onnodige lege strings te creëren.
+    const initBody = { parentId: folder.id, parentType: 'FOLDER', name: item.file.name };
+    if (item.description && item.description.trim()) initBody.description = item.description.trim();
     const initResp = await _puFetch('/files/fs/initiate', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'x-trimbleconnect-client':'TCWEB' },
-      body: JSON.stringify({ parentId: folder.id, parentType: 'FOLDER', name: item.file.name }),
+      body: JSON.stringify(initBody),
     });
     const uploadUrl = initResp.uploadURL || initResp.uploadUrl || initResp.url || initResp.signedUrl;
     const uploadId = initResp.uploadId || initResp.id;
