@@ -4592,11 +4592,16 @@ const DL = (function(){
     // 2D / PDF / images / office — version=vid werkt als "huidige versie"
     return 'https://web.connect.trimble.com/projects/' + pid + '/viewer/2D?id=' + vid + '&version=' + vid;
   }
-  function _tcFolderUrl(pathLoc){
+  function _tcFolderUrl(pathLoc, vid){
     if (!pathLoc || pathLoc === '(projectroot)' || !tcProject || !tcProject.id) return '';
     const folderId = _folderIdByPath[pathLoc];
     if (!folderId) return '';
-    return 'https://web.connect.trimble.com/projects/' + encodeURIComponent(tcProject.id) + '/data/folder/' + encodeURIComponent(folderId);
+    let url = 'https://web.connect.trimble.com/projects/' + encodeURIComponent(tcProject.id) + '/data/folder/' + encodeURIComponent(folderId);
+    // Bij meegegeven vid: probeer het bestand te selecteren binnen de folder-view.
+    // ?selectedItem= is het patroon dat TC's eigen UI gebruikt; als TC het negeert blijft
+    // de folder gewoon openen (geen regressie).
+    if (vid) url += '?selectedItem=' + encodeURIComponent(vid);
+    return url;
   }
   function _getActiveCols(){
     let visible = ALL_COLS.filter(function(c){ return _visibleColKeys.has(c.k); });
@@ -5092,7 +5097,7 @@ const DL = (function(){
       });
     }
     const d = _selectedDoc;
-    const folderUrl = _tcFolderUrl(d.file_location);
+    const folderUrl = _tcFolderUrl(d.file_location, d._vid);
     const fileUrl = _tcFileUrl(d);
     // Splits velden: technisch + metadata (alleen niet-leeg)
     // Map-veld krijgt link naar TC-verkenner als folderId bekend is.
