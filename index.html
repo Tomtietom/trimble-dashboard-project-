@@ -721,8 +721,10 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl th.dl-th-cb input,.dl-tbl td.dl-cell-cb input{cursor:pointer;margin:0;vertical-align:middle}
 .dl-tbl tbody tr.dl-row.dl-row-selected{background:var(--afl)}
 .dl-tbl tbody tr.dl-row.dl-row-selected:hover{background:var(--afl)}
-.dl-tbl tbody td.dl-cell-editable{cursor:cell;user-select:none}
-.dl-tbl tbody td.dl-cell-editable:hover{background:rgba(212,130,26,.06);box-shadow:inset 0 0 0 1px var(--af)}
+.dl-tbl tbody td.dl-cell-editable{cursor:cell;user-select:none;background-image:linear-gradient(135deg,transparent calc(100% - 8px),rgba(212,130,26,.35) calc(100% - 8px),rgba(212,130,26,.35) 100%)}
+.dl-tbl tbody td.dl-cell-editable:hover{background-color:rgba(212,130,26,.06);box-shadow:inset 0 0 0 1px var(--af)}
+.dl-cols-btn.dl-edit-mode-active{background:var(--af);color:#fff;border-color:var(--af);font-weight:600}
+.dl-cols-btn.dl-edit-mode-active:hover{background:var(--af2);border-color:var(--af2)}
 .dl-tbl tbody td.dl-cell-editing{padding:2px 4px;background:#fff!important}
 .dl-cell-input{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--af);border-radius:3px;font:inherit;background:#fff;color:var(--dk);outline:none}
 .dl-cell-input:focus{box-shadow:0 0 0 2px var(--afl)}
@@ -5073,7 +5075,10 @@ const DL = (function(){
   }
   function _getActiveCols(){
     let visible = ALL_COLS.filter(function(c){ return _visibleColKeys.has(c.k); });
-    if (!_hasMetaSchema){
+    // Verberg metadata-kolommen alleen als NOG schema (PROP_MAP via /defs/tcfiles) NOG instances bestaan.
+    // Zodra het schema er is — ook zonder ingevulde data — moeten kolommen zichtbaar zijn zodat
+    // de gebruiker via inline edit metadata kan toevoegen.
+    if (!_hasMetaSchema && !_hasPSetSchema){
       visible = visible.filter(function(c){ return !_isMetaCol(c.k); });
     }
     // Custom volgorde toepassen (uit _colOrder)
@@ -5153,8 +5158,10 @@ const DL = (function(){
   let _viewMode = 'list';       // 'list' = vlakke tabel met groep-headers; 'tree' = split met mappen-sidebar
   let _selectedFolder = '';     // pad-prefix in tree-mode; leeg = root (alle docs)
   let _treeCollapsed = new Set(); // ingeklapte tree-paths
-  let _hasMetaSchema = false; // wordt true zodra we minstens 1 metadata-match krijgen
+  let _hasMetaSchema = false; // er zijn al ingevulde metadata-instances in dit project
+  let _hasPSetSchema = false; // project heeft een PSet-schema (PROP_MAP gevuld via /defs/tcfiles) — toont kolommen ook wanneer nog geen instances zijn ingevuld
   let _metadataFetchComplete = false; // bulk/cache klaar — pas dan banner tonen bij geen schema
+  let _editMode = false; // expliciete bewerk-modus — user moet eerst op slot-knop klikken voordat dblclick op cel werkt
   let _deepScanState = null; // { totaal, gedaan, actief } tijdens per-file metadata-fetch
   let _deepScanPromise = null; // capture deep-scan promise zodat prefetch erop kan wachten
   let _prefetchProgress = null; // (info)=>void — gezet door cockpit prefetch-orchestrator
@@ -5450,6 +5457,7 @@ const DL = (function(){
     }
     if (Object.keys(newPropMap).length){
       PROP_MAP = newPropMap;
+      _hasPSetSchema = true; // schema bestaat — metadata-kolommen tonen ook zonder instances
       console.log('[DL] PROP_MAP dynamisch uit project-schema:', Object.keys(PROP_MAP).length, 'velden');
     } else {
       console.log('[DL] Geen TCM-mapping uit project-schema gevonden; behoud hardcoded fallback');
@@ -5773,6 +5781,33 @@ const DL = (function(){
     }
   }
 
+  // Toggle expliciete bewerk-modus. Eerste keer aanzetten = confirm-dialog zodat gebruiker weet
+  // dat wijzigingen direct naar TC schrijven. Zonder bewerk-modus doet dubbelklik op cel niks.
+  function _toggleEditMode(){
+    if (!_editMode){
+      if (!confirm('Metadata bewerken aanzetten?\n\nWijzigingen die je maakt worden direct opgeslagen in Trimble Connect — een fout doen kan niet ongedaan worden gemaakt.')) return;
+      _editMode = true;
+    } else {
+      _editMode = false;
+    }
+    _updateEditModeButton();
+    _renderTable();
+  }
+
+  function _updateEditModeButton(){
+    const btn = document.getElementById('dl-edit-mode-btn');
+    if (!btn) return;
+    if (_editMode){
+      btn.innerHTML = '🔓 Vergrendelen';
+      btn.classList.add('dl-edit-mode-active');
+      btn.title = 'Bewerk-modus is AAN — klik om te vergrendelen';
+    } else {
+      btn.innerHTML = '🔒 Bewerken';
+      btn.classList.remove('dl-edit-mode-active');
+      btn.title = 'Metadata bewerken — toggle aan/uit';
+    }
+  }
+
   // Vervang een tabelcel door een input/select. Op blur of Enter → save, op Escape → cancel.
   // Visuele feedback: oranje rand tijdens save, groen bij succes, rood bij fout.
   function _makeCellEditable(td, doc, fieldKey){
@@ -6079,6 +6114,11 @@ const DL = (function(){
           // ≥50% in cache → vertrouw cache, skip nieuwe fetch (geen 13s wacht)
           _hasMetaSchema = withMeta > 0;
           _metadataFetchComplete = true;
+          // Schema-check ook bij cache-hit zodat _hasPSetSchema correct gezet wordt voor
+          // projecten met schema maar zonder ingevulde instances. Cached call → goedkoop.
+          _loadPSetSchema().catch(function(e){ console.warn('[DL] schema laden mislukt:', e.message); }).finally(function(){
+            try { _renderTable(); _renderColPicker(); } catch(_){}
+          });
           console.log('[DL] cache hit:', hits, '/', _docs.length, 'docs (' + withMeta + ' met metadata) — bulk + deep-scan overgeslagen');
           _renderTable();
           _buildDatalists();
@@ -6290,12 +6330,13 @@ const DL = (function(){
   }
 
   // Banner tonen wanneer project geen metadata-schema heeft (pas na bulk/cache-check).
+  // Niet tonen als schema wel bestaat maar nog geen instances zijn ingevuld.
   function _renderMetaBanner(){
     const root = getRoot();
     if (!root) return;
     const el = root.querySelector('#dl-meta-banner');
     if (!el) return;
-    el.style.display = (_metadataFetchComplete && !_hasMetaSchema) ? '' : 'none';
+    el.style.display = (_metadataFetchComplete && !_hasMetaSchema && !_hasPSetSchema) ? '' : 'none';
   }
 
   // Render de bestandstype-chips-rij. Toont alleen als er meer dan 1 extensie is —
@@ -6454,10 +6495,11 @@ const DL = (function(){
       else if (c.k === 'file_location'){ v = _esc(v == null ? '' : v); cls = 'dl-cell-folder'; }
       else {
         v = _esc(v == null ? '' : v);
-        // Metadata-velden zijn inline-editbaar: dubbelklik markeert ze.
-        if (_isEditableField(c.k)){
+        // Metadata-velden zijn inline-editbaar ALLEEN wanneer bewerk-modus aan staat.
+        // Zonder edit-mode: cel toont alleen-lezen tekst, geen dblclick-handler, geen hover-cue.
+        if (_editMode && _isEditableField(c.k)){
           cls = (cls ? cls + ' ' : '') + 'dl-cell-editable';
-          extraAttrs = ' data-editable="' + _esc(c.k) + '" title="Dubbelklik om te bewerken"';
+          extraAttrs = ' data-editable="' + _esc(c.k) + '" title="Dubbelklik om te bewerken — wijziging gaat direct naar TC"';
         }
       }
       html += '<td' + (cls ? ' class="' + cls + '"' : '') + extraAttrs + '>' + v + '</td>';
@@ -7763,6 +7805,7 @@ const DL = (function(){
           '</div>' +
           '<div class="dl-app-head-right">' +
             '<div id="dl-view-toggle" class="dl-view-toggle"></div>' +
+            '<button type="button" id="dl-edit-mode-btn" class="dl-cols-btn" title="Metadata bewerken — toggle aan/uit">🔒 Bewerken</button>' +
             '<button type="button" id="dl-cols-btn" class="dl-cols-btn" title="Kolommen kiezen"><span class="dl-cols-icon">☰</span>Kolommen</button>' +
             '<button type="button" id="dl-releases-btn" class="dl-cols-btn" title="Toon releases van dit project">📦 Releases</button>' +
             '<button type="button" id="dl-refresh" class="dl-refresh-btn" title="Cache wissen en opnieuw laden (forceert verse metadata-fetch)"><span class="dl-refresh-icon">↻</span>Vernieuwen</button>' +
@@ -7973,7 +8016,7 @@ const DL = (function(){
       });
     }
     body.innerHTML = cols.map(function(c){
-      if (!_hasMetaSchema && _isMetaCol(c.k)) return ''; // verberg metadata-kolommen bij projecten zonder schema
+      if (!_hasMetaSchema && !_hasPSetSchema && _isMetaCol(c.k)) return ''; // verberg metadata-kolommen alleen bij projecten zonder schema EN zonder instances
       const checked = _visibleColKeys.has(c.k) ? ' checked' : '';
       const disabled = c.fixed ? ' disabled' : '';
       const k = _esc(c.k);
@@ -8097,6 +8140,7 @@ const DL = (function(){
     try { localStorage.removeItem(_psetDefCacheKey()); } catch(_){} // PSet-schema cache ook leeg
     PROP_MAP = Object.assign({}, PROP_MAP_DEFAULT); // back to defaults — wordt heropgebouwd door _loadPSetSchema
     ENUM_VALUES = Object.assign({}, ENUM_VALUES_DEFAULT);
+    _hasPSetSchema = false; // wordt opnieuw gezet bij _loadPSetSchema
     _docs = [];
     _isLoaded = false;
     _isLoading = false;
@@ -8140,6 +8184,9 @@ const DL = (function(){
         }
       });
     }
+    // Edit-mode toggle in header
+    const editBtn = root.querySelector('#dl-edit-mode-btn');
+    if (editBtn) editBtn.addEventListener('click', _toggleEditMode);
     // Selectie wissen knop in de selection-bar
     const selClear = root.querySelector('#dl-selection-clear');
     if (selClear){
