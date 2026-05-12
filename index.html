@@ -687,6 +687,21 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-share-link-item .name{font-weight:500;color:var(--dk);display:block;margin-bottom:4px}
 .dl-share-link-item a{color:var(--af);font-size:11px;text-decoration:none;word-break:break-all}
 .dl-share-link-item a:hover{text-decoration:underline}
+.dl-rel-item{border:1px solid var(--hl-light);border-radius:var(--r-sm);margin-bottom:8px;overflow:hidden}
+.dl-rel-header{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:#fff;transition:background .1s}
+.dl-rel-header:hover{background:var(--gr)}
+.dl-rel-toggle{font-size:12px;color:var(--g5);width:14px;flex-shrink:0}
+.dl-rel-info{flex:1;min-width:0}
+.dl-rel-name{font-weight:500;color:var(--dk);font-size:14px}
+.dl-rel-meta{font-size:11px;color:var(--g5);margin-top:2px}
+.dl-rel-status{padding:3px 8px;border-radius:999px;font-size:11px;font-weight:600;flex-shrink:0}
+.dl-rel-status-sent{background:#d4edda;color:#155724}
+.dl-rel-status-open{background:#fff3cd;color:#856404}
+.dl-rel-files{padding:0 14px 10px 32px;background:var(--gr);border-top:1px solid var(--hl-light)}
+.dl-rel-file{padding:6px 10px;cursor:pointer;border-radius:var(--r-sm);font-size:13px;color:var(--dk);transition:background .1s;border-bottom:1px dotted var(--hl-light)}
+.dl-rel-file:last-child{border-bottom:none}
+.dl-rel-file:hover{background:var(--afl);color:var(--af2)}
+.dl-rel-file-name{font-weight:500}
 .dl-tbl th.dl-th-cb,.dl-tbl td.dl-cell-cb{width:36px;padding:8px 6px;text-align:center;cursor:default;vertical-align:middle}
 .dl-tbl th.dl-th-cb input,.dl-tbl td.dl-cell-cb input{cursor:pointer;margin:0;vertical-align:middle}
 .dl-tbl tbody tr.dl-row.dl-row-selected{background:var(--afl)}
@@ -5069,6 +5084,7 @@ const DL = (function(){
   let _selectedVids = new Set(); // bestanden geselecteerd via checkbox (voor bulk-acties: delen, download, edit)
   const _commentCache = new Map(); // vid → first-comment object | null (in-memory, lifetime = page-load)
   const _versionsCache = new Map(); // vid → array van versies | null (in-memory, lifetime = page-load)
+  const _releasesCache = { all: null, byId: new Map() }; // in-memory, lifetime = page-load
   // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
   // 24u TTL — voorkomt 13s wachten op deep-scan bij elk her-openen van de tab.
   const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -6415,6 +6431,137 @@ const DL = (function(){
     }
   }
 
+  // === Releases ===
+  async function _fetchReleases(){
+    if (_releasesCache.all) return _releasesCache.all;
+    try {
+      const res = await tcFetch('/releases?projectId=' + encodeURIComponent(tcProject.id));
+      const body = res && res._partial ? res._data : res;
+      const arr = Array.isArray(body) ? body : (body && body.items) || [];
+      _releasesCache.all = arr;
+      return arr;
+    } catch(e){
+      console.warn('[DL] releases ophalen mislukt:', e.message);
+      return [];
+    }
+  }
+
+  async function _fetchReleaseFiles(relId){
+    if (_releasesCache.byId.has(relId)) return _releasesCache.byId.get(relId);
+    try {
+      const res = await tcFetch('/releases/' + encodeURIComponent(relId) + '/files');
+      const body = res && res._partial ? res._data : res;
+      const arr = Array.isArray(body) ? body : (body && body.items) || [];
+      _releasesCache.byId.set(relId, arr);
+      return arr;
+    } catch(e){
+      console.warn('[DL] release files mislukt:', relId, '—', e.message);
+      _releasesCache.byId.set(relId, []);
+      return [];
+    }
+  }
+
+  function _openReleasesDialog(){
+    const modal = document.getElementById('dl-releases-modal');
+    if (!modal) return;
+    modal.style.display = '';
+    _renderReleasesList();
+  }
+
+  function _closeReleasesDialog(){
+    const modal = document.getElementById('dl-releases-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  async function _renderReleasesList(){
+    const wrap = document.getElementById('dl-releases-list');
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="dl-detail-comment-loading">Releases laden…</div>';
+    const releases = await _fetchReleases();
+    if (!releases.length){
+      wrap.innerHTML = '<div class="dl-detail-empty">Geen releases in dit project.</div>';
+      return;
+    }
+    // Sorteer: SENT eerst (relevanter), daarna OPEN, alfabetisch binnen status
+    const sorted = releases.slice().sort(function(a, b){
+      const sa = (a.status === 'SENT') ? 0 : 1;
+      const sb = (b.status === 'SENT') ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return (a.name || '').localeCompare(b.name || '', 'nl');
+    });
+    wrap.innerHTML = sorted.map(function(rel){
+      const status = rel.status === 'SENT' ? 'Verzonden' : 'Open';
+      const statusCls = rel.status === 'SENT' ? 'dl-rel-status-sent' : 'dl-rel-status-open';
+      const date = rel.createdOn ? _formatDate(rel.createdOn) : '';
+      const author = rel.createdBy ? ((rel.createdBy.firstName || '') + ' ' + (rel.createdBy.lastName || '')).trim() : '';
+      const metaParts = [];
+      if (date) metaParts.push(date);
+      if (author) metaParts.push(author);
+      return '<div class="dl-rel-item" data-rel-id="' + _esc(rel.id) + '">'
+        + '<div class="dl-rel-header">'
+        +   '<span class="dl-rel-toggle">▸</span>'
+        +   '<div class="dl-rel-info">'
+        +     '<div class="dl-rel-name">' + _esc(rel.name || '(naamloos)') + '</div>'
+        +     '<div class="dl-rel-meta">' + _esc(metaParts.join(' — ')) + '</div>'
+        +   '</div>'
+        +   '<span class="dl-rel-status ' + statusCls + '">' + status + '</span>'
+        + '</div>'
+        + '<div class="dl-rel-files" style="display:none"></div>'
+        + '</div>';
+    }).join('');
+    // Click-handlers: header toggle = expand/laad files
+    wrap.querySelectorAll('.dl-rel-item').forEach(function(item){
+      const head = item.querySelector('.dl-rel-header');
+      if (head) head.addEventListener('click', function(){ _toggleReleaseExpand(item); });
+    });
+  }
+
+  async function _toggleReleaseExpand(item){
+    const filesEl = item.querySelector('.dl-rel-files');
+    const toggle = item.querySelector('.dl-rel-toggle');
+    if (!filesEl) return;
+    const isOpen = filesEl.style.display !== 'none';
+    if (isOpen){
+      filesEl.style.display = 'none';
+      if (toggle) toggle.textContent = '▸';
+      return;
+    }
+    filesEl.style.display = '';
+    if (toggle) toggle.textContent = '▾';
+    if (filesEl.dataset.loaded === '1') return; // al geladen
+    filesEl.innerHTML = '<div class="dl-detail-comment-loading">Bestanden laden…</div>';
+    const relId = item.getAttribute('data-rel-id');
+    const files = await _fetchReleaseFiles(relId);
+    if (!files.length){
+      filesEl.innerHTML = '<div class="dl-detail-empty" style="margin:8px 0">Geen bestanden in deze release.</div>';
+      filesEl.dataset.loaded = '1';
+      return;
+    }
+    filesEl.innerHTML = files.map(function(f){
+      const name = _esc(f.name || f.fileName || '(naamloos)');
+      const fileId = _esc(f.id || f.fileId || '');
+      return '<div class="dl-rel-file" data-vid="' + fileId + '">'
+        + '<span class="dl-rel-file-name">' + name + '</span>'
+        + '</div>';
+    }).join('');
+    filesEl.dataset.loaded = '1';
+    // Click file → sluit modal + open detail-paneel als file in _docs zit
+    filesEl.querySelectorAll('.dl-rel-file').forEach(function(fileEl){
+      fileEl.addEventListener('click', function(){
+        const vid = fileEl.getAttribute('data-vid');
+        if (!vid) return;
+        const doc = _docs.find(function(x){ return x._vid === vid; });
+        if (doc){
+          _closeReleasesDialog();
+          _openDetail(doc);
+        } else {
+          // Bestand staat niet in huidige DL-lijst (mogelijk verwijderd of niet zichtbaar)
+          alert('Bestand niet gevonden in de huidige documentenlijst. Mogelijk verwijderd of nog niet geladen.');
+        }
+      });
+    });
+  }
+
   // === Bulk-edit modal ===
   // Werkt op alle geselecteerde bestanden: 1 veld → 1 waarde voor allemaal in één /psets/changeset call.
   function _openBulkEditDialog(){
@@ -6836,6 +6983,7 @@ const DL = (function(){
           '<div class="dl-app-head-right">' +
             '<div id="dl-view-toggle" class="dl-view-toggle"></div>' +
             '<button type="button" id="dl-cols-btn" class="dl-cols-btn" title="Kolommen kiezen"><span class="dl-cols-icon">☰</span>Kolommen</button>' +
+            '<button type="button" id="dl-releases-btn" class="dl-cols-btn" title="Toon releases van dit project">📦 Releases</button>' +
             '<button type="button" id="dl-refresh" class="dl-refresh-btn" title="Cache wissen en opnieuw laden (forceert verse metadata-fetch)"><span class="dl-refresh-icon">↻</span>Vernieuwen</button>' +
             '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
             '<div id="dl-cols-picker" class="dl-cols-picker" style="display:none">' +
@@ -6952,6 +7100,22 @@ const DL = (function(){
             '<div class="dl-share-foot">' +
               '<button type="button" id="dl-bulk-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
               '<button type="button" id="dl-bulk-submit" class="dl-share-btn dl-share-btn-primary">Opslaan</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        // Releases modal (hidden default; getoond door _openReleasesDialog)
+        '<div id="dl-releases-modal" class="dl-share-modal" style="display:none">' +
+          '<div class="dl-share-backdrop" id="dl-releases-backdrop"></div>' +
+          '<div class="dl-share-panel" style="width:640px" role="dialog" aria-label="Releases">' +
+            '<div class="dl-share-head">' +
+              '<h3 class="dl-share-title">Releases</h3>' +
+              '<button type="button" id="dl-releases-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
+            '</div>' +
+            '<div class="dl-share-body">' +
+              '<div id="dl-releases-list"></div>' +
+            '</div>' +
+            '<div class="dl-share-foot">' +
+              '<button type="button" id="dl-releases-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -7179,6 +7343,15 @@ const DL = (function(){
     if (bulkField) bulkField.addEventListener('change', function(){ _renderBulkValueInput(bulkField.value); });
     const bulkSubmit = root.querySelector('#dl-bulk-submit');
     if (bulkSubmit) bulkSubmit.addEventListener('click', _submitBulkEdit);
+    // Releases dialog
+    const relBtn = root.querySelector('#dl-releases-btn');
+    if (relBtn) relBtn.addEventListener('click', _openReleasesDialog);
+    const relClose = root.querySelector('#dl-releases-close');
+    if (relClose) relClose.addEventListener('click', _closeReleasesDialog);
+    const relCancel = root.querySelector('#dl-releases-cancel');
+    if (relCancel) relCancel.addEventListener('click', _closeReleasesDialog);
+    const relBackdrop = root.querySelector('#dl-releases-backdrop');
+    if (relBackdrop) relBackdrop.addEventListener('click', _closeReleasesDialog);
     // Kolom-picker: knop opent/sluit popover, outside-click sluit, reset-knop herstelt defaults
     const colsBtn = root.querySelector('#dl-cols-btn');
     const colsPicker = root.querySelector('#dl-cols-picker');
