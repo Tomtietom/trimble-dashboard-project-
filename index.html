@@ -678,6 +678,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-detail-table th{text-align:left;padding:6px 12px 6px 0;color:var(--g5);font-weight:500;width:40%;vertical-align:top}
 .dl-detail-table td{padding:6px 0;color:var(--dk);word-break:break-word}
 .dl-detail-empty{padding:var(--s3);background:var(--gr);border-radius:var(--r-sm);font-size:13px;color:var(--g4);font-style:italic}
+.dl-detail-comment-loading{padding:var(--s2) 0;color:var(--g5);font-size:13px;font-style:italic}
+.dl-detail-comment-meta{font-size:11px;color:var(--g5);margin-bottom:4px}
+.dl-detail-comment-body{font-size:13px;color:var(--dk);white-space:pre-wrap;line-height:1.5;padding:8px 12px;background:var(--gr);border-radius:var(--r-sm);border-left:3px solid var(--af)}
 @media(max-width:720px){.dl-detail-panel{width:100%;max-width:100vw}}
 
 /* RV — Rechten Viewer (Phase B-2 MVP) */
@@ -4698,6 +4701,7 @@ const DL = (function(){
   let _prefetchProgress = null; // (info)=>void — gezet door cockpit prefetch-orchestrator
   let _selectedDoc = null;   // huidige doc in detail-paneel ('_vid' van geselecteerde rij)
   let _escListener = null;   // escape-key handler tijdens panel open
+  const _commentCache = new Map(); // vid → first-comment object | null (in-memory, lifetime = page-load)
   // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
   // 24u TTL — voorkomt 13s wachten op deep-scan bij elk her-openen van de tab.
   const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -5065,6 +5069,31 @@ const DL = (function(){
     }
   }
 
+  // Haalt eerste comment op voor een bestand (lazy, op verzoek). Cached in-memory voor de sessie.
+  // PU module slaat de uploader-omschrijving op als eerste comment op de file (POST /comments).
+  // Endpoint: GET /comments?objectId={vid}&objectType=FILE — sorteren op createdOn asc voor "eerste".
+  async function _fetchFirstComment(vid){
+    if (!vid) return null;
+    if (_commentCache.has(vid)) return _commentCache.get(vid);
+    try {
+      const res = await tcFetch('/comments?objectId=' + encodeURIComponent(vid) + '&objectType=FILE');
+      const body = res && res._partial ? res._data : res;
+      const items = Array.isArray(body) ? body : (body && body.items) || [];
+      if (!items.length){ _commentCache.set(vid, null); return null; }
+      items.sort(function(a, b){
+        const da = a && a.createdOn ? String(a.createdOn) : '';
+        const db = b && b.createdOn ? String(b.createdOn) : '';
+        return da.localeCompare(db);
+      });
+      const first = items[0] || null;
+      _commentCache.set(vid, first);
+      return first;
+    } catch(e){
+      console.warn('[DL] eerste comment ophalen mislukt:', vid, e.message);
+      return null;
+    }
+  }
+
   // === Detail-paneel (iter B) ===
   function _openDetail(doc){
     _selectedDoc = doc;
@@ -5157,11 +5186,33 @@ const DL = (function(){
           (metaRows.length
             ? '<h4 class="dl-detail-section">Metadata</h4><table class="dl-detail-table">' + metaRows.map(rowHtml).join('') + '</table>'
             : '<h4 class="dl-detail-section">Metadata</h4><div class="dl-detail-empty">Geen metadata ingevuld voor dit bestand.</div>') +
+          '<h4 class="dl-detail-section">Eerste opmerking</h4>' +
+          '<div id="dl-detail-comment"><div class="dl-detail-comment-loading">Laden…</div></div>' +
           openBtns +
         '</div>' +
       '</div>';
 
     overlay.querySelector('#dl-detail-close').addEventListener('click', _closeDetail);
+
+    // Async: haal eerste comment op en vul de sectie zodra binnen.
+    // Bewaak race-condition: gebruiker kan ondertussen panel sluiten / ander doc kiezen.
+    const targetDoc = d;
+    _fetchFirstComment(d._vid).then(function(c){
+      if (_selectedDoc !== targetDoc) return; // user navigated away
+      const el = overlay.querySelector('#dl-detail-comment');
+      if (!el) return;
+      if (c && c.description){
+        const author = c.createdBy ? ((c.createdBy.firstName || '') + ' ' + (c.createdBy.lastName || '')).trim() : '';
+        const date = c.createdOn ? _formatDate(c.createdOn) : '';
+        const metaParts = [];
+        if (author) metaParts.push(author);
+        if (date) metaParts.push(date);
+        const meta = metaParts.length ? '<div class="dl-detail-comment-meta">' + _esc(metaParts.join(' — ')) + '</div>' : '';
+        el.innerHTML = meta + '<div class="dl-detail-comment-body">' + _esc(c.description) + '</div>';
+      } else {
+        el.innerHTML = '<div class="dl-detail-empty">Geen opmerkingen.</div>';
+      }
+    });
   }
 
   async function _loadDocs(){
