@@ -594,6 +594,12 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl tbody td{overflow:hidden}
 .dl-tbl tbody td.dl-cell-name{white-space:normal}
 .dl-tbl tbody td.dl-cell-folder{white-space:normal}
+.dl-cell-link{color:var(--af);text-decoration:none;font-weight:500}
+.dl-cell-link:hover{text-decoration:underline}
+.dl-detail-link{color:var(--af);text-decoration:none}
+.dl-detail-link:hover{text-decoration:underline}
+.dl-detail-open{display:inline-block;margin-top:var(--s4);padding:8px 14px;background:var(--af);color:#fff;text-decoration:none;border-radius:var(--r-sm);font-size:14px;font-weight:500;transition:background .15s}
+.dl-detail-open:hover{background:var(--af2)}
 .dl-tbl .dl-th:hover{background:var(--hl-light)}
 .dl-tbl .dl-th.sorted{color:var(--af)}
 .dl-tbl .dl-th .dl-sort-ind{display:inline-block;width:10px;font-size:9px;margin-left:4px;color:var(--af)}
@@ -4545,6 +4551,25 @@ const DL = (function(){
   // Kolommen die NIET als per-kolom filter beschikbaar zijn (vrij-tekst, datums, technical)
   const SKIP_FILTER = new Set(['bestandsnaam', 'document_nummer', 'titel', 'revisie', 'document_datum', 'document_aanmaak_datum', '_versie', '_modified', '_created', 'file_location', 'ifc_timestamp']);
   function _isMetaCol(k){ return !!k && k.charAt(0) !== '_' && k !== 'bestandsnaam' && k !== 'file_location'; }
+  // 3D-bestanden openen in TC's 3D viewer; alle andere in 2D viewer (PDF, images, office).
+  const EXT_3D = ['ifc','rvt','nwd','nwc','dgn','dwg','skp','fbx','obj','3ds'];
+  function _tcFileUrl(doc){
+    if (!tcProject || !tcProject.id || !doc || !doc._vid) return '';
+    const pid = encodeURIComponent(tcProject.id);
+    const vid = encodeURIComponent(doc._vid);
+    const ext = (doc.bestandsnaam || '').split('.').pop().toLowerCase();
+    if (EXT_3D.indexOf(ext) >= 0){
+      return 'https://web.connect.trimble.com/projects/' + pid + '/viewer/3d?modelId=' + vid;
+    }
+    // 2D / PDF / images / office — version=vid werkt als "huidige versie"
+    return 'https://web.connect.trimble.com/projects/' + pid + '/viewer/2D?id=' + vid + '&version=' + vid;
+  }
+  function _tcFolderUrl(pathLoc){
+    if (!pathLoc || pathLoc === '(projectroot)' || !tcProject || !tcProject.id) return '';
+    const folderId = _folderIdByPath[pathLoc];
+    if (!folderId) return '';
+    return 'https://web.connect.trimble.com/projects/' + encodeURIComponent(tcProject.id) + '/data/folder/' + encodeURIComponent(folderId);
+  }
   function _getActiveCols(){
     let visible = ALL_COLS.filter(function(c){ return _visibleColKeys.has(c.k); });
     if (!_hasMetaSchema){
@@ -4622,6 +4647,7 @@ const DL = (function(){
   let _colOrder = [];                         // [] = default volgorde uit ALL_COLS; anders keys in custom volgorde
   let _colWidths = {};                        // { key: '120px' } overrides van default percentages
   let _groupBy = 'file_location';             // '' = geen, 'file_location' = op map, of metadata-kolom key
+  let _folderIdByPath = {};                   // { 'map/submap': 'folderId' } — voor bouwen van TC folder-URLs
   let _filterExts = new Set(); // bestandstype-chips: leeg = alle, anders alleen geselecteerde extensies
   let _viewMode = 'list';       // 'list' = vlakke tabel met groep-headers; 'tree' = split met mappen-sidebar
   let _selectedFolder = '';     // pad-prefix in tree-mode; leeg = root (alle docs)
@@ -4716,6 +4742,7 @@ const DL = (function(){
       const itemType = String(item.type || item.itemType || '').toUpperCase();
       const isFolder = itemType === 'FOLDER' || itemType === 'DIR';
       if (isFolder){
+        _folderIdByPath[volledigPad] = item.id;
         subFolders.push({ id: item.id, pad: volledigPad });
       } else {
         result.push({
@@ -5037,9 +5064,16 @@ const DL = (function(){
       });
     }
     const d = _selectedDoc;
+    const folderUrl = _tcFolderUrl(d.file_location);
+    const fileUrl = _tcFileUrl(d);
     // Splits velden: technisch + metadata (alleen niet-leeg)
+    // Map-veld krijgt link naar TC-verkenner als folderId bekend is.
+    const mapVal = d.file_location || '–';
+    const mapHtml = folderUrl
+      ? '<a href="' + _esc(folderUrl) + '" target="_blank" rel="noopener" class="dl-detail-link" title="Open deze map in Trimble Connect (nieuw tabblad)">' + _esc(mapVal) + ' ↗</a>'
+      : _esc(mapVal);
     const techRows = [
-      { l: 'Map', v: d.file_location || '–' },
+      { l: 'Map', html: mapHtml },
       { l: 'Versie', v: d._versie || '–' },
       { l: 'Toegevoegd', v: _formatDate(d._created) || '–' },
       { l: 'Gewijzigd', v: _formatDate(d._modified) || '–' },
@@ -5058,8 +5092,13 @@ const DL = (function(){
       .filter(Boolean);
 
     function rowHtml(r){
-      return '<tr><th>' + _esc(r.l) + '</th><td>' + _esc(r.v) + '</td></tr>';
+      const cell = r.html != null ? r.html : _esc(r.v);
+      return '<tr><th>' + _esc(r.l) + '</th><td>' + cell + '</td></tr>';
     }
+
+    const openBtn = fileUrl
+      ? '<a class="dl-detail-open" href="' + _esc(fileUrl) + '" target="_blank" rel="noopener" title="Open dit bestand in Trimble Connect (nieuw tabblad)">Open in Trimble Connect ↗</a>'
+      : '';
 
     overlay.innerHTML =
       '<div class="dl-detail-panel" role="dialog" aria-label="Bestandsdetails">' +
@@ -5073,6 +5112,7 @@ const DL = (function(){
           (metaRows.length
             ? '<h4 class="dl-detail-section">Metadata</h4><table class="dl-detail-table">' + metaRows.map(rowHtml).join('') + '</table>'
             : '<h4 class="dl-detail-section">Metadata</h4><div class="dl-detail-empty">Geen metadata ingevuld voor dit bestand.</div>') +
+          openBtn +
         '</div>' +
       '</div>';
 
@@ -5094,6 +5134,7 @@ const DL = (function(){
       } catch(e){ console.warn('[DL] /projects/{id} mislukt:', e.message); }
       if (!rootId) throw new Error('Root folder niet gevonden in project-info');
 
+      _folderIdByPath = {}; // reset bij elke fresh fetch
       const result = [];
       await _fetchItemsRecursive(rootId, '', result);
       _docs = result;
@@ -5468,7 +5509,14 @@ const DL = (function(){
       let v = d[c.k];
       let cls = '';
       if (c.k === '_created' || c.k === '_modified'){ v = _formatDate(v); cls = 'dl-cell-date'; }
-      else if (c.k === 'bestandsnaam'){ v = _esc(v == null ? '' : v); cls = 'dl-cell-name'; }
+      else if (c.k === 'bestandsnaam'){
+        const naam = _esc(v == null ? '' : v);
+        const url = _tcFileUrl(d);
+        v = url
+          ? '<a class="dl-cell-link" href="' + _esc(url) + '" target="_blank" rel="noopener" title="Open in Trimble Connect (nieuw tabblad)">' + naam + '</a>'
+          : naam;
+        cls = 'dl-cell-name';
+      }
       else if (c.k === 'file_location'){ v = _esc(v == null ? '' : v); cls = 'dl-cell-folder'; }
       else { v = _esc(v == null ? '' : v); }
       html += '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</td>';
@@ -5574,8 +5622,10 @@ const DL = (function(){
     tbody.innerHTML = html;
 
     // Klik op rij → detail-paneel openen (filter group-rows uit)
+    // Klik op bestandsnaam-link → opent file in TC (new tab); detail-paneel niet openen.
     tbody.querySelectorAll('tr.dl-row').forEach(function(tr){
-      tr.addEventListener('click', function(){
+      tr.addEventListener('click', function(e){
+        if (e.target.closest('.dl-cell-link')) return;
         const vid = tr.getAttribute('data-dl-vid');
         if (!vid) return;
         const doc = _docs.find(function(x){ return x._vid === vid; });
@@ -5801,6 +5851,7 @@ const DL = (function(){
     _hasMetaSchema = false;
     _metadataFetchComplete = false;
     _deepScanState = null;
+    _folderIdByPath = {};
     const tbody = document.getElementById('dl-tbody');
     if (tbody) tbody.innerHTML = '';
     const count = document.getElementById('dl-count');
