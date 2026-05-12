@@ -701,7 +701,14 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-rel-file{padding:6px 10px;cursor:pointer;border-radius:var(--r-sm);font-size:13px;color:var(--dk);transition:background .1s;border-bottom:1px dotted var(--hl-light)}
 .dl-rel-file:last-child{border-bottom:none}
 .dl-rel-file:hover{background:var(--afl);color:var(--af2)}
-.dl-rel-file-name{font-weight:500}
+.dl-rel-file{display:flex;align-items:center;gap:8px}
+.dl-rel-file-name{font-weight:500;flex:1;min-width:0}
+.dl-rel-file-remove{background:transparent;border:1px solid transparent;color:var(--g4);padding:2px 6px;border-radius:var(--r-sm);cursor:pointer;font-size:13px;line-height:1;opacity:0;transition:all .15s}
+.dl-rel-file:hover .dl-rel-file-remove{opacity:1}
+.dl-rel-file-remove:hover{background:#fee;border-color:#e88;color:#c00}
+.dl-rel-zip-btn{padding:5px 10px;border:1px solid var(--hl);background:#fff;color:var(--dk);border-radius:var(--r-sm);font:12px 'Poppins',sans-serif;cursor:pointer;flex-shrink:0;transition:all .15s}
+.dl-rel-zip-btn:hover:not(:disabled){border-color:var(--af);background:var(--afl);color:var(--af2)}
+.dl-rel-zip-btn:disabled{opacity:.6;cursor:wait}
 .dl-tbl th.dl-th-cb,.dl-tbl td.dl-cell-cb{width:36px;padding:8px 6px;text-align:center;cursor:default;vertical-align:middle}
 .dl-tbl th.dl-th-cb input,.dl-tbl td.dl-cell-cb input{cursor:pointer;margin:0;vertical-align:middle}
 .dl-tbl tbody tr.dl-row.dl-row-selected{background:var(--afl)}
@@ -6461,6 +6468,128 @@ const DL = (function(){
     }
   }
 
+  // Lazy-load JSZip vanaf CDN (alleen bij eerste ZIP-download)
+  async function _ensureJSZip(){
+    if (window.JSZip) return window.JSZip;
+    return new Promise(function(resolve, reject){
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = function(){ resolve(window.JSZip); };
+      s.onerror = function(){ reject(new Error('JSZip-library kon niet worden geladen vanaf CDN')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  // Vraag een eenmalige download-URL aan voor een bestand. TC genereert die en mag direct
+  // (zonder Authorization-header) opgehaald worden, dus we kunnen direct in een blob streamen.
+  async function _getFileDownloadUrl(vid){
+    const res = await tcFetch('/files/fs/' + encodeURIComponent(vid) + '/downloadurl');
+    const body = res && res._partial ? res._data : res;
+    return body && body.url;
+  }
+
+  // Maak nette pad-prefix voor in een ZIP: "001. Voorbereiding/03. UO" → "001_VO/03_UO"
+  function _zipFolderPath(loc){
+    if (!loc || loc === '(projectroot)') return '';
+    return loc.split('/').map(function(seg){
+      seg = seg.trim();
+      const m = seg.match(/^([A-Za-z0-9]+\.?\d*\.?\d*)\s*[-.]?\s*(.*)/);
+      if (!m) return seg.replace(/[^a-zA-Z0-9._-]/g, '');
+      const num = m[1].replace(/\.$/, '');
+      const rest = m[2].trim();
+      if (!rest) return num;
+      const label = rest.split(/[\s/\\()\[\]]+/)[0].replace(/[^a-zA-Z0-9._-]/g, '');
+      return num + '-' + label;
+    }).join('_');
+  }
+
+  // Verwijder een bestand uit een release. Werkt direct in op de cache + UI.
+  async function _removeFromRelease(relId, fileId, fileName, fileEl){
+    if (!confirm('Verwijder "' + fileName + '" uit deze release?')) return;
+    try {
+      const r = await fetch(TC_API_BASE + '/releases/' + encodeURIComponent(relId) + '/files', {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + tcToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify([{ id: fileId, type: 'FILE' }]),
+      });
+      if (!r.ok){
+        const txt = await r.text().catch(function(){ return ''; });
+        throw new Error('HTTP ' + r.status + ': ' + txt.slice(0, 200));
+      }
+      // Cache invalideren zodat volgende open verse data ophaalt
+      _releasesCache.byId.delete(relId);
+      _releasesCache.all = null;
+      // Optimistic UI: rij meteen weghalen
+      if (fileEl && fileEl.parentNode) fileEl.parentNode.removeChild(fileEl);
+      console.log('[DL] verwijderd uit release', relId, ':', fileName);
+    } catch(e){
+      console.error('[DL] remove from release fout:', e);
+      alert('Verwijderen mislukt: ' + e.message);
+    }
+  }
+
+  // Download alle bestanden uit een release als ZIP, inclusief CSV met metadata.
+  async function _downloadReleaseZip(relId, btn){
+    let JSZip;
+    try { JSZip = await _ensureJSZip(); }
+    catch(e){ alert('Kan ZIP-library niet laden — controleer internetverbinding.'); return; }
+    const files = await _fetchReleaseFiles(relId);
+    const rel = (_releasesCache.all || []).find(function(r){ return r.id === relId; });
+    if (!files.length){ alert('Geen bestanden in deze release.'); return; }
+    if (!confirm('Download ' + files.length + ' bestand' + (files.length === 1 ? '' : 'en') + ' uit "' + (rel && rel.name || 'release') + '" als ZIP?')) return;
+
+    const origText = btn ? btn.textContent : '';
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ 0/' + files.length; }
+
+    const zip = new JSZip();
+    let ok = 0, fout = 0;
+    for (let i = 0; i < files.length; i++){
+      const f = files[i];
+      const fid = f.id || f.fileId;
+      if (!fid){ fout++; continue; }
+      try {
+        const dlUrl = await _getFileDownloadUrl(fid);
+        if (!dlUrl){ fout++; continue; }
+        const fileResp = await fetch(dlUrl);
+        if (!fileResp.ok){ fout++; continue; }
+        // Map-prefix uit _docs proberen
+        const doc = _docs.find(function(d){ return d._vid === fid; }) || _docs.find(function(d){ return d.bestandsnaam === f.name; });
+        const folder = (doc && doc.file_location) ? _zipFolderPath(doc.file_location) : '';
+        const fname = f.name || ('bestand_' + (i + 1));
+        const zipPath = folder ? folder + '/' + fname : fname;
+        zip.file(zipPath, await fileResp.blob());
+        ok++;
+      } catch(e){
+        console.warn('[DL] release-zip file fout:', f.name, e.message);
+        fout++;
+      }
+      if (btn) btn.textContent = '⏳ ' + (ok + fout) + '/' + files.length;
+    }
+    // CSV met metadata toevoegen
+    const csvRows = [['Bestandsnaam', 'Revisie', 'Versie', 'Map'].join(';')];
+    files.forEach(function(f){
+      const doc = _docs.find(function(d){ return d._vid === (f.id || f.fileId); }) || _docs.find(function(d){ return d.bestandsnaam === f.name; });
+      const rev = (doc && doc.revisie) || f.revision || '';
+      const ver = (doc && doc._versie) || '';
+      const map = (doc && doc.file_location) || '';
+      csvRows.push(['"' + (f.name || '').replace(/"/g, '""') + '"', '"' + rev + '"', '"' + ver + '"', '"' + map.replace(/"/g, '""') + '"'].join(';'));
+    });
+    const relSlug = (rel && rel.name ? rel.name : 'release').replace(/[^a-zA-Z0-9-_ ]/g, '');
+    zip.file('_documentenlijst_' + relSlug + '.csv', '﻿' + csvRows.join('\n'));
+    if (btn) btn.textContent = '⏳ ZIP maken…';
+    try {
+      const content = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(content);
+      a.download = 'release_' + relSlug + '_' + ok + '_bestanden.zip';
+      a.click();
+    } catch(e){
+      alert('ZIP aanmaken mislukt: ' + e.message);
+    }
+    if (btn){ btn.disabled = false; btn.textContent = origText; }
+    if (fout > 0) alert(ok + ' gedownload, ' + fout + ' mislukt.');
+  }
+
   function _openReleasesDialog(){
     const modal = document.getElementById('dl-releases-modal');
     if (!modal) return;
@@ -6504,15 +6633,29 @@ const DL = (function(){
         +     '<div class="dl-rel-name">' + _esc(rel.name || '(naamloos)') + '</div>'
         +     '<div class="dl-rel-meta">' + _esc(metaParts.join(' — ')) + '</div>'
         +   '</div>'
+        +   '<button type="button" class="dl-rel-zip-btn" data-rel-id="' + _esc(rel.id) + '" title="Download alle bestanden als ZIP">📦 ZIP</button>'
         +   '<span class="dl-rel-status ' + statusCls + '">' + status + '</span>'
         + '</div>'
         + '<div class="dl-rel-files" style="display:none"></div>'
         + '</div>';
     }).join('');
-    // Click-handlers: header toggle = expand/laad files
+    // Click-handlers: header toggle = expand/laad files (negeer clicks op ZIP-knop)
     wrap.querySelectorAll('.dl-rel-item').forEach(function(item){
       const head = item.querySelector('.dl-rel-header');
-      if (head) head.addEventListener('click', function(){ _toggleReleaseExpand(item); });
+      if (head){
+        head.addEventListener('click', function(e){
+          if (e.target.closest('.dl-rel-zip-btn')) return;
+          _toggleReleaseExpand(item);
+        });
+      }
+    });
+    // ZIP-knop per release
+    wrap.querySelectorAll('.dl-rel-zip-btn').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        const relId = btn.getAttribute('data-rel-id');
+        if (relId) _downloadReleaseZip(relId, btn);
+      });
     });
   }
 
@@ -6542,12 +6685,14 @@ const DL = (function(){
       const fileId = _esc(f.id || f.fileId || '');
       return '<div class="dl-rel-file" data-vid="' + fileId + '">'
         + '<span class="dl-rel-file-name">' + name + '</span>'
+        + '<button type="button" class="dl-rel-file-remove" title="Verwijder uit release">🗑</button>'
         + '</div>';
     }).join('');
     filesEl.dataset.loaded = '1';
-    // Click file → sluit modal + open detail-paneel als file in _docs zit
+    // Click op file (niet op delete-knop) → sluit modal + open detail-paneel
     filesEl.querySelectorAll('.dl-rel-file').forEach(function(fileEl){
-      fileEl.addEventListener('click', function(){
+      fileEl.addEventListener('click', function(e){
+        if (e.target.closest('.dl-rel-file-remove')) return;
         const vid = fileEl.getAttribute('data-vid');
         if (!vid) return;
         const doc = _docs.find(function(x){ return x._vid === vid; });
@@ -6555,11 +6700,153 @@ const DL = (function(){
           _closeReleasesDialog();
           _openDetail(doc);
         } else {
-          // Bestand staat niet in huidige DL-lijst (mogelijk verwijderd of niet zichtbaar)
           alert('Bestand niet gevonden in de huidige documentenlijst. Mogelijk verwijderd of nog niet geladen.');
         }
       });
     });
+    // Delete-knop per file
+    filesEl.querySelectorAll('.dl-rel-file-remove').forEach(function(btn){
+      btn.addEventListener('click', async function(e){
+        e.stopPropagation();
+        const fileEl = btn.closest('.dl-rel-file');
+        const vid = fileEl && fileEl.getAttribute('data-vid');
+        const name = (fileEl && fileEl.querySelector('.dl-rel-file-name') || {}).textContent || 'bestand';
+        if (!vid || !relId) return;
+        await _removeFromRelease(relId, vid, name, fileEl);
+      });
+    });
+  }
+
+  // === Add-to-release dialog ===
+  async function _openAddToReleaseDialog(){
+    const modal = document.getElementById('dl-addrel-modal');
+    if (!modal) return;
+    const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+    if (!selDocs.length){ alert('Selecteer eerst bestanden om toe te voegen.'); return; }
+    // Reset
+    const form = document.getElementById('dl-addrel-form');
+    const success = document.getElementById('dl-addrel-success');
+    if (form) form.style.display = '';
+    if (success) success.style.display = 'none';
+    const submitBtn = document.getElementById('dl-addrel-submit');
+    if (submitBtn){ submitBtn.style.display = ''; submitBtn.disabled = false; submitBtn.textContent = 'Toevoegen'; }
+    document.getElementById('dl-addrel-name').value = '';
+    const due = document.getElementById('dl-addrel-due');
+    const d = new Date(); d.setDate(d.getDate() + 14);
+    due.value = d.toISOString().split('T')[0];
+    document.getElementById('dl-addrel-notes').value = '';
+    document.getElementById('dl-addrel-new-fields').style.display = 'none';
+    // Vul bestandenlijst
+    document.getElementById('dl-addrel-count').textContent = selDocs.length + ' bestand' + (selDocs.length === 1 ? '' : 'en');
+    document.getElementById('dl-addrel-files-list').innerHTML = selDocs.map(function(doc){
+      return '<li>' + _esc(doc.bestandsnaam || '–') + '</li>';
+    }).join('');
+    // Vul release-dropdown
+    modal.style.display = '';
+    const sel = document.getElementById('dl-addrel-target');
+    sel.innerHTML = '<option value="">— Kies een release —</option><option value="__new__">+ Nieuwe release aanmaken</option><option disabled>Laden…</option>';
+    const releases = await _fetchReleases();
+    // Sorteer: OPEN eerst (kandidaten voor toevoegen), dan SENT
+    const sorted = releases.slice().sort(function(a, b){
+      const sa = (a.status === 'OPEN') ? 0 : 1;
+      const sb = (b.status === 'OPEN') ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return (a.name || '').localeCompare(b.name || '', 'nl');
+    });
+    let html = '<option value="">— Kies een release —</option><option value="__new__">+ Nieuwe release aanmaken</option>';
+    if (sorted.length){
+      html += '<optgroup label="Bestaande releases">';
+      sorted.forEach(function(r){
+        const tag = r.status === 'SENT' ? ' (verzonden)' : '';
+        html += '<option value="' + _esc(r.id) + '">' + _esc(r.name || '(naamloos)') + tag + '</option>';
+      });
+      html += '</optgroup>';
+    }
+    sel.innerHTML = html;
+  }
+
+  function _closeAddToReleaseDialog(){
+    const modal = document.getElementById('dl-addrel-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function _toggleAddRelNewFields(){
+    const sel = document.getElementById('dl-addrel-target');
+    const newFields = document.getElementById('dl-addrel-new-fields');
+    const submitBtn = document.getElementById('dl-addrel-submit');
+    if (!sel || !newFields) return;
+    const isNew = sel.value === '__new__';
+    newFields.style.display = isNew ? '' : 'none';
+    if (submitBtn) submitBtn.textContent = isNew ? 'Aanmaken + toevoegen' : 'Toevoegen';
+  }
+
+  async function _submitAddToRelease(){
+    const sel = document.getElementById('dl-addrel-target');
+    const submitBtn = document.getElementById('dl-addrel-submit');
+    if (!sel || !submitBtn) return;
+    const val = sel.value;
+    if (!val){ alert('Kies een release of maak een nieuwe aan.'); return; }
+    const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+    if (!selDocs.length){ alert('Geen bestanden geselecteerd.'); return; }
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Bezig…';
+    try {
+      let relId = val;
+      let relName = '';
+      if (val === '__new__'){
+        const name = (document.getElementById('dl-addrel-name').value || '').trim();
+        const dueDate = document.getElementById('dl-addrel-due').value;
+        const notes = (document.getElementById('dl-addrel-notes').value || '').trim();
+        if (!name){ alert('Vul een naam in voor de release.'); submitBtn.disabled = false; submitBtn.textContent = 'Aanmaken + toevoegen'; return; }
+        if (!dueDate){ alert('Vul een deadline in.'); submitBtn.disabled = false; submitBtn.textContent = 'Aanmaken + toevoegen'; return; }
+        const createBody = { name: name, dueDate: dueDate + 'T23:59:00+0000', projectId: tcProject.id };
+        if (notes) createBody.notes = notes;
+        const createResp = await fetch(TC_API_BASE + '/releases', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + tcToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(createBody),
+        });
+        if (!createResp.ok){
+          const txt = await createResp.text().catch(function(){ return ''; });
+          throw new Error('Aanmaken mislukt: HTTP ' + createResp.status + ': ' + txt.slice(0, 200));
+        }
+        const createResult = await createResp.json();
+        relId = createResult.id;
+        relName = name;
+        console.log('[DL] release aangemaakt:', relId, name);
+      } else {
+        const existing = (_releasesCache.all || []).find(function(r){ return r.id === val; });
+        relName = existing ? existing.name : 'release';
+      }
+      // Voeg bestanden toe
+      const fileItems = selDocs.map(function(doc){ return { id: doc._vid, type: 'FILE' }; });
+      const addResp = await fetch(TC_API_BASE + '/releases/' + encodeURIComponent(relId) + '/files', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + tcToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(fileItems),
+      });
+      if (!addResp.ok){
+        const txt = await addResp.text().catch(function(){ return ''; });
+        throw new Error('Toevoegen mislukt: HTTP ' + addResp.status + ': ' + txt.slice(0, 200));
+      }
+      console.log('[DL]', selDocs.length, 'bestanden toegevoegd aan release', relName);
+      // Cache invalideren zodat releases-modal verse data toont
+      _releasesCache.all = null;
+      _releasesCache.byId.delete(relId);
+      // Toon succes
+      const form = document.getElementById('dl-addrel-form');
+      const success = document.getElementById('dl-addrel-success');
+      const msg = document.getElementById('dl-addrel-success-msg');
+      if (form) form.style.display = 'none';
+      if (success) success.style.display = '';
+      if (submitBtn) submitBtn.style.display = 'none';
+      if (msg) msg.textContent = '✓ ' + selDocs.length + ' bestand' + (selDocs.length === 1 ? '' : 'en') + ' toegevoegd aan release "' + relName + '".';
+    } catch(e){
+      console.error('[DL] add-to-release fout:', e);
+      alert(e.message);
+      submitBtn.disabled = false;
+      submitBtn.textContent = val === '__new__' ? 'Aanmaken + toevoegen' : 'Toevoegen';
+    }
   }
 
   // === Bulk-edit modal ===
@@ -7002,6 +7289,7 @@ const DL = (function(){
           '<span class="dl-selection-count" id="dl-selection-count">0 geselecteerd</span>' +
           '<button type="button" id="dl-share-btn" class="dl-selection-btn dl-selection-btn-primary">📤 Delen</button>' +
           '<button type="button" id="dl-bulk-edit-btn" class="dl-selection-btn dl-selection-btn-primary">✏️ Bulk wijzigen</button>' +
+          '<button type="button" id="dl-add-release-btn" class="dl-selection-btn dl-selection-btn-primary">📦 Naar release</button>' +
           '<button type="button" id="dl-selection-clear" class="dl-selection-btn">Selectie wissen</button>' +
         '</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
@@ -7116,6 +7404,48 @@ const DL = (function(){
             '</div>' +
             '<div class="dl-share-foot">' +
               '<button type="button" id="dl-releases-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        // Add-to-release modal (hidden default; geopend vanuit selection-bar "Naar release")
+        '<div id="dl-addrel-modal" class="dl-share-modal" style="display:none">' +
+          '<div class="dl-share-backdrop" id="dl-addrel-backdrop"></div>' +
+          '<div class="dl-share-panel" role="dialog" aria-label="Toevoegen aan release">' +
+            '<div class="dl-share-head">' +
+              '<h3 class="dl-share-title">Toevoegen aan release</h3>' +
+              '<button type="button" id="dl-addrel-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
+            '</div>' +
+            '<div class="dl-share-body">' +
+              '<div id="dl-addrel-form">' +
+                '<label class="dl-share-label">Release' +
+                  '<select id="dl-addrel-target" class="dl-share-input">' +
+                    '<option value="">— Kies een release —</option>' +
+                    '<option value="__new__">+ Nieuwe release aanmaken</option>' +
+                  '</select>' +
+                '</label>' +
+                '<div id="dl-addrel-new-fields" style="display:none">' +
+                  '<label class="dl-share-label">Nieuwe naam' +
+                    '<input type="text" id="dl-addrel-name" class="dl-share-input" placeholder="bijv. Uitvoeringsdossier 2026-W20">' +
+                  '</label>' +
+                  '<label class="dl-share-label">Deadline' +
+                    '<input type="date" id="dl-addrel-due" class="dl-share-input">' +
+                  '</label>' +
+                  '<label class="dl-share-label">Notitie (optioneel)' +
+                    '<textarea id="dl-addrel-notes" class="dl-share-input" rows="2" placeholder="Korte beschrijving…"></textarea>' +
+                  '</label>' +
+                '</div>' +
+                '<div class="dl-share-files">' +
+                  '<div class="dl-share-files-head"><strong id="dl-addrel-count">0 bestanden</strong></div>' +
+                  '<ul id="dl-addrel-files-list" class="dl-share-files-list"></ul>' +
+                '</div>' +
+              '</div>' +
+              '<div id="dl-addrel-success" style="display:none">' +
+                '<div class="dl-share-success-msg" id="dl-addrel-success-msg"></div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="dl-share-foot">' +
+              '<button type="button" id="dl-addrel-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
+              '<button type="button" id="dl-addrel-submit" class="dl-share-btn dl-share-btn-primary">Toevoegen</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -7352,6 +7682,19 @@ const DL = (function(){
     if (relCancel) relCancel.addEventListener('click', _closeReleasesDialog);
     const relBackdrop = root.querySelector('#dl-releases-backdrop');
     if (relBackdrop) relBackdrop.addEventListener('click', _closeReleasesDialog);
+    // Add-to-release dialog
+    const addRelBtn = root.querySelector('#dl-add-release-btn');
+    if (addRelBtn) addRelBtn.addEventListener('click', _openAddToReleaseDialog);
+    const addRelClose = root.querySelector('#dl-addrel-close');
+    if (addRelClose) addRelClose.addEventListener('click', _closeAddToReleaseDialog);
+    const addRelCancel = root.querySelector('#dl-addrel-cancel');
+    if (addRelCancel) addRelCancel.addEventListener('click', _closeAddToReleaseDialog);
+    const addRelBackdrop = root.querySelector('#dl-addrel-backdrop');
+    if (addRelBackdrop) addRelBackdrop.addEventListener('click', _closeAddToReleaseDialog);
+    const addRelTarget = root.querySelector('#dl-addrel-target');
+    if (addRelTarget) addRelTarget.addEventListener('change', _toggleAddRelNewFields);
+    const addRelSubmit = root.querySelector('#dl-addrel-submit');
+    if (addRelSubmit) addRelSubmit.addEventListener('click', _submitAddToRelease);
     // Kolom-picker: knop opent/sluit popover, outside-click sluit, reset-knop herstelt defaults
     const colsBtn = root.querySelector('#dl-cols-btn');
     const colsPicker = root.querySelector('#dl-cols-picker');
