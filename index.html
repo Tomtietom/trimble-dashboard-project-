@@ -353,6 +353,21 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 }
 .release-item .rel-meta{color:var(--g4);font-size:var(--fs-sm);white-space:nowrap}
 
+/* Clickable widget-rows: open TC-resource of switch naar inline extensie */
+.activity-item.clickable,
+.release-item.clickable,
+.fav-item.clickable{cursor:pointer;transition:background .12s}
+.activity-item.clickable:hover,
+.release-item.clickable:hover,
+.fav-item.clickable:hover{background:var(--afl)}
+.activity-item.clickable:active,
+.release-item.clickable:active,
+.fav-item.clickable:active{background:var(--hl)}
+.ext-link{font-size:11px;color:var(--g4);margin-left:auto;padding-left:var(--s2);flex-shrink:0;opacity:0;transition:opacity .12s}
+.activity-item.clickable:hover .ext-link,
+.release-item.clickable:hover .ext-link,
+.fav-item.clickable:hover .ext-link{opacity:1}
+
 /* Favorites */
 .favorites{
   background:#fff;border:1px solid var(--hl-light);
@@ -621,6 +636,14 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:var(--s3);padding:10px var(--s3);background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm)}
 .dl-meta-banner{padding:10px 14px;background:#eef4fb;border:1px solid #c8d9ea;border-left:3px solid #4a82c1;border-radius:var(--r-sm);margin-bottom:var(--s3);font-size:var(--fs-sm);color:#2a4d72}
 .dl-meta-banner strong{color:#1a3d62}
+.dl-selection-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--af);color:#fff;border-radius:var(--r-sm);margin-bottom:var(--s3);box-shadow:0 2px 8px rgba(0,0,0,.08);font-family:'Poppins',sans-serif}
+.dl-selection-count{font-weight:600;font-size:14px;flex:1}
+.dl-selection-btn{padding:6px 12px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;cursor:pointer;transition:background .15s}
+.dl-selection-btn:hover{background:rgba(255,255,255,.3)}
+.dl-tbl th.dl-th-cb,.dl-tbl td.dl-cell-cb{width:36px;padding:8px 6px;text-align:center;cursor:default;vertical-align:middle}
+.dl-tbl th.dl-th-cb input,.dl-tbl td.dl-cell-cb input{cursor:pointer;margin:0;vertical-align:middle}
+.dl-tbl tbody tr.dl-row.dl-row-selected{background:var(--afl)}
+.dl-tbl tbody tr.dl-row.dl-row-selected:hover{background:var(--afl)}
 .dl-filter{padding:6px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;background:#fff;cursor:pointer;min-width:140px}
 .dl-filter:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 2px var(--afl)}
 .dl-filter-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 13px 'Poppins',sans-serif;color:var(--g5);transition:all .15s}
@@ -1812,6 +1835,14 @@ function updateTileStat(key, text){
   if (el) el.textContent = text;
 }
 
+// Helper: open een resource in TC-web in een nieuwe tab (uit cockpit-iframe).
+// Path-arg is relatief aan /projects/{id}/; leeg = project-home.
+function openInTC(path){
+  if (!tcProject || !tcProject.id) return;
+  const url = 'https://web.connect.trimble.com/projects/' + tcProject.id + (path ? '/' + path : '');
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 function renderActivity(rootList){
   const el = $('activity');
   const items = Array.isArray(rootList) ? rootList.slice() : [];
@@ -1829,16 +1860,29 @@ function renderActivity(rootList){
     const isFolder = it.type === 'FOLDER';
     const id = it.id || '';
     const isFav = favs[id] ? 'active' : '';
-    return '<div class="activity-item">'
+    const target = isFolder ? 'documentenlijst' : ('tc-file:' + id);
+    const tip = isFolder ? 'Open in Documentenlijst' : 'Open in Trimble Connect';
+    return '<div class="activity-item clickable" data-target="'+escapeHtml(target)+'" title="'+escapeHtml(tip)+'">'
       + '<span class="ac-ico">'+(isFolder ? ICON_FOLDER : ICON_FILE)+'</span>'
       + '<span class="name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
       + '<span class="meta">'+escapeHtml(when)+'</span>'
-      + (isFolder ? '<button class="ac-star '+isFav+'" type="button" data-fav-id="'+escapeHtml(id)+'" data-fav-name="'+escapeHtml(name)+'" title="'+(isFav?'Verwijder uit favorieten':'Voeg toe aan favorieten')+'">★</button>' : '')
+      + (isFolder ? '<button class="ac-star '+isFav+'" type="button" data-fav-id="'+escapeHtml(id)+'" data-fav-name="'+escapeHtml(name)+'" title="'+(isFav?'Verwijder uit favorieten':'Voeg toe aan favorieten')+'">★</button>'
+                  : '<span class="ext-link">↗ TC</span>')
       + '</div>';
   }).join('');
+  // Bind row-clicks (folder → inline DL; file → TC web)
+  el.querySelectorAll('.activity-item.clickable').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if (e.target.closest('.ac-star')) return; // star-klik niet doorlaten
+      const t = row.getAttribute('data-target');
+      if (t === 'documentenlijst') showView('documentenlijst');
+      else if (t && t.indexOf('tc-file:') === 0) openInTC('data/file/' + t.slice(8));
+    });
+  });
   // Bind star-knoppen
   el.querySelectorAll('.ac-star').forEach(function(btn){
-    btn.addEventListener('click', function(){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
       toggleFavorite(btn.getAttribute('data-fav-id'), btn.getAttribute('data-fav-name'));
       btn.classList.toggle('active');
       renderFavorites();
@@ -1924,12 +1968,20 @@ function renderReleases(releases){
     const name = r.name || r.title || 'Onbekend';
     const tag = r.version || r.code || 'rel';
     const when = formatDate(r.modifiedOn || r.createdOn);
-    return '<div class="release-item">'
+    const id = r.id || '';
+    return '<div class="release-item clickable" data-release-id="'+escapeHtml(id)+'" title="Open release in Trimble Connect">'
       + '<span class="rel-tag">'+escapeHtml(String(tag).substring(0,8))+'</span>'
       + '<span class="rel-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
       + '<span class="rel-meta">'+escapeHtml(when)+'</span>'
+      + '<span class="ext-link">↗ TC</span>'
       + '</div>';
   }).join('');
+  el.querySelectorAll('.release-item.clickable').forEach(function(row){
+    row.addEventListener('click', function(){
+      const id = row.getAttribute('data-release-id');
+      openInTC(id ? 'releases/' + id : 'releases');
+    });
+  });
 }
 
 // Laatst geüploade bestanden — alleen FILE-types, gesorteerd op createdOn
@@ -1947,12 +1999,20 @@ function renderUploads(rootList){
     const when = formatDate(it.createdOn || it.modifiedOn);
     const uploader = it.createdBy?.firstName ? (it.createdBy.firstName + ' ' + (it.createdBy.lastName || '')).trim() : '';
     const meta = uploader ? when + ' · ' + uploader : when;
-    return '<div class="activity-item">'
+    const id = it.id || '';
+    return '<div class="activity-item clickable" data-file-id="'+escapeHtml(id)+'" title="Open in Trimble Connect">'
       + '<span class="ac-ico">'+ICON_FILE+'</span>'
       + '<span class="name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
       + '<span class="meta">'+escapeHtml(meta)+'</span>'
+      + '<span class="ext-link">↗ TC</span>'
       + '</div>';
   }).join('');
+  el.querySelectorAll('.activity-item.clickable').forEach(function(row){
+    row.addEventListener('click', function(){
+      const id = row.getAttribute('data-file-id');
+      if (id) openInTC('data/file/' + id); else openInTC('');
+    });
+  });
 }
 
 // Openstaande gedeelde links
@@ -1982,12 +2042,21 @@ function renderShares(shares){
     const exp = s.expiresOn || s.expiryDate;
     const expStr = exp ? 'Verloopt ' + formatDate(exp) : 'Geen einddatum';
     const tag = s.permission || (s.isPublic ? 'PUBLIEK' : 'LINK');
-    return '<div class="release-item">'
+    const link = s.link || s.url || '';
+    return '<div class="release-item clickable" data-share-link="'+escapeHtml(link)+'" title="'+(link ? 'Open share-link' : 'Open shares-overzicht in Trimble Connect')+'">'
       + '<span class="rel-tag">'+escapeHtml(String(tag).substring(0,10))+'</span>'
       + '<span class="rel-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
       + '<span class="rel-meta">'+escapeHtml(expStr)+'</span>'
+      + '<span class="ext-link">↗ TC</span>'
       + '</div>';
   }).join('');
+  el.querySelectorAll('.release-item.clickable').forEach(function(row){
+    row.addEventListener('click', function(){
+      const link = row.getAttribute('data-share-link');
+      if (link) window.open(link, '_blank', 'noopener,noreferrer');
+      else openInTC('shares');
+    });
+  });
 }
 
 // Favorites: per-project bookmarks van folder-IDs (localStorage)
@@ -2023,15 +2092,23 @@ function renderFavorites(){
   ids.sort(function(a,b){ return (favs[b].addedAt||0) - (favs[a].addedAt||0); });
   el.innerHTML = ids.map(function(id){
     const name = favs[id].name || '(naam onbekend)';
-    return '<div class="fav-item">'
+    return '<div class="fav-item clickable" data-fav-folder-id="'+escapeHtml(id)+'" title="Open in Documentenlijst">'
       + '<span class="fav-ico">'+ICON_FOLDER+'</span>'
       + '<span class="fav-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
       + '<button class="fav-remove" type="button" data-fav-remove="'+escapeHtml(id)+'" title="Verwijder favoriet">×</button>'
       + '</div>';
   }).join('');
+  // Bind row-click (open folder in inline DL)
+  el.querySelectorAll('.fav-item.clickable').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if (e.target.closest('.fav-remove')) return;
+      showView('documentenlijst');
+    });
+  });
   // Bind remove-knoppen
   el.querySelectorAll('[data-fav-remove]').forEach(function(btn){
-    btn.addEventListener('click', function(){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
       const favs2 = loadFavorites();
       delete favs2[btn.getAttribute('data-fav-remove')];
       saveFavorites(favs2);
@@ -4706,6 +4783,7 @@ const DL = (function(){
   let _prefetchProgress = null; // (info)=>void — gezet door cockpit prefetch-orchestrator
   let _selectedDoc = null;   // huidige doc in detail-paneel ('_vid' van geselecteerde rij)
   let _escListener = null;   // escape-key handler tijdens panel open
+  let _selectedVids = new Set(); // bestanden geselecteerd via checkbox (voor bulk-acties: delen, download, edit)
   const _commentCache = new Map(); // vid → first-comment object | null (in-memory, lifetime = page-load)
   const _versionsCache = new Map(); // vid → array van versies | null (in-memory, lifetime = page-load)
   // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
@@ -5665,7 +5743,9 @@ const DL = (function(){
   }
 
   function _renderRow(d){
-    let html = '<tr class="dl-row" data-dl-vid="' + _esc(d._vid || '') + '">';
+    const selected = d._vid && _selectedVids.has(d._vid);
+    let html = '<tr class="dl-row' + (selected ? ' dl-row-selected' : '') + '" data-dl-vid="' + _esc(d._vid || '') + '">';
+    html += '<td class="dl-cell-cb"><input type="checkbox" class="dl-row-cb" data-vid="' + _esc(d._vid || '') + '"' + (selected ? ' checked' : '') + '></td>';
     for (const c of _getActiveCols()){
       let v = d[c.k];
       let cls = '';
@@ -5694,14 +5774,17 @@ const DL = (function(){
     if (!tbl) return;
     const cols = _getActiveCols();
     const colgroup = tbl.querySelector('colgroup');
-    if (colgroup) colgroup.innerHTML = cols.map(function(c){ return '<col style="width:' + c.w + '">'; }).join('');
+    if (colgroup){
+      colgroup.innerHTML = '<col style="width:36px">' + cols.map(function(c){ return '<col style="width:' + c.w + '">'; }).join('');
+    }
     const headRow = tbl.querySelector('thead tr');
     if (headRow){
-      headRow.innerHTML = cols.map(function(c){
-        return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
-          + '<span class="dl-sort-ind"></span>'
-          + '<span class="dl-resizer" data-resize="' + _esc(c.k) + '"></span></th>';
-      }).join('');
+      headRow.innerHTML = '<th class="dl-th-cb"><input type="checkbox" id="dl-select-all" title="Alles selecteren (gefilterd)"></th>'
+        + cols.map(function(c){
+            return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
+              + '<span class="dl-sort-ind"></span>'
+              + '<span class="dl-resizer" data-resize="' + _esc(c.k) + '"></span></th>';
+          }).join('');
       // Re-bind sort-events op nieuwe th's (negeer clicks op resizer)
       headRow.querySelectorAll('.dl-th').forEach(function(th){
         th.addEventListener('click', function(e){
@@ -5714,6 +5797,20 @@ const DL = (function(){
         });
       });
       _bindThDragHandlers(headRow);
+      // Select-all checkbox in header
+      const selAll = headRow.querySelector('#dl-select-all');
+      if (selAll){
+        selAll.addEventListener('click', function(e){ e.stopPropagation(); });
+        selAll.addEventListener('change', function(){
+          const filtered = _filt();
+          if (selAll.checked){
+            filtered.forEach(function(d){ if (d._vid) _selectedVids.add(d._vid); });
+          } else {
+            filtered.forEach(function(d){ if (d._vid) _selectedVids.delete(d._vid); });
+          }
+          _renderTable();
+        });
+      }
     }
   }
 
@@ -5765,7 +5862,7 @@ const DL = (function(){
         groups[g].push(d);
       });
       groupOrder.sort(function(a,b){ return a.localeCompare(b, 'nl'); });
-      const colspan = _getActiveCols().length;
+      const colspan = _getActiveCols().length + 1; // +1 voor checkbox-kolom
       const icon = _groupBy === 'file_location' ? '📁' : '🏷️';
       for (const g of groupOrder){
         const lbl = g === '.' ? '(deze map)' : g;
@@ -5784,15 +5881,70 @@ const DL = (function(){
 
     // Klik op rij → detail-paneel openen (filter group-rows uit)
     // Klik op bestandsnaam-link → opent file in TC (new tab); detail-paneel niet openen.
+    // Klik op checkbox of checkbox-cel → selectie wijzigen; detail-paneel niet openen.
     tbody.querySelectorAll('tr.dl-row').forEach(function(tr){
       tr.addEventListener('click', function(e){
         if (e.target.closest('.dl-cell-link')) return;
+        if (e.target.closest('.dl-row-cb')) return;
+        if (e.target.closest('.dl-cell-cb')) return;
         const vid = tr.getAttribute('data-dl-vid');
         if (!vid) return;
         const doc = _docs.find(function(x){ return x._vid === vid; });
         if (doc) _openDetail(doc);
       });
     });
+
+    // Per-rij checkboxes binden
+    tbody.querySelectorAll('input.dl-row-cb').forEach(function(cb){
+      cb.addEventListener('click', function(e){ e.stopPropagation(); });
+      cb.addEventListener('change', function(){
+        const vid = cb.getAttribute('data-vid');
+        if (!vid) return;
+        if (cb.checked) _selectedVids.add(vid); else _selectedVids.delete(vid);
+        const tr = cb.closest('tr.dl-row');
+        if (tr) tr.classList.toggle('dl-row-selected', cb.checked);
+        _updateSelectionBar();
+        _updateSelectAllState();
+      });
+    });
+
+    // Select-all + selection-bar state syncen na render
+    _updateSelectAllState();
+    _updateSelectionBar();
+  }
+
+  // Selection-bar zichtbaar maken / teller bijwerken
+  function _updateSelectionBar(){
+    const bar = document.getElementById('dl-selection-bar');
+    const counter = document.getElementById('dl-selection-count');
+    if (!bar) return;
+    const n = _selectedVids.size;
+    if (n === 0){
+      bar.style.display = 'none';
+    } else {
+      bar.style.display = '';
+      if (counter) counter.textContent = n + ' geselecteerd';
+    }
+  }
+
+  // Header "select all" checkbox: aan = alle gefilterde in selectie, mixed = indeterminate
+  function _updateSelectAllState(){
+    const selAll = document.getElementById('dl-select-all');
+    if (!selAll) return;
+    const filtered = _filt();
+    if (!filtered.length){
+      selAll.checked = false;
+      selAll.indeterminate = false;
+      return;
+    }
+    let allOn = true;
+    let anyOn = false;
+    for (const d of filtered){
+      if (d._vid && _selectedVids.has(d._vid)) anyOn = true;
+      else allOn = false;
+    }
+    selAll.checked = allOn;
+    selAll.indeterminate = !allOn && anyOn;
   }
 
   function _renderLoading(show){
@@ -5821,12 +5973,14 @@ const DL = (function(){
     // Initiële render: gebruik _getActiveCols() zodat we direct de juiste kolom-set
     // tonen. Bij verandering van _hasMetaSchema later updateert _renderTableHeader().
     const initialCols = _getActiveCols();
-    const colHtml = initialCols.map(function(c){ return '<col style="width:' + c.w + '">'; }).join('');
-    const thHtml = initialCols.map(function(c){
-      return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
-        + '<span class="dl-sort-ind"></span>'
-        + '<span class="dl-resizer" data-resize="' + _esc(c.k) + '"></span></th>';
-    }).join('');
+    // Checkbox-kolom altijd als eerste, vóór de data-kolommen.
+    const colHtml = '<col style="width:36px">' + initialCols.map(function(c){ return '<col style="width:' + c.w + '">'; }).join('');
+    const thHtml = '<th class="dl-th-cb"><input type="checkbox" id="dl-select-all" title="Alles selecteren (gefilterd)"></th>'
+      + initialCols.map(function(c){
+          return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
+            + '<span class="dl-sort-ind"></span>'
+            + '<span class="dl-resizer" data-resize="' + _esc(c.k) + '"></span></th>';
+        }).join('');
     root.innerHTML =
       '<section class="sec">' +
         '<div class="dl-app-head">' +
@@ -5851,6 +6005,10 @@ const DL = (function(){
         '<div id="dl-error" class="dl-error" style="display:none"></div>' +
         '<div id="dl-loading" class="dl-loading" style="display:none">Documenten laden…</div>' +
         '<div id="dl-meta-banner" class="dl-meta-banner" style="display:none"><strong>Geen metadata-schema in dit project.</strong> Filters en metadata-kolommen zijn uitgeschakeld. Bestandsnaam, versie, datum en map blijven beschikbaar.</div>' +
+        '<div id="dl-selection-bar" class="dl-selection-bar" style="display:none">' +
+          '<span class="dl-selection-count" id="dl-selection-count">0 geselecteerd</span>' +
+          '<button type="button" id="dl-selection-clear" class="dl-selection-btn">Selectie wissen</button>' +
+        '</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
         '<div id="dl-ext-chips" class="dl-ext-chips" style="display:none"></div>' +
         '<div id="dl-main" class="dl-main">' +
