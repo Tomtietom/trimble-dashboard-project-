@@ -599,8 +599,10 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-cell-link:hover{text-decoration:underline}
 .dl-detail-link{color:var(--af);text-decoration:none}
 .dl-detail-link:hover{text-decoration:underline}
-.dl-detail-open{display:inline-block;margin-top:var(--s4);padding:8px 14px;background:var(--af);color:#fff;text-decoration:none;border-radius:var(--r-sm);font-size:14px;font-weight:500;transition:background .15s}
+.dl-detail-open{display:inline-block;margin-top:var(--s4);margin-right:8px;padding:8px 14px;background:var(--af);color:#fff;text-decoration:none;border-radius:var(--r-sm);font-size:14px;font-weight:500;transition:background .15s}
 .dl-detail-open:hover{background:var(--af2)}
+.dl-detail-open-secondary{background:#fff;color:var(--af);border:1px solid var(--af)}
+.dl-detail-open-secondary:hover{background:var(--afl);color:var(--af2)}
 .dl-tbl .dl-th:hover{background:var(--hl-light)}
 .dl-tbl .dl-th.sorted{color:var(--af)}
 .dl-tbl .dl-th .dl-sort-ind{display:inline-block;width:10px;font-size:9px;margin-left:4px;color:var(--af)}
@@ -4592,16 +4594,20 @@ const DL = (function(){
     // 2D / PDF / images / office — version=vid werkt als "huidige versie"
     return 'https://web.connect.trimble.com/projects/' + pid + '/viewer/2D?id=' + vid + '&version=' + vid;
   }
-  function _tcFolderUrl(pathLoc, vid){
+  function _tcFolderUrl(pathLoc){
     if (!pathLoc || pathLoc === '(projectroot)' || !tcProject || !tcProject.id) return '';
     const folderId = _folderIdByPath[pathLoc];
     if (!folderId) return '';
-    let url = 'https://web.connect.trimble.com/projects/' + encodeURIComponent(tcProject.id) + '/data/folder/' + encodeURIComponent(folderId);
-    // Bij meegegeven vid: probeer het bestand te selecteren binnen de folder-view.
-    // ?selectedItem= is het patroon dat TC's eigen UI gebruikt; als TC het negeert blijft
-    // de folder gewoon openen (geen regressie).
-    if (vid) url += '?selectedItem=' + encodeURIComponent(vid);
-    return url;
+    // TC ondersteunt géén pre-selectie van een bestand via URL-param (geverifieerd in
+    // ExplorerEmbedProperties: geen selectedFileId/fileId/selectedItem property bestaat).
+    return 'https://web.connect.trimble.com/projects/' + encodeURIComponent(tcProject.id) + '/data/folder/' + encodeURIComponent(folderId);
+  }
+  // TC's eigen "file detail" URL — toont het bestand met preview en metadata in Connect's
+  // file-management UI, zonder direct de viewer te openen. Dichter bij "bestand in map"
+  // dan alleen-folder, want de folder-tree is zichtbaar links.
+  function _tcFileDetailUrl(doc){
+    if (!doc || !doc._vid || !tcProject || !tcProject.id) return '';
+    return 'https://web.connect.trimble.com/projects/' + encodeURIComponent(tcProject.id) + '/files/' + encodeURIComponent(doc._vid);
   }
   function _getActiveCols(){
     let visible = ALL_COLS.filter(function(c){ return _visibleColKeys.has(c.k); });
@@ -5097,8 +5103,9 @@ const DL = (function(){
       });
     }
     const d = _selectedDoc;
-    const folderUrl = _tcFolderUrl(d.file_location, d._vid);
+    const folderUrl = _tcFolderUrl(d.file_location);
     const fileUrl = _tcFileUrl(d);
+    const fileDetailUrl = _tcFileDetailUrl(d);
     // Splits velden: technisch + metadata (alleen niet-leeg)
     // Map-veld krijgt link naar TC-verkenner als folderId bekend is.
     const mapVal = d.file_location || '–';
@@ -5129,9 +5136,14 @@ const DL = (function(){
       return '<tr><th>' + _esc(r.l) + '</th><td>' + cell + '</td></tr>';
     }
 
-    const openBtn = fileUrl
-      ? '<a class="dl-detail-open" href="' + _esc(fileUrl) + '" target="_blank" rel="noopener" title="Open dit bestand in Trimble Connect (nieuw tabblad)">Open in Trimble Connect ↗</a>'
-      : '';
+    // Twee knoppen: viewer (direct in 2D/3D viewer) en TC file-detail (file in Connect file-UI met preview)
+    let openBtns = '';
+    if (fileUrl){
+      openBtns += '<a class="dl-detail-open" href="' + _esc(fileUrl) + '" target="_blank" rel="noopener" title="Open in 2D/3D viewer">Open in viewer ↗</a>';
+    }
+    if (fileDetailUrl){
+      openBtns += '<a class="dl-detail-open dl-detail-open-secondary" href="' + _esc(fileDetailUrl) + '" target="_blank" rel="noopener" title="Open in Trimble Connect file-overzicht (met map-context)">Toon in Connect ↗</a>';
+    }
 
     overlay.innerHTML =
       '<div class="dl-detail-panel" role="dialog" aria-label="Bestandsdetails">' +
@@ -5145,7 +5157,7 @@ const DL = (function(){
           (metaRows.length
             ? '<h4 class="dl-detail-section">Metadata</h4><table class="dl-detail-table">' + metaRows.map(rowHtml).join('') + '</table>'
             : '<h4 class="dl-detail-section">Metadata</h4><div class="dl-detail-empty">Geen metadata ingevuld voor dit bestand.</div>') +
-          openBtn +
+          openBtns +
         '</div>' +
       '</div>';
 
