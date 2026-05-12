@@ -448,6 +448,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .queue-body input[type=text],.queue-body textarea,.queue-body select{width:100%;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font-family:'Poppins',sans-serif;font-size:var(--fs-md);background:#fff;color:var(--dk);outline:none;transition:border-color .15s}
 .queue-body input[type=text]:focus,.queue-body textarea:focus,.queue-body select:focus{border-color:var(--af)}
 .queue-body textarea{resize:vertical;min-height:54px}
+.queue-body .pu-desc-hint{font-size:var(--fs-xs);color:var(--g5);margin:4px 2px 0;line-height:1.4;font-style:italic}
 
 .pu-progress{height:6px;background:var(--g2);border-radius:3px;margin-top:var(--s3);overflow:hidden}
 .pu-progress-bar{height:100%;background:var(--af);width:0%;transition:width .2s}
@@ -4068,6 +4069,7 @@ const PU = (function(){
           + '<div class="queue-body">'
             + '<label>Beschrijving</label>'
             + '<textarea data-field="description" data-id="' + item.id + '" ' + disabled + ' placeholder="Optioneel…">' + escapeHtml(item.description) + '</textarea>'
+            + '<div class="pu-desc-hint">Wordt als 1e opmerking bij het bestand opgeslagen in Trimble Connect. Ook gebruikt om regels te matchen op woorden die niet in de bestandsnaam staan.</div>'
             + metaRow
             + '<label>Map</label>'
             + folderPicker
@@ -4352,6 +4354,32 @@ const PU = (function(){
     } else {
       item.status = 'done';
       renderQueue();
+    }
+
+    // Beschrijving als 1e comment opslaan op het bestand.
+    // Spec: POST /comments met {objectId, objectType:'FILE', description}.
+    // Niet-blokkerend: faalt het, dan log alleen — upload + metadata zijn al binnen.
+    if (item.fileId && item.description && item.description.trim()){
+      try {
+        await _puFetch('/comments', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', 'x-trimbleconnect-client':'TCWEB' },
+          body: JSON.stringify({
+            objectId: item.fileId,
+            objectType: 'FILE',
+            description: item.description.trim(),
+          }),
+        });
+        console.log('[PU] comment opgeslagen voor:', item.file.name);
+      } catch(e){
+        console.warn('[PU] comment opslaan mislukt:', item.file.name, '—', e.message);
+        // Bestaande warn behouden als die er al was (PSet-fail); anders comment-warn zetten
+        if (item.status === 'done'){
+          item.status = 'done-warn';
+          item.warn = 'beschrijving niet als comment opgeslagen: ' + e.message.slice(0,120);
+          renderQueue();
+        }
+      }
     }
   }
 
