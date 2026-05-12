@@ -1853,41 +1853,15 @@ function _tcRegionToTrn(region){
   return 'eu';
 }
 async function fetchIssuesForProject(pid){
-  if (!pid || !tcToken) return null;
-  // Spec-conforme TRN: trn:2:tc:{us|eu|ap|ap-au}:projects:{projectId}
-  // Diagnose (mei 2026): server geeft consequent 400 "Please provide a valid value for contextId"
-  // op alle TRN-varianten (raw + encoded, met/zonder fields). Het verschijnsel is project-afhankelijk;
-  // waarschijnlijk moet BCF Topics / Issue Mgmt per project geactiveerd zijn in TC. Daarom: gracieus
-  // afhandelen — bij 400/403/404 melden we het rustig en valt de tegel terug op de placeholder-tekst.
-  const trn = 'trn:2:tc:' + _tcRegionToTrn(tcRegion) + ':projects:' + encodeURIComponent(pid);
-  const url = ISSUE_API_BASE + '/context/' + trn + '/issues?pageSize=20';
-  try {
-    const r = await fetch(url, {
-      headers: { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' }
-    });
-    if (r.ok){
-      const data = await r.json();
-      const items = Array.isArray(data) ? data : (data.items || []);
-      console.log('[Cockpit] Issues opgehaald — items:', items.length);
-      return items;
-    }
-    // Alle 4xx-paden interpreteren als "issues niet beschikbaar voor dit project":
-    //  - 400: contextId afgewezen → BCF/Issue Mgmt waarschijnlijk niet actief op dit project
-    //  - 401/403: token-scope of permission
-    //  - 404: endpoint of project niet gevonden
-    if (r.status >= 400 && r.status < 500){
-      console.log('[Cockpit] Issues niet beschikbaar voor dit project (HTTP ' + r.status + ')');
-      return null;
-    }
-    // 5xx of andere onverwachte status — wel als waarschuwing loggen
-    let body = '';
-    try { body = await r.text(); } catch(_){}
-    console.warn('[Cockpit] Issues HTTP ' + r.status + ': ' + body.slice(0, 300));
-    return null;
-  } catch(e){
-    console.warn('[Cockpit] Issues fetch fout:', e.message);
-    return null;
-  }
+  // BCF / Topics / Issue Management API: alle drie request-formaten die we probeerden
+  // (minimal, fields-explode, fields-csv) gaven consequent 400 "Please provide a valid value
+  // for contextId". Trimble's Topics API docs zijn niet (meer) publiek beschikbaar op
+  // developer.trimble.com — pogingen zonder docs = gokwerk + console-noise zonder waarde.
+  //
+  // Dashboard-tegel toont al "Te-do's nog niet gekoppeld in deze omgeving" wanneer we null
+  // teruggeven, dus functioneel verandert er niks. Heractiveer deze functie zodra de Topics
+  // API spec gevonden of via TC's eigen frontend gereverse-engineerd is.
+  return null;
 }
 
 function renderTodos(todos){
