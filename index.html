@@ -5454,9 +5454,15 @@ const DL = (function(){
   let _autoRefreshTimer = null;
   let _isCheckingUpdates = false;
   let _updatesSnapshot = null; // { nieuw: [vids], gewijzigd: [vids], aantal: N }
-  // localStorage cache voor PSet metadata: { ts, byVid: {vid: {veld: waarde, ...} of null} }
-  // 24u TTL — voorkomt 13s wachten op deep-scan bij elk her-openen van de tab.
-  const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  // localStorage cache voor PSet metadata.
+  // Format v2: { ts, byVid: { vid: { kind: 'data'|'empty', ts: <ms>, meta?: {...} } } }
+  // - 'data'-entries: 24u TTL (gelijk aan eerder).
+  // - 'empty'-entries: 2u TTL (kortere periode zodat tijdelijke API-storingen of
+  //   post-upload-metadata zich automatisch herstellen).
+  // Format v1 (legacy: bytwid: meta-object of null) wordt als verlopen behandeld → herfetch.
+  const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;       // backwards-compat top-level TTL
+  const _CACHE_TTL_DATA_MS  = 24 * 60 * 60 * 1000; // entry met metadata
+  const _CACHE_TTL_EMPTY_MS =  2 * 60 * 60 * 1000; // entry zonder metadata
   function _cacheKey(){ return 'dl-pset-' + (tcProject && tcProject.id || 'unknown'); }
   function _readCache(){
     try {
@@ -5476,6 +5482,7 @@ const DL = (function(){
   function _buildCacheFromDocs(){
     const byVid = {};
     const metaFields = Object.values(PROP_MAP); // alle velden die we mappen
+    const now = Date.now();
     for (const d of _docs){
       if (!d._vid) continue;
       const meta = {};
@@ -5483,20 +5490,26 @@ const DL = (function(){
       for (const f of metaFields){
         if (d[f]){ meta[f] = d[f]; any = true; }
       }
-      byVid[d._vid] = any ? meta : null; // null = leeg PSet (skip bij volgende load)
+      byVid[d._vid] = any
+        ? { kind: 'data', ts: now, meta: meta }
+        : { kind: 'empty', ts: now };
     }
     return byVid;
   }
   function _applyCacheToDocs(cache){
     let hits = 0, withMeta = 0;
+    const now = Date.now();
     for (const d of _docs){
       if (!d._vid) continue;
       const entry = cache.byVid[d._vid];
-      if (entry === undefined) continue; // niet in cache — moet fetched worden
+      if (!entry || typeof entry !== 'object') continue; // niet in cache OF oud format → herfetch
+      if (!entry.ts || !entry.kind) continue;            // legacy entry zonder metadata over format → herfetch
+      const ttl = entry.kind === 'empty' ? _CACHE_TTL_EMPTY_MS : _CACHE_TTL_DATA_MS;
+      if ((now - entry.ts) > ttl) continue;              // verlopen → herfetch
       hits++;
       d._matchedFromBulk = true; // signal: skip bulk + deep-scan
-      if (entry){
-        Object.assign(d, entry);
+      if (entry.meta){
+        Object.assign(d, entry.meta);
         withMeta++;
       }
     }
@@ -5850,6 +5863,38 @@ const DL = (function(){
       if (d.document_status || d.discipline || d.project_fase || d.bedrijf || d.titel || d.document_nummer){
         d._matchedFromBulk = true;
       }
+    }
+    // Auto-detectie van cache-corruption: als bulk metadata vindt op vids die de cache als
+    // 'empty' had aangemerkt, was de cache eerder verkeerd. Wis 'm en reset _matchedFromBulk
+    // zodat deep-scan álles oppakt — anders zou de cache de "leeg"-vlag blijven domineren.
+    try {
+      const bulkVids = new Set();
+      for (const inst of allInstances){
+        const link = (inst && inst.link) || '';
+        if (!/^frn:tcfile:/.test(link)) continue;
+        const vid = link.replace(/^frn:tcfile:/, '').split('@')[0];
+        if (vid) bulkVids.add(vid);
+      }
+      const cache = _readCache();
+      if (cache && cache.byVid){
+        let liedFor = 0;
+        for (const vid of bulkVids){
+          const entry = cache.byVid[vid];
+          if (entry && entry.kind === 'empty') liedFor++;
+        }
+        if (liedFor >= 5){
+          console.warn('[DL] cache-corruption gedetecteerd:', liedFor, 'docs werden ten onrechte als leeg gecached — cache wissen + volledige deep-scan');
+          try { localStorage.removeItem(_cacheKey()); } catch(_){}
+          // Reset _matchedFromBulk voor docs die alleen via cache als leeg waren geclaimd
+          // (= docs zonder zichtbare metadata in deze sessie). Bulk-matched docs houden de vlag.
+          for (const d of _docs){
+            const heeftMeta = d.document_status || d.discipline || d.project_fase || d.bedrijf || d.titel || d.document_nummer;
+            if (!heeftMeta) delete d._matchedFromBulk;
+          }
+        }
+      }
+    } catch(e){
+      console.warn('[DL] cache-corruption check fout (niet fataal):', e.message);
     }
   }
 
@@ -6391,7 +6436,7 @@ const DL = (function(){
           _loadPSetSchema().catch(function(e){ console.warn('[DL] schema laden mislukt:', e.message); }).finally(function(){
             try { _renderTable(); _renderColPicker(); } catch(_){}
           });
-          console.log('[DL] cache hit:', hits, '/', _docs.length, 'docs (' + withMeta + ' met metadata) — bulk + deep-scan overgeslagen');
+          console.log('[DL] cache hit:', hits, '/', _docs.length, 'docs (' + withMeta + ' met metadata, ' + (hits - withMeta) + ' als leeg gecached) — bulk + deep-scan overgeslagen');
           _renderTable();
           _buildDatalists();
           // Retry pending edits ook bij cache-hit (anders wachten ze tot volgende force-refresh)
