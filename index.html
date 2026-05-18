@@ -5461,7 +5461,9 @@ const DL = (function(){
   //   post-upload-metadata zich automatisch herstellen).
   // Format v1 (legacy: bytwid: meta-object of null) wordt als verlopen behandeld → herfetch.
   const _CACHE_TTL_MS = 24 * 60 * 60 * 1000;       // backwards-compat top-level TTL
-  const _CACHE_TTL_DATA_MS  = 24 * 60 * 60 * 1000; // entry met metadata
+  const _CACHE_TTL_DATA_MS  =  4 * 60 * 60 * 1000; // entry met metadata — verkort van 24u (mei 18 2026, Stadlander-incident).
+                                                   // TC's bulk cap't op 100 instances; docs buiten die top-100 bleven anders
+                                                   // 24u onleesbaar achter stale cache na TC-native edits.
   const _CACHE_TTL_EMPTY_MS =  2 * 60 * 60 * 1000; // entry zonder metadata
   function _cacheKey(){ return 'dl-pset-' + (tcProject && tcProject.id || 'unknown'); }
   function _readCache(){
