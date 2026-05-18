@@ -5980,8 +5980,15 @@ const DL = (function(){
       ind = document.createElement('div');
       ind.id = 'dl-deep-scan';
       ind.className = 'dl-deep-scan';
-      if (bar && bar.parentNode) bar.parentNode.insertBefore(ind, bar.nextSibling);
-      else root.querySelector('section').appendChild(ind);
+      if (bar && bar.parentNode){
+        bar.parentNode.insertBefore(ind, bar.nextSibling);
+      } else {
+        // Tijdens prefetch (vóór injectHtml) is <section> nog niet aanwezig — skip UI-update.
+        // Deep-scan zelf draait wel door en cache wordt aan het eind alsnog geschreven.
+        const section = root.querySelector('section');
+        if (!section) return;
+        section.appendChild(ind);
+      }
     }
     if (_deepScanState.actief){
       const pct = Math.round(_deepScanState.gedaan / _deepScanState.totaal * 100);
