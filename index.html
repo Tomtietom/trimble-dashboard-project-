@@ -7075,18 +7075,16 @@ const DL = (function(){
   // Merge recente saves over docs[]. Returnt aantal velden dat geüpdatet werd.
   // Aangeroepen na _loadMetadata + na cache-hit pad, vóór _renderTable.
   //
-  // Externe-wijziging-detectie via waarde-vergelijking:
-  //   - Als TC's bulk-data voor dit veld leeg/null is → bulk is stale → onze buffer wint.
-  //   - Als TC's bulk-data ≠ onze buffer-waarde → iemand heeft IN TC zelf gewijzigd → TC wint,
-  //     buffer-entry weggooien.
-  //   - Als beide identiek → niets te doen (TC is consistent geworden).
-  // Robuuster dan _modified-timestamp check (TC update modifiedOn niet altijd bij PSet-edits).
+  // Strategie: zolang een buffer-entry binnen TTL (3 min) staat → buffer wint, ongeacht wat
+  // bulk/cache zegt. We kunnen niet onderscheiden tussen "stale bulk/cache" en "externe TC-edit"
+  // (TC's modifiedOn update niet altijd bij PSet-changes). 3 min TTL geeft TC tijd om consistent
+  // te worden; daarna verloopt buffer en wordt TC's waarde leading. Externe TC-edits worden dus
+  // pas na 3 min zichtbaar — acceptabel compromis vs verlies van eigen-saves.
   function _recentSavedApply(){
     const all = _recentSavedGetAll();
     const cutoff = Date.now() - RECENT_SAVED_TTL_MS;
     let merged = 0;
     let mergedDocs = 0;
-    let externalWins = 0;
     for (const vid in all){
       const entry = all[vid];
       if (!entry || !entry.fields) continue;
@@ -7099,15 +7097,7 @@ const DL = (function(){
           delete entry.fields[fk];
           continue;
         }
-        const bulkValue = doc[fk] != null ? String(doc[fk]) : '';
-        const bufferValue = e.value != null ? String(e.value) : '';
-        // TC's bulk-data ≠ onze buffer + bulk is niet leeg → externe wijziging in TC → TC wint
-        if (bulkValue && bulkValue !== bufferValue){
-          delete entry.fields[fk];
-          externalWins++;
-          continue;
-        }
-        // Bulk is leeg OF identiek aan buffer → onze save is canonicaal, override
+        // Override doc[fk] met onze laatst-gesavede waarde. Geldig totdat TTL verloopt.
         doc[fk] = e.value;
         merged++;
         docMerged = true;
@@ -7116,7 +7106,6 @@ const DL = (function(){
       if (docMerged) mergedDocs++;
     }
     if (merged > 0) console.log('[DL] recent-saved buffer:', merged, 'velden over', mergedDocs, 'docs gemerged (anti-stale)');
-    if (externalWins > 0) console.log('[DL] recent-saved buffer:', externalWins, 'velden weggegooid — TC heeft afwijkende waarde (externe edit in TC verkenner)');
     _recentSavedWriteAll(all);
     return merged;
   }
