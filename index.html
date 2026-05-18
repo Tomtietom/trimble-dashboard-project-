@@ -7030,9 +7030,12 @@ const DL = (function(){
   // === Recent-saved buffer (anti-eventually-consistent) ===
   // TC's PSet bulk-endpoint loopt enkele minuten achter op writes. Bij ↻ Vernieuwen vlak na
   // een save kan bulk de oude (stale) waarde teruggeven → wijziging verdwijnt visueel.
-  // Oplossing: na elke succesvolle save de waarde 10 min in localStorage bewaren. Bij elke
-  // load (cache-hit én full) wordt deze buffer over de bulk-data heen gemerged.
-  const RECENT_SAVED_TTL_MS = 10 * 60 * 1000;
+  // Oplossing: na elke succesvolle save de waarde 3 min in localStorage bewaren. Bij elke
+  // load (cache-hit én full) wordt deze buffer over de bulk-data heen gemerged — ZOLANG TC
+  // niet een nieuwere modifiedOn-timestamp toont (dan heeft iemand extern gewijzigd → TC wint).
+  // TTL 3 min: kort genoeg dat externe TC-edits binnen die termijn zichtbaar worden, lang
+  // genoeg om TC's typische sync-latency (1-2 min) te overbruggen.
+  const RECENT_SAVED_TTL_MS = 3 * 60 * 1000;
   function _recentSavedKey(){ return 'dl-recentsaved-' + (tcProject && tcProject.id || 'unknown'); }
   function _recentSavedGetAll(){
     try {
@@ -7069,11 +7072,19 @@ const DL = (function(){
   }
   // Merge recente saves over docs[]. Returnt aantal velden dat geüpdatet werd.
   // Aangeroepen na _loadMetadata + na cache-hit pad, vóór _renderTable.
+  //
+  // Externe-wijziging-detectie via waarde-vergelijking:
+  //   - Als TC's bulk-data voor dit veld leeg/null is → bulk is stale → onze buffer wint.
+  //   - Als TC's bulk-data ≠ onze buffer-waarde → iemand heeft IN TC zelf gewijzigd → TC wint,
+  //     buffer-entry weggooien.
+  //   - Als beide identiek → niets te doen (TC is consistent geworden).
+  // Robuuster dan _modified-timestamp check (TC update modifiedOn niet altijd bij PSet-edits).
   function _recentSavedApply(){
     const all = _recentSavedGetAll();
     const cutoff = Date.now() - RECENT_SAVED_TTL_MS;
     let merged = 0;
     let mergedDocs = 0;
+    let externalWins = 0;
     for (const vid in all){
       const entry = all[vid];
       if (!entry || !entry.fields) continue;
@@ -7082,18 +7093,28 @@ const DL = (function(){
       let docMerged = false;
       for (const fk in entry.fields){
         const e = entry.fields[fk];
-        if (!e || e.ts < cutoff) continue;
-        // Override doc[fk] met onze laatst-gesavede waarde, ook als bulk iets anders zei
+        if (!e || e.ts < cutoff){
+          delete entry.fields[fk];
+          continue;
+        }
+        const bulkValue = doc[fk] != null ? String(doc[fk]) : '';
+        const bufferValue = e.value != null ? String(e.value) : '';
+        // TC's bulk-data ≠ onze buffer + bulk is niet leeg → externe wijziging in TC → TC wint
+        if (bulkValue && bulkValue !== bufferValue){
+          delete entry.fields[fk];
+          externalWins++;
+          continue;
+        }
+        // Bulk is leeg OF identiek aan buffer → onze save is canonicaal, override
         doc[fk] = e.value;
         merged++;
         docMerged = true;
       }
+      if (Object.keys(entry.fields).length === 0) delete all[vid];
       if (docMerged) mergedDocs++;
     }
-    if (merged > 0){
-      console.log('[DL] recent-saved buffer:', merged, 'velden over', mergedDocs, 'docs gemerged (anti-stale)');
-    }
-    // Cleanup tijdens elke apply zodat verlopen entries niet blijven hangen
+    if (merged > 0) console.log('[DL] recent-saved buffer:', merged, 'velden over', mergedDocs, 'docs gemerged (anti-stale)');
+    if (externalWins > 0) console.log('[DL] recent-saved buffer:', externalWins, 'velden weggegooid — TC heeft afwijkende waarde (externe edit in TC verkenner)');
     _recentSavedWriteAll(all);
     return merged;
   }
