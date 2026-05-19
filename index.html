@@ -5498,6 +5498,30 @@ const DL = (function(){
     }
     return byVid;
   }
+  // Patch ÉÉN entry in de bestaande cache met de huidige state van één doc.
+  // Wordt aangeroepen na _saveCell zodat de cache niet langer een verouderde waarde
+  // toont na een refresh — fix voor TTP-UO-102 scenario waar gisteren-titel="test wijziging"
+  // wel naar PSet ging maar niet in cache stond, en vandaag bij cache-hit weer "Deze staat
+  // in de root" werd getoond.
+  function _updateCacheEntryForDoc(doc){
+    if (!doc || !doc._vid) return;
+    let cache = _readCache();
+    if (!cache || !cache.byVid){
+      // Geen cache → niets te patchen; volgende _loadMetadata-run bouwt verse cache
+      return;
+    }
+    const metaFields = Object.values(PROP_MAP);
+    const meta = {};
+    let any = false;
+    for (const f of metaFields){
+      if (doc[f]){ meta[f] = doc[f]; any = true; }
+    }
+    const now = Date.now();
+    cache.byVid[doc._vid] = any
+      ? { kind: 'data', ts: now, meta: meta }
+      : { kind: 'empty', ts: now };
+    _writeCache(cache.byVid);
+  }
   function _applyCacheToDocs(cache){
     let hits = 0, withMeta = 0;
     const now = Date.now();
@@ -5664,10 +5688,13 @@ const DL = (function(){
       // Fallback: alleen het gewijzigde veld lokaal updaten
       doc[fieldKey] = newValue;
     }
-    // Recent-saved buffer: bewaar deze succesvolle save 10 min in localStorage zodat een
+    // Recent-saved buffer: bewaar deze succesvolle save 3 min in localStorage zodat een
     // ↻ Vernieuwen vlak na de save de waarde niet kwijtraakt door TC's eventually-consistent
     // bulk-endpoint. _recentSavedApply() in _loadDocs/_loadMetadata merget dit over fresh data.
     try { _recentSavedAdd(doc._vid, fieldKey, doc[fieldKey]); } catch(_){}
+    // Cache-entry patchen — anders toont een volgende sessie de oude pre-save waarde
+    // bij cache-hit (cache wordt anders alleen door volledige _loadMetadata herschreven).
+    try { _updateCacheEntryForDoc(doc); } catch(_){}
     return resp;
   }
 
@@ -7940,8 +7967,11 @@ const DL = (function(){
             if (newValue === '' || newValue == null) delete selDocs[i][fieldKey];
             else selDocs[i][fieldKey] = newValue;
           }
-          // Recent-saved buffer: bewaar deze succesvolle save 10 min — anti-stale na refresh.
+          // Recent-saved buffer: bewaar deze succesvolle save 3 min — anti-stale na refresh.
           try { _recentSavedAdd(selDocs[i]._vid, fieldKey, selDocs[i][fieldKey]); } catch(_){}
+          // Cache-entry patchen (zelfde fix als single-save in _saveCell): anders toont
+          // een volgende sessie de oude pre-save waarde bij cache-hit.
+          try { _updateCacheEntryForDoc(selDocs[i]); } catch(_){}
         }
       }
       console.log('[DL] bulk-edit klaar — ok:', ok, ', fout:', fout);
