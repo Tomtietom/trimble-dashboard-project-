@@ -8930,6 +8930,53 @@ const DL = (function(){
         });
     }
   };
+
+  // ─── DEBUG: ruwe PSet API inspectie ─────────────────────────────────────────
+  // window.__dl_debug_pset('TTP-UO-102') in console → toont COMPLETE /versions respons
+  // Bypasst cache. Voor diagnose: heeft items[] meerdere versies? Welke index heeft
+  // de nieuwste waarde? Beantwoordt: pakken we items[0] of moeten we items[N-1]?
+  window.__dl_debug_pset = async function(filenameFragment){
+    if (!filenameFragment) {
+      console.log('Gebruik: window.__dl_debug_pset("TTP-UO-102") — fragment van bestandsnaam');
+      return;
+    }
+    const doc = _docs.find(function(d){
+      return d.bestandsnaam && d.bestandsnaam.toLowerCase().indexOf(filenameFragment.toLowerCase()) >= 0;
+    });
+    if (!doc) {
+      console.log('[DL-DEBUG] Niet gevonden:', filenameFragment, '— probeer ander fragment');
+      return;
+    }
+    console.log('[DL-DEBUG] ─────────────────────────────────────────────');
+    console.log('[DL-DEBUG] Match:', doc.bestandsnaam);
+    console.log('[DL-DEBUG] vid:', doc._vid, '| versie:', doc._versie, '| _modified:', doc._modified);
+    console.log('[DL-DEBUG] Cache/UI toont titel =', JSON.stringify(doc.titel || ''));
+    console.log('[DL-DEBUG] Cache/UI toont document_status =', JSON.stringify(doc.document_status || ''));
+    const libId = 'tcproject:prod:' + tcProject.id;
+    const link = doc._psetLink || ('frn:tcfile:' + doc._vid);
+    const path = '/psets/' + encodeURIComponent(link) + '/' + encodeURIComponent(libId) + '/tcfiles/versions';
+    console.log('[DL-DEBUG] Endpoint:', path);
+    try {
+      const r = await _dlFetchPSet(path);
+      console.log('[DL-DEBUG] FULL respons:', r);
+      const items = r && Array.isArray(r.items) ? r.items : [];
+      console.log('[DL-DEBUG] items[].length =', items.length, '(verwacht 1 als geen versioning, >1 als wel)');
+      items.forEach(function(item, i){
+        const titelUuid = Object.keys(PROP_MAP).find(function(k){ return PROP_MAP[k] === 'titel'; });
+        const statusUuid = Object.keys(PROP_MAP).find(function(k){ return PROP_MAP[k] === 'document_status'; });
+        console.log('[DL-DEBUG] items[' + i + ']: v=' + (item.v || '?') +
+                    ' | titel=' + (titelUuid && item.props ? JSON.stringify(item.props[titelUuid]) : '?') +
+                    ' | status=' + (statusUuid && item.props ? JSON.stringify(item.props[statusUuid]) : '?') +
+                    ' | _modified=' + (item._modified || '?'));
+      });
+      console.log('[DL-DEBUG] Onze code pakt: items[0]');
+      console.log('[DL-DEBUG] ─────────────────────────────────────────────');
+      return r;
+    } catch(e) {
+      console.error('[DL-DEBUG] Fetch fout:', e.message);
+      return null;
+    }
+  };
 })();
 
 // ============================================================
