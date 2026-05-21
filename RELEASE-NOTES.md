@@ -2,6 +2,27 @@
 
 ---
 
+## Versie 1.2 — 21 mei 2026
+
+### Documentenlijst toont nu altijd de actuele metadata
+
+**Wat was het probleem?**
+De documentenlijst kon soms een oudere versie van metadata-velden tonen dan wat in Trimble Connect zelf zichtbaar was. Als je in TC of in de Documentenlijst een veld als Status of Titel wijzigde, leek die wijziging soms te verdwijnen na een tab-restart — terwijl de gegevens in TC zelf wel correct waren bijgewerkt. Het hielp niet om op ↻ Vernieuwen te klikken, want dezelfde foute waarde kwam steeds terug.
+
+**Wat is er veranderd?**
+Trimble Connect bewaart per bestand een historie van alle wijzigingen aan metadata-velden. We bleken al die tijd de eerste (= oudste) versie uit die historie te lezen, in plaats van de meest recente. Vanaf nu lezen we altijd de nieuwste versie. Dit raakt alle bestanden die ooit zijn bewerkt — in een groot project kan dat honderden documenten zijn.
+
+**Hoe zie je dat?**
+- Na een TC-tab restart toont de Documentenlijst direct de juiste metadata, zonder ↻ Vernieuwen
+- Wijzigingen die je in TC's eigen schermen maakt verschijnen na tab-restart in de Documentenlijst
+- Eigen wijzigingen via de Documentenlijst blijven correct staan na refresh
+- Geen "Cache wissen" meer nodig om vastzittende waarden los te krijgen
+
+**Wat moet je doen?**
+Niets bijzonders — sluit Trimble Connect één keer volledig (alle tabbladen) en open opnieuw. De Documentenlijst toont vanaf dat moment alle waarden correct.
+
+---
+
 ## Versie 1.1 — 11 mei 2026
 
 ### Extensies laden vooraf — geen wachttijd meer na klik
