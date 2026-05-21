@@ -5599,6 +5599,24 @@ const DL = (function(){
     }
   }
 
+  // Selecteer "nieuwste" item uit /versions response. items[] is empirisch ASCENDING
+  // gesorteerd door TC's PSet API (items[0] = oudste/initiële, items[N-1] = nieuwste).
+  // Bewijs (debug-tool mei 21 2026 op TTP-UO-102): items[0] heeft geen `v` veld en de
+  // originele waarde; items[1..N] hebben v=1..N met opeenvolgende edits. items[6] was
+  // de TC-native-edit "Aangepast in TC native", items[0] was "Deze staat in de root".
+  // We sorteren op `v` desc om de nieuwste te kiezen. Eerdere code pakte items[0] →
+  // toonde permanent stale data en deed elke edit (cockpit én TC-native) lijken te
+  // verdwijnen — root cause van Rico's klant-incident.
+  function _pickLatestItem(items) {
+    if (!Array.isArray(items) || items.length === 0) return null;
+    if (items.length === 1) return items[0];
+    return items.slice().sort(function(a, b) {
+      var av = Number((a && a.v) || 0);
+      var bv = Number((b && b.v) || 0);
+      return bv - av;
+    })[0];
+  }
+
   // === PSet metadata-loader (iter A) ===
   // Bulk-fetch via /libs/{libId}/psets met cursor-pagination (zelfde patroon als
   // standalone tc-viewer regel 1693-1740). Match instances op _vid en update _docs.
@@ -5960,7 +5978,11 @@ const DL = (function(){
         try {
           const r = await _dlFetchPSet(path);
           const items = r && Array.isArray(r.items) ? r.items : [];
-          const inst = items[0];
+          const inst = _pickLatestItem(items); // items[0] = oudste; sorteer op v desc → nieuwste
+          if (items.length > 1 && _deepScanState.gedaan < 5) {
+            // Logging eerste 5 multi-version files zodat we zien hoe vaak versioning speelt
+            console.log('[DL] /versions items>1 voor', doc.bestandsnaam, '— gekozen v=' + (inst && inst.v != null ? inst.v : '?') + ' van', items.length, 'items');
+          }
           if (inst && inst.props){
             for (const propId in inst.props){
               const veld = PROP_MAP[propId];
@@ -8906,7 +8928,9 @@ const DL = (function(){
                     ' | status=' + (statusUuid && item.props ? JSON.stringify(item.props[statusUuid]) : '?') +
                     ' | _modified=' + (item._modified || '?'));
       });
-      console.log('[DL-DEBUG] Onze code pakt: items[0]');
+      const picked = _pickLatestItem(items);
+      const pickedIdx = items.indexOf(picked);
+      console.log('[DL-DEBUG] _pickLatestItem koos: items[' + pickedIdx + '] (v=' + (picked && picked.v != null ? picked.v : '?') + ')');
       console.log('[DL-DEBUG] ─────────────────────────────────────────────');
       return r;
     } catch(e) {
