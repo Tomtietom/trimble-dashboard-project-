@@ -5465,7 +5465,10 @@ const DL = (function(){
                                                    // TC's bulk cap't op 100 instances; docs buiten die top-100 bleven anders
                                                    // 24u onleesbaar achter stale cache na TC-native edits.
   const _CACHE_TTL_EMPTY_MS =  2 * 60 * 60 * 1000; // entry zonder metadata
-  function _cacheKey(){ return 'dl-pset-' + (tcProject && tcProject.id || 'unknown'); }
+  // Cache-key versie bumpen invalideerd oude caches automatisch. Bump bij elke wijziging
+  // die de SEMANTIEK van wat we cachen verandert (niet alleen de TTL). v1=initieel, v2=mei 21
+  // 2026 items[N-1] fix (oude v1-caches bevatten items[0] stale data).
+  function _cacheKey(){ return 'dl-pset-v2-' + (tcProject && tcProject.id || 'unknown'); }
   function _readCache(){
     try {
       const raw = localStorage.getItem(_cacheKey());
