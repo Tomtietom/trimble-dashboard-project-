@@ -689,6 +689,23 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-share-btn:disabled{opacity:.5;cursor:wait}
 .dl-share-btn-primary{background:var(--af);color:#fff;border-color:var(--af)}
 .dl-share-btn-primary:hover:not(:disabled){background:var(--af2);border-color:var(--af2)}
+/* QR-codes voor kopersmappen (Stage 1) */
+.dl-qr-panel{width:760px}
+.dl-qr-intro{font-size:13px;color:var(--g6);margin:0 0 var(--s3);line-height:1.5}
+.dl-qr-intro strong{color:var(--dk)}
+.dl-qr-toolbar{display:flex;align-items:center;gap:8px;margin:var(--s3) 0}
+.dl-qr-tb-spacer{flex:1}
+.dl-qr-count,.dl-qr-selcount{font-size:13px;color:var(--g6);font-weight:500}
+.dl-qr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:var(--s3)}
+.dl-qr-card{border:1px solid var(--hl-light);border-radius:var(--r-sm);padding:10px;text-align:center;background:#fff;display:flex;flex-direction:column;gap:6px;align-items:center}
+.dl-qr-card-sel{font-size:11px;color:var(--g5);display:flex;align-items:center;gap:4px;align-self:flex-start;cursor:pointer}
+.dl-qr-img{width:100%;max-width:130px;height:auto;aspect-ratio:1/1;image-rendering:pixelated}
+.dl-qr-img-fail{display:flex;align-items:center;justify-content:center;background:var(--gr);color:var(--g5);font-size:11px;border:1px dashed var(--hl);min-height:110px}
+.dl-qr-name{font-size:13px;font-weight:600;color:var(--dk);word-break:break-word;line-height:1.3}
+.dl-qr-url{font-size:11px}
+.dl-qr-url a{color:var(--af);text-decoration:none}
+.dl-qr-url a:hover{text-decoration:underline}
+.dl-qr-loading,.dl-qr-empty{grid-column:1/-1;padding:24px;text-align:center;color:var(--g5);font-size:13px;line-height:1.5}
 .dl-share-success-msg{padding:12px 14px;background:#d4edda;border:1px solid #c3e6cb;border-left:3px solid #28a745;border-radius:var(--r-sm);color:#155724;font-size:14px;margin-bottom:var(--s3)}
 .dl-share-links{display:flex;flex-direction:column;gap:6px}
 .dl-share-link-item{padding:8px 10px;background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm);font-size:13px}
@@ -8255,6 +8272,280 @@ const DL = (function(){
     }
   }
 
+  // ====================================================================
+  // QR-codes voor kopersmappen (Stage 1) — genereert per submap een QR die
+  // naar de TC-map verwijst (zelfde deep-link als _tcFolderUrl). Export als
+  // ZIP (losse PNG's), print-PDF (overzichtsvel) en CSV-koppeltabel.
+  // Libs worden lazy via CDN geladen (zelfde patroon als _ensureJSZip), met
+  // fallback-hosts; script-tag-volgorde in <head> blijft ongemoeid.
+  // ====================================================================
+  let _qrItems = [];        // huidige set kopersmappen: [{pad,naam,folderId,url,_dataUrl}]
+  let _qrSelected = null;   // Set van geselecteerde paden
+  const _qrScriptCache = {};
+  function _loadScriptOnce(src){
+    if (_qrScriptCache[src]) return _qrScriptCache[src];
+    _qrScriptCache[src] = new Promise(function(resolve, reject){
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = function(){ resolve(); };
+      s.onerror = function(){ delete _qrScriptCache[src]; reject(new Error('script load fail: ' + src)); };
+      document.head.appendChild(s);
+    });
+    return _qrScriptCache[src];
+  }
+  // QRious (window.QRious) — UMD met synchrone PNG toDataURL, geen DOM-insert nodig.
+  // (node-qrcode levert geen standalone browser-bundle meer; QRious wel.) cdnjs primair,
+  // jsDelivr als fallback — beide geverifieerd bereikbaar.
+  async function _ensureQRCode(){
+    if (window.QRious) return window.QRious;
+    const urls = [
+      'https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js',
+      'https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js',
+    ];
+    let lastErr;
+    for (const u of urls){
+      try { await _loadScriptOnce(u); if (window.QRious) return window.QRious; }
+      catch(e){ lastErr = e; }
+    }
+    throw lastErr || new Error('QR-library kon niet geladen worden');
+  }
+  // jsPDF (window.jspdf.jsPDF) voor het print-overzichtsvel.
+  async function _ensureJsPDF(){
+    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    const urls = [
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+      'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+    ];
+    let lastErr;
+    for (const u of urls){
+      try { await _loadScriptOnce(u); if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF; }
+      catch(e){ lastErr = e; }
+    }
+    throw lastErr || new Error('PDF-library kon niet geladen worden');
+  }
+  // QR maakt een PNG-dataURL. errorCorrectionLevel 'H' + witte quiet-zone (padding) voor
+  // betrouwbaar scannen. QR = de QRious-constructor (window.QRious).
+  function _qrDataUrl(QR, text, size){
+    const px = size || 240;
+    return new QR({ value: text, size: px, level: 'H', background: '#ffffff', foreground: '#000000', padding: Math.max(6, Math.round(px * 0.06)) }).toDataURL('image/png');
+  }
+  // Directe submappen van een hoofdpad uit _folderIdByPath halen.
+  // parentPath '' = projectroot (top-level mappen). Resultaat gesorteerd op naam (numeriek).
+  function _qrCollectChildFolders(parentPath){
+    const prefix = parentPath ? parentPath + '/' : '';
+    const depthOfParent = parentPath ? parentPath.split('/').length : 0;
+    const out = [];
+    Object.keys(_folderIdByPath).forEach(function(pad){
+      if (parentPath && pad.indexOf(prefix) !== 0) return;   // moet onder de hoofdmap liggen
+      const segs = pad.split('/');
+      if (segs.length !== depthOfParent + 1) return;         // exact één niveau dieper
+      const folderId = _folderIdByPath[pad];
+      const url = _tcFolderUrl(pad);
+      if (!folderId || !url) return;
+      out.push({ pad: pad, naam: segs[segs.length - 1], folderId: folderId, url: url });
+    });
+    out.sort(function(a, b){ return a.naam.localeCompare(b.naam, 'nl', { numeric: true }); });
+    return out;
+  }
+  function _qrAllFolderPaths(){
+    return Object.keys(_folderIdByPath).sort(function(a, b){ return a.localeCompare(b, 'nl', { numeric: true }); });
+  }
+  // Raad de waarschijnlijke kopersstukken-hoofdmap (ondiepste match op naam).
+  function _qrGuessParent(paths){
+    const re = /koper|kopersstuk|bouwnummer|bouwnr|woning|appartement/i;
+    const matches = paths.filter(function(p){ return re.test(p.split('/').pop()); });
+    if (!matches.length) return '';
+    matches.sort(function(a, b){ return a.split('/').length - b.split('/').length; });
+    return matches[0];
+  }
+  function _qrSafeName(s){
+    return (String(s || 'map').replace(/[^a-zA-Z0-9._\- ]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 80)) || 'map';
+  }
+  function _qrProjectSlug(){
+    return ((tcProject && tcProject.name) || 'project').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+  }
+  function _qrSelectedItems(){
+    return _qrItems.filter(function(it){ return _qrSelected && _qrSelected.has(it.pad); });
+  }
+  function _qrLog(action, count){
+    if (!window.atfieltHub) return;
+    try { window.atfieltHub.logEvent('feature', { action: action, source: 'cockpit-inline', module: 'documentenlijst', count: count, totalDocs: _docs.length }); } catch(_){}
+  }
+  function _qrDownloadBlob(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+  function _qrUpdateFootCount(){
+    const n = _qrSelected ? _qrSelected.size : 0;
+    const lbl = document.getElementById('dl-qr-selcount');
+    if (lbl) lbl.textContent = n + ' geselecteerd';
+    ['dl-qr-zip', 'dl-qr-pdf', 'dl-qr-csv'].forEach(function(id){
+      const b = document.getElementById(id);
+      if (b) b.disabled = (n === 0);
+    });
+  }
+  function _qrSetAll(on){
+    if (!_qrItems) return;
+    _qrSelected = new Set(on ? _qrItems.map(function(it){ return it.pad; }) : []);
+    const grid = document.getElementById('dl-qr-grid');
+    if (grid) grid.querySelectorAll('.dl-qr-cb').forEach(function(cb){ cb.checked = on; });
+    _qrUpdateFootCount();
+  }
+  function _qrPopulatePicker(){
+    const sel = document.getElementById('dl-qr-parent');
+    if (!sel) return;
+    const paths = _qrAllFolderPaths();
+    let html = '<option value="">— Projectroot (top-level mappen) —</option>';
+    paths.forEach(function(p){ html += '<option value="' + _esc(p) + '">' + _esc(p) + '</option>'; });
+    sel.innerHTML = html;
+    const guess = _qrGuessParent(paths);
+    if (guess) sel.value = guess;
+  }
+  async function _qrRenderGrid(){
+    const sel = document.getElementById('dl-qr-parent');
+    const grid = document.getElementById('dl-qr-grid');
+    const countEl = document.getElementById('dl-qr-count');
+    if (!sel || !grid) return;
+    const parent = sel.value || '';
+    _qrItems = _qrCollectChildFolders(parent);
+    _qrSelected = new Set(_qrItems.map(function(it){ return it.pad; }));  // standaard alles aan
+    if (!_qrItems.length){
+      const hint = _isLoading
+        ? 'De documentenlijst wordt nog geladen — even wachten en daarna opnieuw openen.'
+        : 'Geen submappen gevonden onder deze map. Kies een andere hoofdmap — elke submap wordt één QR-code (bv. één per bouwnummer/koper).';
+      grid.innerHTML = '<div class="dl-qr-empty">' + hint + '</div>';
+      if (countEl) countEl.textContent = '0 mappen';
+      _qrUpdateFootCount();
+      return;
+    }
+    if (countEl) countEl.textContent = _qrItems.length + ' map' + (_qrItems.length === 1 ? '' : 'pen');
+    grid.innerHTML = '<div class="dl-qr-loading">QR-codes genereren…</div>';
+    let QR;
+    try { QR = await _ensureQRCode(); }
+    catch(e){ grid.innerHTML = '<div class="dl-qr-empty">QR-library kon niet geladen worden — controleer de internetverbinding.</div>'; return; }
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < _qrItems.length; i++){
+      const it = _qrItems[i];
+      let dataUrl = '';
+      try { dataUrl = await _qrDataUrl(QR, it.url, 240); }
+      catch(e){ console.warn('[DL] QR genereren mislukt:', it.pad, e.message); }
+      it._dataUrl = dataUrl;
+      const card = document.createElement('div');
+      card.className = 'dl-qr-card';
+      card.innerHTML =
+        '<label class="dl-qr-card-sel"><input type="checkbox" class="dl-qr-cb" data-pad="' + _esc(it.pad) + '" checked> selecteren</label>' +
+        (dataUrl ? '<img class="dl-qr-img" src="' + dataUrl + '" alt="QR ' + _esc(it.naam) + '">' : '<div class="dl-qr-img dl-qr-img-fail">QR mislukt</div>') +
+        '<div class="dl-qr-name" title="' + _esc(it.pad) + '">' + _esc(it.naam) + '</div>' +
+        '<div class="dl-qr-url"><a href="' + _esc(it.url) + '" target="_blank" rel="noopener">map openen ↗</a></div>';
+      frag.appendChild(card);
+    }
+    grid.innerHTML = '';
+    grid.appendChild(frag);
+    grid.querySelectorAll('.dl-qr-cb').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        const pad = cb.getAttribute('data-pad');
+        if (cb.checked) _qrSelected.add(pad); else _qrSelected.delete(pad);
+        _qrUpdateFootCount();
+      });
+    });
+    _qrUpdateFootCount();
+  }
+  function _qrCsvString(items){
+    const rows = [['Map', 'Pad', 'Folder-URL'].map(_csvEscape).join(';')];
+    items.forEach(function(it){ rows.push([it.naam, it.pad, it.url].map(_csvEscape).join(';')); });
+    return '﻿' + rows.join('\n');  // BOM zodat Excel UTF-8 correct leest
+  }
+  function _exportQrCsv(){
+    const items = _qrSelectedItems();
+    if (!items.length) return;
+    const blob = new Blob([_qrCsvString(items)], { type: 'text/csv;charset=utf-8;' });
+    _qrDownloadBlob(blob, 'qr-koppeltabel_' + _qrProjectSlug() + '.csv');
+    _qrLog('qr-export-csv', items.length);
+  }
+  async function _exportQrZip(btn){
+    const items = _qrSelectedItems();
+    if (!items.length) return;
+    let JSZip, QR;
+    try { JSZip = await _ensureJSZip(); } catch(e){ alert('Kan ZIP-library niet laden — controleer de internetverbinding.'); return; }
+    try { QR = await _ensureQRCode(); } catch(e){ alert('Kan QR-library niet laden — controleer de internetverbinding.'); return; }
+    const orig = btn ? btn.textContent : '';
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ ZIP maken…'; }
+    const zip = new JSZip();
+    const used = {};
+    for (let i = 0; i < items.length; i++){
+      const it = items[i];
+      let dataUrl = '';
+      try { dataUrl = await _qrDataUrl(QR, it.url, 600); } catch(_){ continue; }  // hi-res voor print/plak
+      const base64 = (dataUrl.split(',')[1]) || '';
+      if (!base64) continue;
+      let name = _qrSafeName(it.naam);
+      if (used[name]){ used[name]++; name = name + ' (' + used[name] + ')'; } else { used[name] = 1; }
+      zip.file(name + '.png', base64, { base64: true });
+    }
+    zip.file('_koppeltabel.csv', _qrCsvString(items));
+    try {
+      const content = await zip.generateAsync({ type: 'blob' });
+      _qrDownloadBlob(content, 'qr-codes_' + _qrProjectSlug() + '.zip');
+    } catch(e){ alert('ZIP aanmaken mislukt: ' + e.message); }
+    if (btn){ btn.disabled = false; btn.textContent = orig; }
+    _qrLog('qr-export-zip', items.length);
+  }
+  async function _exportQrPdf(btn){
+    const items = _qrSelectedItems();
+    if (!items.length) return;
+    let jsPDF, QR;
+    try { jsPDF = await _ensureJsPDF(); } catch(e){ alert('Kan PDF-library niet laden — controleer de internetverbinding.'); return; }
+    try { QR = await _ensureQRCode(); } catch(e){ alert('Kan QR-library niet laden.'); return; }
+    const orig = btn ? btn.textContent : '';
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ PDF maken…'; }
+    try {
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageW = 210, pageH = 297, margin = 14, cols = 3, gap = 6;
+      const cellW = (pageW - margin * 2 - gap * (cols - 1)) / cols;  // ~54mm
+      const qrSize = cellW - 6;
+      const cellH = qrSize + 12;  // QR + bijschrift
+      const title = 'QR-codes — ' + ((tcProject && tcProject.name) || 'project');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(34);
+      let y = margin;
+      doc.text(title, margin, y); y += 6;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(120);
+      doc.text(items.length + ' kopersmappen — scan opent de map in Trimble Connect', margin, y);
+      doc.setTextColor(34); y += 8;
+      let col = 0;
+      for (let i = 0; i < items.length; i++){
+        const it = items[i];
+        if (col === 0 && (y + cellH > pageH - margin)){ doc.addPage(); y = margin; }
+        const x = margin + col * (cellW + gap);
+        let dataUrl = '';
+        try { dataUrl = await _qrDataUrl(QR, it.url, 600); } catch(_){}
+        if (dataUrl){ try { doc.addImage(dataUrl, 'PNG', x, y, qrSize, qrSize); } catch(_){} }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+        const label = doc.splitTextToSize(String(it.naam), cellW);
+        doc.text(label, x + qrSize / 2, y + qrSize + 4, { align: 'center' });
+        col++;
+        if (col >= cols){ col = 0; y += cellH; }
+      }
+      doc.save('qr-codes_' + _qrProjectSlug() + '.pdf');
+    } catch(e){ alert('PDF aanmaken mislukt: ' + e.message); }
+    if (btn){ btn.disabled = false; btn.textContent = orig; }
+    _qrLog('qr-export-pdf', items.length);
+  }
+  function _openQrDialog(){
+    const modal = document.getElementById('dl-qr-modal');
+    if (!modal) return;
+    _qrPopulatePicker();
+    modal.style.display = '';
+    _qrRenderGrid();
+    _qrLog('qr-open', Object.keys(_folderIdByPath).length);
+  }
+  function _closeQrDialog(){
+    const modal = document.getElementById('dl-qr-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
   function injectHtml(){
     if (_isInjected) return;
     const root = getRoot();
@@ -8287,6 +8578,7 @@ const DL = (function(){
             '<button type="button" id="dl-edit-mode-btn" class="dl-cols-btn" title="Metadata bewerken — toggle aan/uit">🔒 Bewerken</button>' +
             '<button type="button" id="dl-cols-btn" class="dl-cols-btn" title="Kolommen kiezen"><span class="dl-cols-icon">☰</span>Kolommen</button>' +
             '<button type="button" id="dl-releases-btn" class="dl-cols-btn" title="Toon releases van dit project">📦 Releases</button>' +
+            '<button type="button" id="dl-qr-btn" class="dl-cols-btn" title="Genereer QR-codes naar kopersmappen">📱 QR-codes</button>' +
             '<button type="button" id="dl-refresh" class="dl-refresh-btn" title="Cache wissen en opnieuw laden (forceert verse metadata-fetch)"><span class="dl-refresh-icon">↻</span>Vernieuwen</button>' +
             '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
             '<div id="dl-cols-picker" class="dl-cols-picker" style="display:none">' +
@@ -8469,6 +8761,37 @@ const DL = (function(){
             '<div class="dl-share-foot">' +
               '<button type="button" id="dl-addrel-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
               '<button type="button" id="dl-addrel-submit" class="dl-share-btn dl-share-btn-primary">Toevoegen</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        // QR-codes modal (hidden default; getoond door _openQrDialog) — Stage 1
+        '<div id="dl-qr-modal" class="dl-share-modal" style="display:none">' +
+          '<div class="dl-share-backdrop" id="dl-qr-backdrop"></div>' +
+          '<div class="dl-share-panel dl-qr-panel" role="dialog" aria-label="QR-codes genereren">' +
+            '<div class="dl-share-head">' +
+              '<h3 class="dl-share-title">QR-codes voor kopersmappen</h3>' +
+              '<button type="button" id="dl-qr-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
+            '</div>' +
+            '<div class="dl-share-body">' +
+              '<p class="dl-qr-intro">Kies de hoofdmap met de kopersmappen. Elke <strong>submap</strong> wordt één QR-code die rechtstreeks naar die map in Trimble Connect verwijst. Let op: wie de QR scant heeft een Trimble-account met projecttoegang nodig — net als bij een handmatig gemaakte maplink.</p>' +
+              '<label class="dl-share-label">Hoofdmap (de submappen hieronder worden de QR-codes)' +
+                '<select id="dl-qr-parent" class="dl-share-input"></select>' +
+              '</label>' +
+              '<div class="dl-qr-toolbar">' +
+                '<span class="dl-qr-count" id="dl-qr-count">0 mappen</span>' +
+                '<span class="dl-qr-tb-spacer"></span>' +
+                '<button type="button" id="dl-qr-all" class="dl-cols-btn">Alles aan</button>' +
+                '<button type="button" id="dl-qr-none" class="dl-cols-btn">Alles uit</button>' +
+              '</div>' +
+              '<div id="dl-qr-grid" class="dl-qr-grid"></div>' +
+            '</div>' +
+            '<div class="dl-share-foot">' +
+              '<span class="dl-qr-selcount" id="dl-qr-selcount">0 geselecteerd</span>' +
+              '<span class="dl-qr-tb-spacer"></span>' +
+              '<button type="button" id="dl-qr-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
+              '<button type="button" id="dl-qr-csv" class="dl-share-btn dl-share-btn-secondary" title="Koppeltabel mapnaam → URL">⬇ CSV</button>' +
+              '<button type="button" id="dl-qr-pdf" class="dl-share-btn dl-share-btn-secondary" title="Printbaar overzichtsvel met alle QR-codes">🖨 PDF</button>' +
+              '<button type="button" id="dl-qr-zip" class="dl-share-btn dl-share-btn-primary" title="ZIP met losse QR-PNG\'s per map">⬇ ZIP (PNG\'s)</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -8714,6 +9037,27 @@ const DL = (function(){
     if (relCancel) relCancel.addEventListener('click', _closeReleasesDialog);
     const relBackdrop = root.querySelector('#dl-releases-backdrop');
     if (relBackdrop) relBackdrop.addEventListener('click', _closeReleasesDialog);
+    // QR-codes dialog (Stage 1)
+    const qrBtn = root.querySelector('#dl-qr-btn');
+    if (qrBtn) qrBtn.addEventListener('click', _openQrDialog);
+    const qrClose = root.querySelector('#dl-qr-close');
+    if (qrClose) qrClose.addEventListener('click', _closeQrDialog);
+    const qrCancel = root.querySelector('#dl-qr-cancel');
+    if (qrCancel) qrCancel.addEventListener('click', _closeQrDialog);
+    const qrBackdrop = root.querySelector('#dl-qr-backdrop');
+    if (qrBackdrop) qrBackdrop.addEventListener('click', _closeQrDialog);
+    const qrParent = root.querySelector('#dl-qr-parent');
+    if (qrParent) qrParent.addEventListener('change', _qrRenderGrid);
+    const qrAll = root.querySelector('#dl-qr-all');
+    if (qrAll) qrAll.addEventListener('click', function(){ _qrSetAll(true); });
+    const qrNone = root.querySelector('#dl-qr-none');
+    if (qrNone) qrNone.addEventListener('click', function(){ _qrSetAll(false); });
+    const qrZip = root.querySelector('#dl-qr-zip');
+    if (qrZip) qrZip.addEventListener('click', function(){ _exportQrZip(qrZip); });
+    const qrPdf = root.querySelector('#dl-qr-pdf');
+    if (qrPdf) qrPdf.addEventListener('click', function(){ _exportQrPdf(qrPdf); });
+    const qrCsv = root.querySelector('#dl-qr-csv');
+    if (qrCsv) qrCsv.addEventListener('click', _exportQrCsv);
     // Add-to-release dialog
     const addRelBtn = root.querySelector('#dl-add-release-btn');
     if (addRelBtn) addRelBtn.addEventListener('click', _openAddToReleaseDialog);
