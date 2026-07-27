@@ -706,6 +706,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-qr-url a{color:var(--af);text-decoration:none}
 .dl-qr-url a:hover{text-decoration:underline}
 .dl-qr-loading,.dl-qr-empty{grid-column:1/-1;padding:24px;text-align:center;color:var(--g5);font-size:13px;line-height:1.5}
+.dl-qr-logo-row{display:flex;align-items:center;gap:10px;margin-top:4px}
+.dl-qr-logo-file{font-size:12px;flex:1}
+.dl-qr-logo-preview{width:36px;height:36px;object-fit:contain;border:1px solid var(--hl-light);border-radius:4px;background:#fff;padding:2px}
 .dl-share-success-msg{padding:12px 14px;background:#d4edda;border:1px solid #c3e6cb;border-left:3px solid #28a745;border-radius:var(--r-sm);color:#155724;font-size:14px;margin-bottom:var(--s3)}
 .dl-share-links{display:flex;flex-direction:column;gap:6px}
 .dl-share-link-item{padding:8px 10px;background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm);font-size:13px}
@@ -8281,6 +8284,8 @@ const DL = (function(){
   // ====================================================================
   let _qrItems = [];        // huidige set kopersmappen: [{pad,naam,folderId,url,_dataUrl}]
   let _qrSelected = null;   // Set van geselecteerde paden
+  let _qrLogoImg = null;    // geladen HTMLImageElement van het bedrijfslogo (null = geen logo)
+  let _qrLogoDataUrl = null;// dataURL van het logo (bron voor preview + localStorage)
   const _qrScriptCache = {};
   function _loadScriptOnce(src){
     if (_qrScriptCache[src]) return _qrScriptCache[src];
@@ -8323,11 +8328,92 @@ const DL = (function(){
     }
     throw lastErr || new Error('PDF-library kon niet geladen worden');
   }
-  // QR maakt een PNG-dataURL. errorCorrectionLevel 'H' + witte quiet-zone (padding) voor
-  // betrouwbaar scannen. QR = de QRious-constructor (window.QRious).
+  // QR maakt een PNG-dataURL via een eigen canvas. errorCorrectionLevel 'H' + witte
+  // quiet-zone (padding) voor betrouwbaar scannen. Level 'H' tolereert ~30% afgedekte
+  // modules; het logo-vlak is 24% van de breedte (~6% van het oppervlak) — ruim binnen marge.
   function _qrDataUrl(QR, text, size){
     const px = size || 240;
-    return new QR({ value: text, size: px, level: 'H', background: '#ffffff', foreground: '#000000', padding: Math.max(6, Math.round(px * 0.06)) }).toDataURL('image/png');
+    const canvas = document.createElement('canvas');
+    new QR({ element: canvas, value: text, size: px, level: 'H', background: '#ffffff', foreground: '#000000', padding: Math.max(6, Math.round(px * 0.06)) });
+    if (_qrLogoImg){
+      const ctx = canvas.getContext('2d');
+      const box = Math.round(px * 0.24);            // wit vlak achter het logo
+      const boxPos = Math.round((px - box) / 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(boxPos, boxPos, box, box);
+      const inner = Math.round(px * 0.20);          // logo zelf, met behoud aspect-ratio
+      const ar = (_qrLogoImg.naturalWidth || 1) / (_qrLogoImg.naturalHeight || 1);
+      let w = inner, h = inner;
+      if (ar > 1) h = Math.round(inner / ar); else w = Math.round(inner * ar);
+      ctx.drawImage(_qrLogoImg, Math.round((px - w) / 2), Math.round((px - h) / 2), w, h);
+    }
+    return canvas.toDataURL('image/png');
+  }
+  // Bedrijfslogo per project onthouden (zelfde patroon als _cacheKey).
+  function _qrLogoKey(){ return 'dl-qr-logo-' + (tcProject && tcProject.id || 'unknown'); }
+  function _qrUpdateLogoPreview(){
+    const prev = document.getElementById('dl-qr-logo-preview');
+    const clr = document.getElementById('dl-qr-logo-clear');
+    if (prev){ prev.src = _qrLogoDataUrl || ''; prev.style.display = _qrLogoDataUrl ? '' : 'none'; }
+    if (clr) clr.style.display = _qrLogoDataUrl ? '' : 'none';
+  }
+  // Opgeslagen logo van dit project inladen; resolvet altijd (ook zonder/kapot logo).
+  function _qrRestoreLogo(){
+    return new Promise(function(resolve){
+      let saved = null;
+      try { saved = localStorage.getItem(_qrLogoKey()); } catch(_){}
+      if (!saved){ _qrLogoImg = null; _qrLogoDataUrl = null; _qrUpdateLogoPreview(); resolve(); return; }
+      if (saved === _qrLogoDataUrl && _qrLogoImg){ _qrUpdateLogoPreview(); resolve(); return; }
+      const img = new Image();
+      img.onload = function(){ _qrLogoImg = img; _qrLogoDataUrl = saved; _qrUpdateLogoPreview(); resolve(); };
+      img.onerror = function(){
+        _qrLogoImg = null; _qrLogoDataUrl = null;
+        try { localStorage.removeItem(_qrLogoKey()); } catch(_){}
+        _qrUpdateLogoPreview(); resolve();
+      };
+      img.src = saved;
+    });
+  }
+  function _qrSetLogoFromFile(file){
+    if (!file) return;
+    if (!/^image\//.test(file.type || '')){ alert('Kies een afbeeldingsbestand (PNG, JPG of SVG).'); return; }
+    const reader = new FileReader();
+    reader.onload = function(){
+      const img = new Image();
+      img.onload = function(){
+        // Downscale naar max 512px zodat de dataURL in localStorage past.
+        const maxSide = 512;
+        const iw = img.naturalWidth || 1, ih = img.naturalHeight || 1;
+        const scale = Math.min(1, maxSide / Math.max(iw, ih));
+        const w = Math.max(1, Math.round(iw * scale)), h = Math.max(1, Math.round(ih * scale));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = c.toDataURL('image/png');
+        const finalImg = new Image();
+        finalImg.onload = function(){
+          _qrLogoImg = finalImg; _qrLogoDataUrl = dataUrl;
+          try { localStorage.setItem(_qrLogoKey(), dataUrl); }
+          catch(_){ console.warn('[DL] logo past niet in localStorage — geldt alleen voor deze sessie'); }
+          _qrUpdateLogoPreview();
+          _qrRenderGrid();
+          _qrLog('qr-logo-set', 1);
+        };
+        finalImg.src = dataUrl;
+      };
+      img.onerror = function(){ alert('Afbeelding kon niet gelezen worden.'); };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  function _qrClearLogo(){
+    _qrLogoImg = null; _qrLogoDataUrl = null;
+    try { localStorage.removeItem(_qrLogoKey()); } catch(_){}
+    const inp = document.getElementById('dl-qr-logo-file');
+    if (inp) inp.value = '';
+    _qrUpdateLogoPreview();
+    _qrRenderGrid();
+    _qrLog('qr-logo-clear', 1);
   }
   // Directe submappen van een hoofdpad uit _folderIdByPath halen.
   // parentPath '' = projectroot (top-level mappen). Resultaat gesorteerd op naam (numeriek).
@@ -8538,7 +8624,8 @@ const DL = (function(){
     if (!modal) return;
     _qrPopulatePicker();
     modal.style.display = '';
-    _qrRenderGrid();
+    // Eerst evt. opgeslagen logo van dit project laden, zodat de eerste render 'm meeneemt.
+    _qrRestoreLogo().then(function(){ _qrRenderGrid(); });
     _qrLog('qr-open', Object.keys(_folderIdByPath).length);
   }
   function _closeQrDialog(){
@@ -8777,6 +8864,14 @@ const DL = (function(){
               '<label class="dl-share-label">Hoofdmap (de submappen hieronder worden de QR-codes)' +
                 '<select id="dl-qr-parent" class="dl-share-input"></select>' +
               '</label>' +
+              // div ipv label: een button in een label zou de file-picker mee-triggeren
+              '<div class="dl-share-label">Bedrijfslogo in het midden (optioneel — wordt per project onthouden)' +
+                '<div class="dl-qr-logo-row">' +
+                  '<input type="file" id="dl-qr-logo-file" class="dl-qr-logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml">' +
+                  '<img id="dl-qr-logo-preview" class="dl-qr-logo-preview" style="display:none" alt="Logo-voorbeeld">' +
+                  '<button type="button" id="dl-qr-logo-clear" class="dl-cols-btn" style="display:none" title="Logo verwijderen — QR-codes zonder logo">✕ Logo weg</button>' +
+                '</div>' +
+              '</div>' +
               '<div class="dl-qr-toolbar">' +
                 '<span class="dl-qr-count" id="dl-qr-count">0 mappen</span>' +
                 '<span class="dl-qr-tb-spacer"></span>' +
@@ -9048,6 +9143,10 @@ const DL = (function(){
     if (qrBackdrop) qrBackdrop.addEventListener('click', _closeQrDialog);
     const qrParent = root.querySelector('#dl-qr-parent');
     if (qrParent) qrParent.addEventListener('change', _qrRenderGrid);
+    const qrLogoFile = root.querySelector('#dl-qr-logo-file');
+    if (qrLogoFile) qrLogoFile.addEventListener('change', function(){ _qrSetLogoFromFile(qrLogoFile.files && qrLogoFile.files[0]); });
+    const qrLogoClear = root.querySelector('#dl-qr-logo-clear');
+    if (qrLogoClear) qrLogoClear.addEventListener('click', _qrClearLogo);
     const qrAll = root.querySelector('#dl-qr-all');
     if (qrAll) qrAll.addEventListener('click', function(){ _qrSetAll(true); });
     const qrNone = root.querySelector('#dl-qr-none');
