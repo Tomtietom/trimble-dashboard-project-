@@ -7607,8 +7607,10 @@ const DL = (function(){
         const gc = ALL_COLS.find(function(c){ return c.k === groupKey; });
         return gc ? (gc.l || gc.k) : (groupKey === 'file_location' ? 'Map' : groupKey);
       })() : null;
-      const finalHeaders = groupCol ? [groupCol].concat(headers) : headers;
-      // Sorteer rijen op groep-veld zodat Excel-groepering klopt (zonder header-tussenrijen — te fragiel)
+      // Bij groepering: geen extra "Groep"-kolom vooraan (die zit al in de originele kolom).
+      // In plaats daarvan: tussen-header-rijen met "━━━ GROEPNAAM (N) ━━━" + blank rij tussen groepen.
+      const finalHeaders = headers;
+      // Sorteer rijen op groep-veld zodat groepen bij elkaar staan
       if (groupKey){
         rows = rows.slice().sort(function(a, b){
           const va = String(a[groupKey] || '');
@@ -7618,14 +7620,36 @@ const DL = (function(){
       }
       // Bouw data-array (Array-of-Arrays voor xlsx-utils.aoa_to_sheet)
       const aoa = [finalHeaders];
+      const groupCounts = {};
+      if (groupKey){
+        // Tel eerst per groep zodat header "(N documenten)" kan tonen
+        rows.forEach(function(d){
+          const g = String(d[groupKey] || '(zonder ' + (groupCol || groupKey) + ')');
+          groupCounts[g] = (groupCounts[g] || 0) + 1;
+        });
+      }
+      let lastGroup = null;
+      const groupHeaderRows = []; // 0-based row-indices in aoa waar tussen-headers staan (voor styling)
       rows.forEach(function(d){
+        if (groupKey){
+          const g = String(d[groupKey] || '(zonder ' + (groupCol || groupKey) + ')');
+          if (g !== lastGroup){
+            if (lastGroup !== null){
+              aoa.push([]); // blank tussen-rij (behalve vóór eerste groep)
+            }
+            const headerRow = new Array(finalHeaders.length).fill('');
+            headerRow[0] = '━━━ ' + g + ' (' + groupCounts[g] + ' document' + (groupCounts[g] === 1 ? '' : 'en') + ') ━━━';
+            aoa.push(headerRow);
+            groupHeaderRows.push(aoa.length - 1); // index van de header-rij
+            lastGroup = g;
+          }
+        }
         const rowVals = cols.map(function(c){
           let v = d[c.k];
           if (v == null) return '';
           if (c.k === '_created' || c.k === '_modified') return _formatDate(v);
           return String(v);
         });
-        if (groupCol) rowVals.unshift(String(d[groupKey] || ''));
         aoa.push(rowVals);
       });
       // Genereer workbook
@@ -7643,6 +7667,13 @@ const DL = (function(){
       ws['!freeze'] = { xSplit: 0, ySplit: 1 };
       const range = XLSX.utils.decode_range(ws['!ref']);
       ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{c:0,r:0}, e:{c:range.e.c, r:range.e.r} }) };
+      // Merge group-header-rijen over alle kolommen zodat "━━━ NAAM (N) ━━━" visueel één brede header wordt
+      if (groupHeaderRows.length > 0){
+        ws['!merges'] = ws['!merges'] || [];
+        groupHeaderRows.forEach(function(rowIdx){
+          ws['!merges'].push({ s: { c: 0, r: rowIdx }, e: { c: range.e.c, r: rowIdx } });
+        });
+      }
       const wb = XLSX.utils.book_new();
       const sheetName = 'Documenten';
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
