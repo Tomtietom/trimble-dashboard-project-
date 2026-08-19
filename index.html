@@ -130,6 +130,10 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
    Main content
    ========================================= */
 .wrap{max-width:1100px;margin:0 auto;padding:var(--s5) var(--s5) var(--s6)}
+/* Sprint 2 layout-fix: DL-view krijgt fullpage layout (klasse via showView).
+   Verwijdert max-width en verkleint horizontale padding zodat de tabel over volle breedte gaat.
+   Andere views blijven op 1100px voor leesbare card-layout. */
+.wrap.wrap-fullpage{max-width:none;padding:var(--s3) var(--s4) var(--s4)}
 
 .sec{margin-bottom:var(--s6)}
 .sec-head{margin-bottom:var(--s4)}
@@ -612,7 +616,11 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-cols-reset:hover{border-color:var(--af);background:var(--afl)}
 .dl-loading{padding:var(--s5);text-align:center;color:var(--g5);font-size:var(--fs-sm)}
 .dl-error{background:#fee;border-left:3px solid #d00;padding:var(--s3) var(--s4);border-radius:var(--r-sm);margin-bottom:var(--s4);font-size:var(--fs-sm);color:#7a0000}
-.dl-tbl-wrap{position:relative;overflow:auto;max-height:calc(100vh - 320px);border:1px solid var(--hl-light);border-radius:var(--r-md);background:#fff}
+/* Sprint 2 layout-fix: max-height berekent nu op basis van TC-top-bar (48px) + cockpit tabs (~50px)
+   + DL-header (~46px) + filter-bar (~50px) + ext-chips (~40px) + footer (~40px) + padding = ~280px.
+   Bij fullpage-modus meer verticale ruimte voor de tabel zelf. */
+.dl-tbl-wrap{position:relative;overflow:auto;max-height:calc(100vh - 280px);border:1px solid var(--hl-light);border-radius:var(--r-md);background:#fff}
+.wrap-fullpage .dl-tbl-wrap{max-height:calc(100vh - 240px)}
 /* Sprint 1 UX-fix: auto-layout ipv fixed zodat labels niet meer worden afgekapt bij smalle kolommen.
    Header + cellen krijgen white-space:nowrap = tabel wordt precies zo breed als nodig, scrollt horizontaal indien geen ruimte. */
 .dl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm);table-layout:auto}
@@ -2325,6 +2333,14 @@ function showView(name){
     // Onbekende view → val terug op dashboard
     document.getElementById('view-dashboard').classList.add('active');
     activeName = 'dashboard';
+  }
+  // Sprint 2 layout-fix (Poel BV feedback: "veel wit"): DL krijgt fullpage-modus.
+  // Standaard wrap heeft max-width:1100px, wat op wide monitors ~300-400px witruimte links/rechts geeft.
+  // Voor de tabel-view is dat storend — klanten willen data-dichtheid zoals in de standalone.
+  // Andere views (Dashboard, RV, PU, PD) blijven op 1100px voor leesbare card-layout.
+  const wrap = document.querySelector('main.wrap');
+  if (wrap) {
+    wrap.classList.toggle('wrap-fullpage', activeName === 'documentenlijst');
   }
   // Top-bar tab-state synchroniseren
   document.querySelectorAll('#cpTabs .cp-tab').forEach(function(t){
