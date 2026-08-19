@@ -5479,6 +5479,10 @@ const DL = (function(){
   let _isLoaded = false;
   let _isLoading = false;
   let _isInjected = false;
+  // Sprint 1 backlog fix (uit standalone juni 3 — Poel BV): verzamel folder-walk errors per sessie.
+  // Bij 403 op subfolder wordt die stilzwijgend gepasseerd — nu vastgelegd zodat we in diagnose
+  // kunnen zien welke folders niet leesbaar zijn voor de huidige user.
+  let _folderWalkErrors = [];
   let _sortK = 'bestandsnaam';
   let _sortD = 'asc';
   let _searchTimer = null;
@@ -5633,6 +5637,16 @@ const DL = (function(){
       items = await tcFetchFolderItems(folderId);
     } catch(e){
       console.warn('[DL] folder items fail:', folderId, e.message);
+      // Sprint 1 backlog: leg vast welke folders niet leesbaar zijn (bv. 403 permission-restrictie
+      // per user). Wordt zichtbaar in toekomstige diagnose-knop en helpt uitleggen waarom
+      // een gebruiker minder bestanden ziet dan een admin.
+      _folderWalkErrors.push({
+        folderId: folderId,
+        path: pad || '(projectroot)',
+        status: (e && e.status) || '?',
+        msg: (e && e.message || '').slice(0, 200),
+        ts: Date.now()
+      });
       return;
     }
     const subFolders = [];
@@ -6538,11 +6552,30 @@ const DL = (function(){
       if (!rootId) throw new Error('Root folder niet gevonden in project-info');
 
       _folderIdByPath = {}; // reset bij elke fresh fetch
+      _folderWalkErrors = []; // Sprint 1 backlog: reset per-sessie diagnose-collector
       const result = [];
       await _fetchItemsRecursive(rootId, '', result);
-      _docs = result;
+      // Sprint 1 backlog fix (uit standalone juni 3 — Poel BV Marco 182 vs admin 180 incident):
+      // Dedup op _vid. Voorkomt dat een file 2× in _docs komt door folder-walk duplicaten
+      // (symlinks/inheritance/etc.). Zonder dedup zag Marco 2 extra rijen dan admin.
+      const seenVids = {};
+      const dupedVids = [];
+      const uniqueResult = result.filter(function(b){
+        if (!b._vid) return true;
+        if (seenVids[b._vid]){
+          if (dupedVids.length < 5) dupedVids.push(b._vid);
+          return false;
+        }
+        seenVids[b._vid] = true;
+        return true;
+      });
+      const dedupCount = result.length - uniqueResult.length;
+      if (dedupCount > 0){
+        console.warn('[DL] vulDocs dedup:', dedupCount, 'duplicate _vid entries verwijderd. Voorbeelden:', dupedVids);
+      }
+      _docs = uniqueResult;
       _isLoaded = true;
-      console.log('[DL] geladen:', _docs.length, 'documenten');
+      console.log('[DL] geladen:', _docs.length, 'documenten' + (dedupCount > 0 ? ' (na dedup van ' + dedupCount + ')' : ''));
       _setupAutoRefresh(); // eenmaal opzetten; timer draait daarna in achtergrond
       if (typeof _prefetchProgress === 'function'){
         try { _prefetchProgress({ current: _docs.length, total: _docs.length, phase: 'docs gevonden', unit: 'docs' }); } catch(_){}
@@ -7790,7 +7823,16 @@ const DL = (function(){
         const fileResp = await fetch(dlUrl);
         if (!fileResp.ok){ fout++; continue; }
         // Map-prefix uit _docs proberen
-        const doc = _docs.find(function(d){ return d._vid === fid; }) || _docs.find(function(d){ return d.bestandsnaam === f.name; });
+        // Sprint 1 backlog: name-fallback met ambigu-detectie (Poel BV had 13 dubbele bestandsnamen)
+        let doc = _docs.find(function(d){ return d._vid === fid; });
+        if (!doc && f.name){
+          const nameMatches = _docs.filter(function(d){ return d.bestandsnaam === f.name; });
+          if (nameMatches.length === 1) doc = nameMatches[0];
+          else if (nameMatches.length > 1) {
+            console.warn('[DL] Release name-fallback ambigu voor:', f.name, '→', nameMatches.length, 'matches; eerste gebruikt (map-prefix mogelijk verkeerd)');
+            doc = nameMatches[0];
+          }
+        }
         const folder = (doc && doc.file_location) ? _zipFolderPath(doc.file_location) : '';
         const fname = f.name || ('bestand_' + (i + 1));
         const zipPath = folder ? folder + '/' + fname : fname;
@@ -7805,7 +7847,13 @@ const DL = (function(){
     // CSV met metadata toevoegen
     const csvRows = [['Bestandsnaam', 'Revisie', 'Versie', 'Map'].join(';')];
     files.forEach(function(f){
-      const doc = _docs.find(function(d){ return d._vid === (f.id || f.fileId); }) || _docs.find(function(d){ return d.bestandsnaam === f.name; });
+      // Sprint 1 backlog: name-fallback met ambigu-detectie (idem)
+      let doc = _docs.find(function(d){ return d._vid === (f.id || f.fileId); });
+      if (!doc && f.name){
+        const nameMatches = _docs.filter(function(d){ return d.bestandsnaam === f.name; });
+        if (nameMatches.length === 1) doc = nameMatches[0];
+        else if (nameMatches.length > 1) doc = nameMatches[0]; // ambigu: eerste; loggen doen we alleen 1× per download
+      }
       const rev = (doc && doc.revisie) || f.revision || '';
       const ver = (doc && doc._versie) || '';
       const map = (doc && doc.file_location) || '';
