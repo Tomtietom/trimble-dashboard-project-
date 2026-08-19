@@ -613,7 +613,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-loading{padding:var(--s5);text-align:center;color:var(--g5);font-size:var(--fs-sm)}
 .dl-error{background:#fee;border-left:3px solid #d00;padding:var(--s3) var(--s4);border-radius:var(--r-sm);margin-bottom:var(--s4);font-size:var(--fs-sm);color:#7a0000}
 .dl-tbl-wrap{position:relative;overflow:auto;max-height:calc(100vh - 320px);border:1px solid var(--hl-light);border-radius:var(--r-md);background:#fff}
-.dl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm);table-layout:fixed}
+/* Sprint 1 UX-fix: auto-layout ipv fixed zodat labels niet meer worden afgekapt bij smalle kolommen.
+   Header + cellen krijgen white-space:nowrap = tabel wordt precies zo breed als nodig, scrollt horizontaal indien geen ruimte. */
+.dl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm);table-layout:auto}
 .dl-tbl thead{position:sticky;top:0;background:var(--gr);z-index:1}
 /* Sprint 1 UX-fix: Montserrat + uppercase + oranje 2px border-bottom = At Fielt-signatuur (kopie van standalone) */
 .dl-tbl .dl-th{position:relative;text-align:left;padding:10px 12px;font-weight:700;color:var(--dk);border-bottom:2px solid var(--af);cursor:pointer;user-select:none;white-space:nowrap;font-family:'Montserrat',sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
@@ -644,9 +646,11 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl tbody tr.dl-row{cursor:pointer}
 /* Sprint 1 UX-fix: zachte hover (was volle oranje-beige — schreeuwde bij mouse-over) */
 .dl-tbl tbody tr:hover:not(.dl-group){background:#FEFAF4}
-/* Sprint 1 UX-fix: vertical-align middle (was top) + ellipsis-per-cel = rustige uniforme rijhoogte */
-.dl-tbl tbody td{padding:8px 12px;vertical-align:middle;color:var(--dk);white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
-.dl-tbl tbody td.dl-cell-name{font-weight:500;max-width:none}
+/* Sprint 1 UX-fix: vertical-align middle + nowrap = rustige rijhoogte. Auto-layout laat kolommen naar content groeien.
+   Alleen bestandsnaam-cel krijgt max-width + ellipsis (kan anders 500+ char pad worden). */
+.dl-tbl tbody td{padding:8px 12px;vertical-align:middle;color:var(--dk);white-space:nowrap;overflow:hidden}
+.dl-tbl tbody td.dl-cell-name{font-weight:500;max-width:380px;text-overflow:ellipsis}
+.dl-tbl tbody td.dl-cell-folder{max-width:280px;text-overflow:ellipsis}
 .dl-tbl tbody td.dl-cell-name a{color:var(--dk);text-decoration:none}
 .dl-tbl tbody td.dl-cell-name a:hover{color:var(--af);text-decoration:underline}
 .dl-tbl tbody td.dl-cell-folder{color:var(--g5);font-size:var(--fs-xs)}
@@ -7657,12 +7661,13 @@ const DL = (function(){
     }
   }
 
-  // Update export-knop-label op basis van selectie
+  // Update export-knop-label op basis van selectie (zowel header als footer)
   function _updateExportBtnLabel(){
-    const btn = document.getElementById('dl-ftr-export');
-    if (!btn) return;
     const n = _selectedVids ? _selectedVids.size : 0;
-    btn.textContent = n > 0 ? ('📊 Exporteer selectie (' + n + ')') : '📊 Exporteer Excel';
+    const ftrBtn = document.getElementById('dl-ftr-export');
+    if (ftrBtn) ftrBtn.textContent = n > 0 ? ('📊 Exporteer selectie (' + n + ')') : '📊 Exporteer Excel';
+    const hdrBtn = document.getElementById('dl-export-btn');
+    if (hdrBtn) hdrBtn.textContent = n > 0 ? ('📊 Excel (' + n + ')') : '📊 Excel';
   }
 
   // Vraag een eenmalige download-URL aan voor een bestand. TC genereert die en mag direct
@@ -8824,6 +8829,7 @@ const DL = (function(){
             '<button type="button" id="dl-cols-btn" class="dl-cols-btn" title="Kolommen kiezen"><span class="dl-cols-icon">☰</span>Kolommen</button>' +
             '<button type="button" id="dl-releases-btn" class="dl-cols-btn" title="Toon releases van dit project">📦 Releases</button>' +
             '<button type="button" id="dl-qr-btn" class="dl-cols-btn" title="Genereer QR-codes naar kopersmappen">📱 QR-codes</button>' +
+            '<button type="button" id="dl-export-btn" class="dl-cols-btn" title="Exporteer huidige weergave als Excel (respecteert kolommen, volgorde, filters, groepering)">📊 Excel</button>' +
             '<button type="button" id="dl-refresh" class="dl-refresh-btn" title="Cache wissen en opnieuw laden (forceert verse metadata-fetch)"><span class="dl-refresh-icon">↻</span>Vernieuwen</button>' +
             '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
             '<div id="dl-cols-picker" class="dl-cols-picker" style="display:none">' +
@@ -9266,6 +9272,11 @@ const DL = (function(){
     const ftrExport = root.querySelector('#dl-ftr-export');
     if (ftrExport){
       ftrExport.addEventListener('click', _exportExcel);
+    }
+    // Sprint 1 fix: Excel-knop ook in header (naast Vernieuwen) — footer was buiten beeld bij lange tabellen
+    const hdrExport = root.querySelector('#dl-export-btn');
+    if (hdrExport){
+      hdrExport.addEventListener('click', _exportExcel);
     }
     // Edit-mode toggle in header
     const editBtn = root.querySelector('#dl-edit-mode-btn');
