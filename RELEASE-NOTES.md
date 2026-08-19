@@ -2,6 +2,46 @@
 
 ---
 
+## Versie 1.3 — 19 augustus 2026
+
+### Documentenlijst voelt weer als een echte tool
+
+Feedback van klanten (o.a. Poel BV): "de standalone versie is fijner dan in de cockpit". We hebben de hele weergave herzien met vijf gerichte fixes plus een langverwachte Excel-export.
+
+**Wat is er veranderd?**
+
+- **Tabel gebruikt de volle schermbreedte** — de documentenlijst zat opgesloten in een gecentreerd blok van 1100px met ~300-400px witruimte links/rechts. Nu spreidt de tabel zich uit over het hele scherm zoals in de standalone versie. Andere onderdelen (dashboard, rechten, upload) blijven gecentreerd voor leesbare cards.
+- **Standaard kolommen aangepast** — was: Bestandsnaam, Status, Discipline, Fase, Versie, Gewijzigd, Bestandslocatie (technische velden). Nu: Bestandsnaam, Documentnummer, Titel, Revisie, Documentdatum, Status, Bedrijf (document-identificatie zoals werkvoorbereiders scannen). Wie eigen kolommen had opgeslagen via "Opslaan voor project" blijft die zien — kan via Kolommen → Standaard herstellen naar de nieuwe set.
+- **Kolomkoppen in At Fielt-huisstijl** — Montserrat font, hoofdletters, oranje 2px onderrand. Herkenbaar als At Fielt-tool.
+- **Gekleurde status-labels** — 🟢 groen voor Definitief, 🟠 oranje voor Uitvoerings\*, ⚪ grijs voor Concept, 🔴 rood voor Vervallen. Sneller te scannen dan platte tekst.
+- **Rustige rijen** — elke rij dezelfde hoogte, geen wrappende tekst, zachte hover-kleur (was fel oranje).
+- **Voetregel met tellingen** onder de tabel: "X van Y documenten" + link-hint + Vernieuwen + Excel-export knop.
+
+### 📊 Excel-export met huidige weergave
+
+Nieuwe **Excel**-knop bovenaan (en in de voetregel). Één klik → download `.xlsx` met precies wat je op scherm hebt:
+
+- **Kolommen** = de kolommen die je zichtbaar hebt gemaakt, in jouw volgorde
+- **Rijen** = alle zichtbare rijen na filters en zoek. Heb je vinkjes aan? Dan alleen de geselecteerde
+- **Groepering behouden** — als je in de app groepeert op bv. Discipline, krijgt Excel tussenkoppen `━━━ ARCHITECT (152 documenten) ━━━` en witregels tussen groepen
+- **Excel-features aan**: kolombreedtes automatisch, header-rij bevroren, auto-filter aan
+- **Bestandsnaam**: `documentenlijst_[projectnaam]_[datum].xlsx`
+
+### Onder de motorkap
+
+Extra betrouwbaarheidsfixes gebaseerd op klant-incidenten:
+- Dubbele bestanden in de folder-boom worden nu correct ontdubbeld (loste Poel BV melding op: "Marco ziet 182 files, admin 180")
+- Folders waar een gebruiker geen leesrechten voor heeft worden vastgelegd (voor toekomstige diagnose-knop)
+- Release-download vindt nu correcte map-prefix als bestandsnamen dubbel voorkomen (ipv willekeurig kiezen)
+
+### Wat moet je doen?
+
+Sluit Trimble Connect één keer volledig (alle tabs), open opnieuw. De nieuwe weergave verschijnt direct.
+
+Als je eigen kolommen had opgeslagen als "project-standaard" en de nieuwe set wilt zien: Kolommen → Standaard herstellen. Bevalt de nieuwe set voor je hele team? Klik dan de oranje knop "Opslaan voor project" om die als nieuwe default vast te leggen.
+
+---
+
 ## Versie 1.2 — 21 mei 2026
 
 ### Documentenlijst toont nu altijd de actuele metadata
