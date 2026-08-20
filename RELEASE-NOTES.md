@@ -14,6 +14,7 @@ Vier concrete verzoeken opgepakt na de v1.3-release, vooral van de werkvoorberei
 - **Filter op meerdere waarden per kolom** — de filter-knop (Status, Fase, Discipline, etc.) opent nu een popover met checkboxes. Vink meerdere waarden aan (bv. *Concept + Definitief*) of gebruik de **Uitzonderen**-toggle voor "alles behalve X" (bv. alles behalve Vervallen). Knop toont het aantal actieve waarden.
 - **Klikbare links in Excel-export** — bestandsnaam-cellen in de gedownloade `.xlsx` zijn nu blauwe hyperlinks (via `=HYPERLINK()`-formule voor correcte Excel-styling). Klik in Excel op de bestandsnaam → opent Trimble Connect met dat exacte document. Ideaal voor uitvoerder-lijstjes.
 - **Kolombreedte werkt in élk project** — de resize-handle tussen kolomkoppen werkt nu ook in nieuwe projecten. Onder water: eerdere versie sloeg breedtes soms op onder een tijdelijke sleutel die verloren ging bij project-wissel; nu wordt de config-sleutel pas gebruikt wanneer het project-ID volledig geladen is.
+- **Resize verplaatst niet meer per ongeluk de kolom** — bij het loslaten van een resize-handle (vooral bij naar links slepen) kon de kolom soms van positie wisselen, alsof je hem verslepen wilde. Dat komt niet meer voor: na een resize wordt een korte grace-period ingelast waarbinnen een per-ongeluk-drag automatisch wordt genegeerd.
 
 **Wat moet je doen?**
 Sluit Trimble Connect één keer volledig, open opnieuw. Alle verbeteringen zijn direct beschikbaar.
