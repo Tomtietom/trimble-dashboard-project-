@@ -7883,12 +7883,14 @@ const DL = (function(){
       });
       // Genereer workbook
       const ws = XLSX.utils.aoa_to_sheet(aoa);
-      // v1.4: Excel bestandsnaam-cel wordt klikbare hyperlink naar TC-viewer (Marco/VW feedback:
-      // uitvoerders kunnen vanaf de Excel-lijst direct het document openen zonder zoeken).
-      // We hebben de rows-array + bestandsnaam-kolom-index nodig om de juiste cellen te vinden.
+      // v1.4 fix (Marco/VW: hyperlinks waren niet blauw):
+      // We gebruiken nu een =HYPERLINK("url","Text") formule i.p.v. cell.l property.
+      // SheetJS Community exporteert cell.l wel als hyperlink-relation, maar Excel toont
+      // de tekst dan in normale zwart — voor blauw+underline is expliciete cell-styling
+      // nodig (alleen in SheetJS Pro). De HYPERLINK-formule krijgt automatisch de
+      // hyperlink-style van Excel/Numbers/LibreOffice: blauw + onderstreept + klikbaar.
       const bnaamColIdx = cols.findIndex(function(c){ return c.k === 'bestandsnaam'; });
       if (bnaamColIdx >= 0){
-        // Loop door aoa (skip header + group-header-rows + blank rows), match met rows-array
         let rowsIdx = 0; // cursor in rows[]
         for (let rowI = 1; rowI < aoa.length; rowI++){
           if (groupHeaderRows.indexOf(rowI) !== -1) continue; // sla group-header-rijen over
@@ -7900,7 +7902,14 @@ const DL = (function(){
           if (!url) continue;
           const cellRef = XLSX.utils.encode_cell({ c: bnaamColIdx, r: rowI });
           if (ws[cellRef]){
-            ws[cellRef].l = { Target: url, Tooltip: 'Open in Trimble Connect' };
+            const displayText = String(ws[cellRef].v || doc.bestandsnaam || '');
+            // Escape dubbele quotes in de formule-args (dubbele quote → 2× dubbele quote)
+            const safeUrl = url.replace(/"/g, '""');
+            const safeText = displayText.replace(/"/g, '""');
+            ws[cellRef].f = 'HYPERLINK("' + safeUrl + '","' + safeText + '")';
+            ws[cellRef].t = 'str'; // string-type
+            // Behoud v voor het geval een client de formule niet kan evalueren
+            ws[cellRef].v = displayText;
           }
         }
       }
