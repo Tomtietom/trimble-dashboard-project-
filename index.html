@@ -553,10 +553,15 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .queue-item .locked-select{background:#f3eee5;color:var(--dk);border-color:#d8c9aa;cursor:not-allowed;opacity:1}
 .queue-item .locked-select:disabled{-webkit-appearance:none;appearance:none;padding-right:10px}
 
-/* Verplichte metadata-velden: rode * achter label, en extra nadruk op leeg */
+/* Verplichte metadata-velden: rood label + rode * + rode rand op leeg.
+   Niet-verplichte velden krijgen géén warn-decoratie (leeg = prima). */
 .meta-row .req-mark{color:#c0392b;font-weight:700;margin-left:2px}
+.meta-row label.req-label{color:#c0392b}
+.meta-row label.req-label .warn-icon{color:#c0392b}
 .meta-row .req-missing{border-color:#c0392b;background:#fbeae8}
 .meta-row .req-missing:focus{border-color:#c0392b}
+/* Verplicht + gevuld: subtiele rode linker-accent zodat 'verplicht' óók zichtbaar blijft na invullen */
+.meta-row .req-filled{border-left:3px solid #c0392b}
 /* Upload-knop disabled door verplichte velden: visueel duidelijk + cursor */
 #pu-upload-btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
 
@@ -4914,9 +4919,16 @@ const PU = (function(){
 
   function _renderMetaRow(item){
     const req = _uploadConfig.requiredFields || {};
+    // Sorteer verplichte velden vooraan zodat uitvoerder ze als eerste ziet + invult.
+    // Stable sort (ES2019+): niet-verplichte velden houden onderling hun schema-volgorde.
+    const activeFields = _getActiveFields().slice().sort(function(a,b){
+      const ar = req[a.uuid] === true ? 1 : 0;
+      const br = req[b.uuid] === true ? 1 : 0;
+      return br - ar;
+    });
     // Render alleen actieve velden — admin bepaalt welke dat zijn.
     // Type bepaalt input: enum=select, date=date-input, text=text-input.
-    const parts = _getActiveFields().map(function(field){
+    const parts = activeFields.map(function(field){
       const uuid = field.uuid;
       const val = item.metadata[uuid] || '';
       const missing = !val;
@@ -4924,6 +4936,7 @@ const PU = (function(){
       const locked = item.metadataLocked && item.metadataLocked[uuid];
       const required = req[uuid] === true;
       const reqMark = required ? '<span class="req-mark" title="Verplicht — Upload-knop blijft uit tot dit veld is ingevuld">*</span>' : '';
+      const labelCls = required ? ' class="req-label"' : '';
 
       // Locked-rendering: alleen voor enum-velden zinvol (vaste keuze).
       if (locked && field.type === 'enum'){
@@ -4933,14 +4946,18 @@ const PU = (function(){
           })
         ).join('');
         return '<div>'
-          + '<label title="Vergrendeld door projectbeheerder — niet aan te passen">🔒 ' + escapeHtml(field.label) + '</label>'
+          + '<label title="Vergrendeld door projectbeheerder — niet aan te passen">🔒 ' + escapeHtml(field.label) + reqMark + '</label>'
           + '<select class="locked-select" data-field="meta-' + escapeHtml(uuid) + '" data-id="' + item.id + '" disabled>' + opts + '</select>'
         + '</div>';
       }
 
-      const icon = missing ? '<span class="warn-icon" title="' + (required ? 'Verplicht — moet ingevuld' : 'Ontbreekt nog') + '">⚠</span>' : '';
-      let cls = missing ? 'warn-select' : '';
-      if (missing && required) cls += ' req-missing';
+      // Warn-decoratie (⚠, rode/gele rand) alleen bij verplichte velden.
+      // Leeg optioneel veld = geen probleem → visueel neutraal.
+      const icon = (missing && required) ? '<span class="warn-icon" title="Verplicht — moet ingevuld">⚠</span>' : '';
+      let cls = '';
+      if (required){
+        cls = missing ? 'warn-select req-missing' : 'req-filled';
+      }
       const autoAttr = auto ? ' data-auto="1" title="Automatisch ingevuld op basis van mapstructuur of bestandsnaam"' : '';
       let inputHtml;
       if (field.type === 'enum'){
@@ -4958,7 +4975,7 @@ const PU = (function(){
         inputHtml = '<input type="text" class="' + cls + '" data-field="meta-' + escapeHtml(uuid) + '" data-id="' + item.id + '" value="' + escapeHtml(val) + '"' + maxAttr + autoAttr + '>';
       }
       return '<div>'
-        + '<label>' + escapeHtml(field.label) + reqMark + ' ' + icon + '</label>'
+        + '<label' + labelCls + '>' + escapeHtml(field.label) + reqMark + ' ' + icon + '</label>'
         + inputHtml
       + '</div>';
     }).join('');
