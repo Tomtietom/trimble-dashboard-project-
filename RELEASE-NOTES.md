@@ -2,6 +2,25 @@
 
 ---
 
+## Versie 1.5 — 20 augustus 2026
+
+### Diagnose-knop: één klik, compleet supportrapport
+
+Tot nu toe begon elke storingsmelding hetzelfde: "kun je F12 indrukken en een screenshot van het rode gedeelte sturen?" Dat werkt niet bij werkvoorbereiders die midden in hun werk zitten. Vanaf nu staat er rechtsonder in de cockpit een **Diagnose**-link.
+
+**Wat is er veranderd?**
+
+- **Diagnose-paneel** — de link onderaan (en de knop *Diagnose…* in de instellingen) opent een overzicht met tien controles: is Trimble Connect verbonden, is het access token nog geldig en hoe lang, welke At Fielt-modules zijn vrijgegeven, welke regio wordt gebruikt, is de Trimble-server rechtstreeks bereikbaar of alleen via onze proxy, werkt de lokale opslag, en hoeveel meldingen er deze sessie waren. Groen = in orde, oranje = let op, rood = dit is het probleem.
+- **Kopieer diagnose** — één knop zet het hele rapport op het klembord: projectnaam, gebruiker, regio, alle controles, de status van elke module (inclusief hoeveel documenten geladen zijn en welke mappen niet leesbaar waren) en het logboek. Plakken in een mail naar info@atfielt.nl en wij zien direct wat er speelt.
+- **Logboek van meldingen** — waarschuwingen en fouten worden vanaf het opstarten stil meegeschreven, ook als je het paneel nooit opent. Belt iemand een uur later, dan staat de melding er nog steeds in met het tijdstip erbij.
+- **Automatische controle bij het opstarten** — de controle draait vanzelf na het laden. Gaat er iets mis, dan krijgt de Diagnose-link een klein rood stipje. De cockpit zelf blijft gewoon werken; het is een signaal, geen blokkade.
+- **Niet-onthouden voorkeuren worden nu gemeld** — in sommige browserinstellingen (third-party cookies uit) mag de cockpit binnen Trimble Connect niets lokaal opslaan. Dat verklaart "mijn kolommen staan elke keer weer anders". Voorheen kon dat de cockpit tijdens het laden laten vastlopen; nu valt hij netjes terug op de standaardinstellingen en meldt de diagnose het probleem met naam en toenaam.
+
+**Wat moet je doen?**
+Niets. Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.4 — 20 augustus 2026
 
 ### Snelle verbeteringen op basis van klant-feedback
