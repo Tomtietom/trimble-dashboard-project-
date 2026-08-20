@@ -2,6 +2,38 @@
 
 ---
 
+## Versie 1.6 — 20 augustus 2026
+
+### Map kiezen in de uploader: van eindeloze lijst naar uitklapbare boom
+
+Bij VolkerWessels telt een project ruim 700 mappen. De "Bulk-instellen"-balk bood die als één platte keuzelijst aan — scrollen door honderden regels met volledige paden, zonder houvast. Dat is vervangen door een mappenboom.
+
+**Wat is er veranderd?**
+
+- **Uitklapbare mappenboom** — klik op de map-kiezer en je krijgt de projectstructuur zoals je hem kent: alleen het bovenste niveau, met een chevron om verder open te klappen. Je ziet mapnamen in plaats van complete paden.
+- **Zoeken door de hele boom** — typ een deel van een mapnaam of pad en alleen de treffers blijven staan, met hun bovenliggende mappen automatisch opengeklapt. Hoofdletters maken niet uit.
+- **Nette volgorde** — mappen sorteren zoals mensen dat verwachten: `0-06` staat vóór `0-07`, en die weer vóór `05.00`. Niet meer de letterlijke tekst-volgorde waarin `0-10` tussen `0-1` en `0-2` belandt.
+- **Projectroot bovenaan** — uploaden naar de projectroot blijft één klik, zonder door de boom te hoeven.
+- **Gekozen map blijft in beeld** — de kop toont je selectie met een wis-knopje ernaast. Openklappen en zoekterm blijven bewaard terwijl je in de wachtrij werkt.
+
+De map-kiezer per afzonderlijk bestand verandert niet — die had al een zoekveld en een korte lijst met de meest waarschijnlijke mappen.
+
+### Onder de motorkap: Excel-export op een nieuwe motor
+
+De Excel-export is intern overgezet van de ene bibliotheek naar de andere. **Je merkt hier bewust niets van**: kolommen, groepen, bevroren koprij, filterknoppen en de klikbare bestandsnamen uit versie 1.4 komen er exact hetzelfde uit.
+
+Waarom het er dan toch in staat: de oude bibliotheek kon geen opmaak naar Excel schrijven — geen kleuren, geen logo, geen bestaand sjabloon inlezen. Daarmee was *"exporteer in ons eigen Excel-sjabloon"* technisch onmogelijk. De nieuwe kan dat wel. Deze stap is de motorwissel; de zichtbare opmaak volgt zodra het sjabloon er is.
+
+**Wat moet je doen?**
+Niets. Sluit Trimble Connect één keer volledig en open opnieuw.
+
+**Wat volgt:**
+- Eigen Excel-sjabloon met bewaard logo + opmaak — technisch nu mogelijk, wacht op het sjabloon van de klant
+- Klaargezette weergaves met naam (*"DO Architect"*, *"UO Aannemer"*)
+- Publieke deel-links per document voor uitvoerders zonder Trimble Connect-account
+
+---
+
 ## Versie 1.5 — 20 augustus 2026
 
 ### Diagnose-knop: één klik, compleet supportrapport
