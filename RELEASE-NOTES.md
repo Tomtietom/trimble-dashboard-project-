@@ -66,6 +66,31 @@ Als je eigen kolommen had opgeslagen als "project-standaard" en de nieuwe set wi
 
 ---
 
+## Versie 1.2.1 — juni & juli 2026
+
+### QR-codes voor kopersmappen
+
+**Wat was het probleem?**
+Bij projecten met kopersmappen (één map per bouwnummer of koper) moest je per map handmatig de link opzoeken, kopiëren en er via een externe website een QR-code van laten maken. Bij tientallen bouwnummers is dat al snel een half uur werk, en het is foutgevoelig: één verkeerd geplakte link en de koper landt in de map van de buren.
+
+**Wat is er veranderd?**
+In de Documentenlijst zit de knop **📱 QR-codes**. Je kiest de hoofdmap met de kopersmappen, en elke submap daaronder wordt automatisch één QR-code die rechtstreeks naar die map in Trimble Connect verwijst. Je vinkt zelf aan welke mappen mee moeten en exporteert in drie vormen:
+
+- **ZIP** — losse PNG's per map in hoge resolutie, klaar om te plakken in een brochure, brief of sticker
+- **PDF** — printbaar overzichtsvel met alle QR-codes en de mapnaam eronder
+- **CSV** — koppeltabel mapnaam → link, voor eigen verwerking of controle
+
+### 🏢 Eigen bedrijfslogo in het midden van de QR-code
+
+Je kunt in hetzelfde scherm een logo uploaden dat midden in elke QR-code wordt geplaatst. Het logo wordt **per project onthouden**, dus je kiest het één keer en het verschijnt daarna automatisch in de voorbeelden, in de ZIP-PNG's én op het print-PDF. Via "✕ Logo weg" haal je het er weer af.
+
+De codes blijven gewoon scanbaar: de QR-codes worden op het hoogste foutcorrectie-niveau gegenereerd, waardoor het afgedekte midden ruim binnen de veilige marge blijft. We hebben dat getest door de gegenereerde codes met logo weer automatisch te laten uitlezen — zowel op schermformaat als op printformaat.
+
+**Let op**
+Wie de QR-code scant heeft een Trimble-account met toegang tot het project nodig, net als bij een handmatig gemaakte maplink. Publieke deel-links voor mensen zonder account staan op de roadmap.
+
+---
+
 ## Versie 1.2 — 21 mei 2026
 
 ### Documentenlijst toont nu altijd de actuele metadata
