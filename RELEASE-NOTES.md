@@ -2,6 +2,29 @@
 
 ---
 
+## Versie 1.4 — 20 augustus 2026
+
+### Snelle verbeteringen op basis van klant-feedback
+
+Vier concrete verzoeken opgepakt na de v1.3-release, vooral van de werkvoorbereiders van VolkerWessels.
+
+**Wat is er veranderd?**
+
+- **Meerdere rijen selecteren met shift+klik** — klik checkbox rij 3, shift+klik rij 12: alle acht rijen ertussen aangevinkt. Werkt zoals in Verkenner of Excel; ook bij groepering en mappenboom-weergave.
+- **Filter op meerdere waarden per kolom** — de filter-knop (Status, Fase, Discipline, etc.) opent nu een popover met checkboxes. Vink meerdere waarden aan (bv. *Concept + Definitief*) of gebruik de **Uitzonderen**-toggle voor "alles behalve X" (bv. alles behalve Vervallen). Knop toont het aantal actieve waarden.
+- **Klikbare links in Excel-export** — bestandsnaam-cellen in de gedownloade `.xlsx` zijn nu blauwe hyperlinks (via `=HYPERLINK()`-formule voor correcte Excel-styling). Klik in Excel op de bestandsnaam → opent Trimble Connect met dat exacte document. Ideaal voor uitvoerder-lijstjes.
+- **Kolombreedte werkt in élk project** — de resize-handle tussen kolomkoppen werkt nu ook in nieuwe projecten. Onder water: eerdere versie sloeg breedtes soms op onder een tijdelijke sleutel die verloren ging bij project-wissel; nu wordt de config-sleutel pas gebruikt wanneer het project-ID volledig geladen is.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig, open opnieuw. Alle verbeteringen zijn direct beschikbaar.
+
+**Wat volgt (op basis van dezelfde feedback):**
+- Eigen Excel-template met bewaard logo + opmaak (aparte sprint — klant levert template aan)
+- Klaargezette weergaves met naam (*"DO Architect"*, *"UO Aannemer"*) waarin filters + kolommen + groepering samen bewaard worden
+- Publieke deel-links per document voor uitvoerders zonder Trimble Connect-account
+
+---
+
 ## Versie 1.3 — 19 augustus 2026
 
 ### Documentenlijst voelt weer als een echte tool
