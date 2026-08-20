@@ -466,9 +466,18 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .pu-queue{margin-top:var(--s5)}
 .queue-item{background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);padding:var(--s4);margin-bottom:var(--s3);box-shadow:0 2px 8px rgba(0,0,0,.04);transition:box-shadow .15s}
 .queue-item:hover{box-shadow:0 4px 14px rgba(0,0,0,.07)}
+.queue-item.is-collapsed{padding:var(--s3) var(--s4)}
+.queue-item.has-missing-required{border-left:4px solid #dc2626}
 .queue-head{display:flex;justify-content:space-between;align-items:center;gap:var(--s3)}
-.queue-name{font-family:'Montserrat',sans-serif;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-md)}
+.queue-toggle{background:none;border:0;padding:0;cursor:pointer;font-size:14px;color:var(--g5);width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);flex-shrink:0;transition:background .1s,transform .15s}
+.queue-toggle:hover{background:var(--gr);color:var(--dk)}
+.queue-toggle.is-open{transform:rotate(90deg)}
+.queue-name{font-family:'Montserrat',sans-serif;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-md);cursor:pointer}
 .queue-size{color:var(--g4);font-size:var(--fs-sm);white-space:nowrap}
+.queue-req-status{font-size:var(--fs-sm);font-weight:600;padding:2px 10px;border-radius:var(--r-pill);white-space:nowrap}
+.queue-req-status.ok{background:var(--okbg);color:var(--ok)}
+.queue-req-status.miss{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+.queue-req-status.opt{color:var(--g4);font-weight:500;background:transparent}
 .queue-remove{background:none;border:none;color:var(--g4);cursor:pointer;font-size:20px;line-height:1;padding:0 var(--s1)}
 .queue-remove:hover{color:var(--warn)}
 .queue-body{margin-top:var(--s3)}
@@ -489,7 +498,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .meta-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--s2);margin-top:var(--s2)}
 .meta-row>div{min-width:0}
 .meta-row label{display:flex;align-items:center;gap:var(--s1);margin:0 0 var(--s1);font-size:var(--fs-xs);color:var(--g5);text-transform:uppercase;letter-spacing:.4px;font-weight:600;font-family:'Montserrat',sans-serif}
-.meta-row .warn-icon{color:#d18000;font-size:var(--fs-md);line-height:1}
+.meta-row .warn-icon{color:#dc2626;font-size:var(--fs-md);line-height:1}
 .meta-row select.warn-select{border-color:#e0b65c;background:#fffbe9}
 
 .folder-picker{margin-top:var(--s1)}
@@ -524,6 +533,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .pu-bulk-bar:empty{display:none}
 .pu-bulk-bar{background:#fff7ec;border:1px solid #f0d4a3;border-radius:var(--r-md);padding:var(--s3) var(--s4);margin:var(--s4) 0 var(--s2)}
 .pu-bulk-bar .bulk-title{font-weight:600;font-size:var(--fs-md);margin-bottom:var(--s2);color:#6f4514}
+.pu-bulk-bar .bulk-req-hint{color:#dc2626;font-weight:600;font-size:var(--fs-sm);margin-left:6px}
+.pu-bulk-bar .bulk-fields input[type=text],.pu-bulk-bar .bulk-fields input[type=date]{width:100%;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font-family:'Poppins',sans-serif;font-size:var(--fs-md);background:#fff;color:var(--dk);outline:none;box-sizing:border-box}
+.pu-bulk-bar .bulk-fields input[type=text]:focus,.pu-bulk-bar .bulk-fields input[type=date]:focus{border-color:var(--af)}
 .pu-bulk-bar .bulk-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--s2) var(--s3);margin-bottom:var(--s3)}
 .pu-bulk-bar .bulk-fields label{display:block;font-size:var(--fs-sm);color:var(--g5);margin-bottom:3px}
 .pu-bulk-bar .bulk-fields select{width:100%;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font-family:'Poppins',sans-serif;font-size:var(--fs-md);background:#fff;color:var(--dk);outline:none}
@@ -553,15 +565,21 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .queue-item .locked-select{background:#f3eee5;color:var(--dk);border-color:#d8c9aa;cursor:not-allowed;opacity:1}
 .queue-item .locked-select:disabled{-webkit-appearance:none;appearance:none;padding-right:10px}
 
-/* Verplichte metadata-velden: rood label + rode * + rode rand op leeg.
+/* Verplichte metadata-velden: helemaal rood label, dikke rode rand, ronde !-badge.
    Niet-verplichte velden krijgen géén warn-decoratie (leeg = prima). */
-.meta-row .req-mark{color:#c0392b;font-weight:700;margin-left:2px}
-.meta-row label.req-label{color:#c0392b}
-.meta-row label.req-label .warn-icon{color:#c0392b}
-.meta-row .req-missing{border-color:#c0392b;background:#fbeae8}
-.meta-row .req-missing:focus{border-color:#c0392b}
-/* Verplicht + gevuld: subtiele rode linker-accent zodat 'verplicht' óók zichtbaar blijft na invullen */
-.meta-row .req-filled{border-left:3px solid #c0392b}
+.meta-row .req-mark{color:#dc2626;font-weight:800;margin-left:2px;font-size:15px}
+.meta-row label.req-label{color:#dc2626;font-weight:700}
+.meta-row .req-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc2626;color:#fff;font-weight:800;font-size:11px;line-height:1;font-family:'Poppins',sans-serif;flex-shrink:0}
+.meta-row .req-missing{border:2px solid #dc2626 !important;background:#fef2f2}
+.meta-row .req-missing:focus{outline:2px solid #fecaca;outline-offset:1px}
+/* Verplicht + gevuld: rode rand zodat 'verplicht' óók zichtbaar blijft na invullen */
+.meta-row .req-filled{border:2px solid #dc2626 !important;background:#fff}
+/* Bulk-bar krijgt zelfde behandeling — verplichte velden ook rood daar */
+.pu-bulk-bar .bulk-fields label.req-label{color:#dc2626;font-weight:700}
+.pu-bulk-bar .bulk-fields .req-mark{color:#dc2626;font-weight:800;margin-left:2px;font-size:14px}
+.pu-bulk-bar .bulk-fields .req-badge{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#dc2626;color:#fff;font-weight:800;font-size:10px;line-height:1;font-family:'Poppins',sans-serif;margin-left:4px;flex-shrink:0}
+.pu-bulk-bar .bulk-fields .req-input{border:2px solid #dc2626 !important}
+.pu-bulk-bar .bulk-fields label{display:flex;align-items:center;gap:4px}
 /* Upload-knop disabled door verplichte velden: visueel duidelijk + cursor */
 #pu-upload-btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
 
@@ -2909,7 +2927,9 @@ const PU = (function(){
   let _uploadConfig = { rules: [], filePatterns: [], folderPatterns: [], synonyms: {}, lockedFields: {}, requiredFields: {}, activeFields: [], isTemplate: false };
   let _configLoaded = false;
   let _configLoading = false;
-  let _bulkMeta = { discipline:'', project_fase:'', document_status:'' };
+  // UUID-keyed sinds bulk-bar alle actieve velden toont (v1.4). Voor backwards-compat
+  // met oude naam-keys wordt bij lezen via _keyToUuid vertaald (via item.metadata heen).
+  let _bulkMeta = {};
   let _bulkFolderId = '';
   let _bulkOnlyEmpty = true;
 
@@ -4442,13 +4462,38 @@ const PU = (function(){
     const pendingCount = _queue.filter(function(i){ return i.status === 'pending'; }).length;
     if (pendingCount < 2){ bar.innerHTML = ''; return; }
 
-    const metaSelects = METADATA_FIELDS.map(function(f){
-      const opts = ['<option value="">— niet wijzigen —</option>'].concat(
-        (ENUM_VALUES[f] || []).map(function(v){
-          return '<option value="' + escapeHtml(v) + '"' + (v === _bulkMeta[f] ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
-        })
-      ).join('');
-      return '<div><label>' + escapeHtml(FIELD_LABEL[f]) + '</label><select data-bulk="' + f + '">' + opts + '</select></div>';
+    // Alle actieve velden tonen (was: alleen 3 standaard enum-velden), gesorteerd
+    // op verplicht-eerst. Voor enum: select; date: date-input; text: text-input.
+    const req = _uploadConfig.requiredFields || {};
+    const activeFields = _getActiveFields().slice().sort(function(a,b){
+      const ar = req[a.uuid] === true ? 1 : 0;
+      const br = req[b.uuid] === true ? 1 : 0;
+      return br - ar;
+    });
+
+    const metaFields = activeFields.map(function(field){
+      const uuid = field.uuid;
+      const val = _bulkMeta[uuid] || '';
+      const required = req[uuid] === true;
+      const reqMark = required ? '<span class="req-mark" title="Verplicht — Upload-knop blijft uit tot dit veld is ingevuld">*</span>' : '';
+      const reqBadge = required ? '<span class="req-badge" title="Verplicht">!</span>' : '';
+      const labelCls = required ? ' class="req-label"' : '';
+      const inputCls = required ? 'req-input' : '';
+      let input;
+      if (field.type === 'enum'){
+        const opts = ['<option value="">— niet wijzigen —</option>'].concat(
+          (field.enum || []).map(function(v){
+            return '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+          })
+        ).join('');
+        input = '<select class="' + inputCls + '" data-bulk-field="' + escapeHtml(uuid) + '">' + opts + '</select>';
+      } else if (field.type === 'date'){
+        input = '<input type="date" class="' + inputCls + '" data-bulk-field="' + escapeHtml(uuid) + '" value="' + escapeHtml(val) + '" placeholder="— niet wijzigen —">';
+      } else {
+        const maxAttr = field.maxLength ? ' maxlength="' + field.maxLength + '"' : '';
+        input = '<input type="text" class="' + inputCls + '" data-bulk-field="' + escapeHtml(uuid) + '" value="' + escapeHtml(val) + '"' + maxAttr + ' placeholder="— niet wijzigen —">';
+      }
+      return '<div><label' + labelCls + '>' + escapeHtml(field.label) + reqMark + reqBadge + '</label>' + input + '</div>';
     }).join('');
 
     const folderOpts = ['<option value="">— niet wijzigen —</option>'].concat(
@@ -4458,7 +4503,7 @@ const PU = (function(){
     ).join('');
 
     let suggestionHtml = '';
-    if (METADATA_FIELDS.some(function(f){ return _bulkMeta[f]; })){
+    if (Object.keys(_bulkMeta).some(function(k){ return _bulkMeta[k]; })){
       const dummy = { metadata: _bulkMeta, file: { name:'' }, description:'' };
       const top = _writableFolders
         .map(function(f){ return { folder: f, score: _scoreFolder(f, dummy) }; })
@@ -4474,28 +4519,39 @@ const PU = (function(){
       }
     }
 
+    const reqCount = activeFields.filter(function(f){ return req[f.uuid] === true; }).length;
+    const reqHint = reqCount > 0
+      ? ' <span class="bulk-req-hint">(' + reqCount + ' verplicht' + (reqCount === 1 ? '' : 'e') + ' veld' + (reqCount === 1 ? '' : 'en') + ' — eerst deze invullen)</span>'
+      : '';
+
     bar.innerHTML =
-      '<div class="bulk-title">Bulk-instellen voor alle ' + pendingCount + ' bestanden in de queue</div>'
+      '<div class="bulk-title">Bulk-instellen voor alle ' + pendingCount + ' bestanden' + reqHint + '</div>'
       + '<div class="bulk-fields">'
-        + metaSelects
-        + '<div><label>Map</label><select data-bulk="folder">' + folderOpts + '</select></div>'
+        + metaFields
+        + '<div><label>Map</label><select data-bulk-folder="1">' + folderOpts + '</select></div>'
       + '</div>'
       + suggestionHtml
       + '<div class="bulk-actions">'
-        + '<label class="bulk-toggle"><input type="checkbox" data-bulk="onlyEmpty"' + (_bulkOnlyEmpty ? ' checked' : '') + '> Alleen lege velden overschrijven</label>'
-        + '<button class="bulk-apply" type="button" data-bulk="apply">Toepassen op alle</button>'
+        + '<label class="bulk-toggle"><input type="checkbox" data-bulk-only-empty="1"' + (_bulkOnlyEmpty ? ' checked' : '') + '> Alleen lege velden overschrijven</label>'
+        + '<button class="bulk-apply" type="button" data-bulk-apply="1">Toepassen op alle</button>'
       + '</div>';
 
-    bar.querySelectorAll('select[data-bulk]').forEach(function(el){
-      el.addEventListener('change', function(){
-        const key = el.getAttribute('data-bulk');
-        if (key === 'folder'){ _bulkFolderId = el.value; _renderBulkBar(); }
-        else if (METADATA_FIELDS.indexOf(key) >= 0){ _bulkMeta[key] = el.value; _renderBulkBar(); }
+    // Enum-select en date/text-input: change/input event
+    bar.querySelectorAll('[data-bulk-field]').forEach(function(el){
+      const uuid = el.getAttribute('data-bulk-field');
+      const evt = (el.tagName === 'INPUT' && el.type === 'text') ? 'input' : 'change';
+      el.addEventListener(evt, function(){
+        _bulkMeta[uuid] = el.value;
+        // Bij tekst-input geen full re-render (cursor blijft dan behouden).
+        // Bij enum/date wel — de suggestie kan wijzigen.
+        if (evt === 'change') _renderBulkBar();
       });
     });
-    const cb = bar.querySelector('input[data-bulk="onlyEmpty"]');
+    const folderEl = bar.querySelector('select[data-bulk-folder]');
+    if (folderEl) folderEl.addEventListener('change', function(){ _bulkFolderId = folderEl.value; _renderBulkBar(); });
+    const cb = bar.querySelector('input[data-bulk-only-empty]');
     if (cb) cb.addEventListener('change', function(){ _bulkOnlyEmpty = cb.checked; });
-    const btn = bar.querySelector('button[data-bulk="apply"]');
+    const btn = bar.querySelector('button[data-bulk-apply]');
     if (btn) btn.addEventListener('click', _applyBulkToAll);
     const sugBtn = bar.querySelector('button[data-bulk="apply-suggestion"]');
     if (sugBtn) sugBtn.addEventListener('click', function(){
@@ -4508,12 +4564,11 @@ const PU = (function(){
     const pending = _queue.filter(function(i){ return i.status === 'pending'; });
     if (!pending.length) return;
     for (const item of pending){
-      // _bulkMeta blijft naam-keyed voor de 3 standaard enum-velden (bulk-bar is
-      // bewust simpel gehouden). Vertaal naar UUID voor item.metadata-keys.
-      for (const f of METADATA_FIELDS){
-        const v = _bulkMeta[f];
+      // _bulkMeta is UUID-keyed sinds v1.4 bulk-refactor. Itereer over alle actieve velden.
+      for (const field of _getActiveFields()){
+        const uuid = field.uuid;
+        const v = _bulkMeta[uuid];
         if (!v) continue;
-        const uuid = _keyToUuid(f);
         // Vergrendelde velden onaantastbaar voor bulk, los van onlyEmpty-vlag
         if (item.metadataLocked && item.metadataLocked[uuid]) continue;
         if (_bulkOnlyEmpty && item.metadata[uuid]) continue;
@@ -4610,6 +4665,10 @@ const PU = (function(){
       return;
     }
     if (!_writableFolders.length) return;
+    // Bij batch-toevoeging (>=2 items in queue na add) klappen items dicht,
+    // zodat de bulk-bar bovenaan de focus krijgt. User klapt individueel open.
+    const prevPending = _queue.filter(function(i){ return i.status === 'pending'; }).length;
+    const willBeBatch = (prevPending + fileList.length) >= 2;
     for (const f of fileList){
       const item = {
         id: _nextQueueId++,
@@ -4622,6 +4681,7 @@ const PU = (function(){
         folderSearch: '',
         progress: 0,
         status: 'pending',
+        collapsed: willBeBatch,
         error: null,
         warn: null,
         // UUID-keyed metadata-state. Initieel leeg per actief veld zodat
@@ -4645,6 +4705,11 @@ const PU = (function(){
       // Fallback: als suggestie geen folder vindt en folderId nog null, kies projectroot
       if (!item.folderId && _writableFolders[0]) item.folderId = _writableFolders[0].id;
       _queue.push(item);
+    }
+    // Bij batch: zorg dat álle pending items collapsed staan zodat de bulk-bar
+    // domineert. Reeds handmatig geopende items blijven anders eenzaam open.
+    if (willBeBatch){
+      for (const it of _queue){ if (it.status === 'pending') it.collapsed = true; }
     }
     renderQueue();
   }
@@ -4682,8 +4747,11 @@ const PU = (function(){
     qEl.innerHTML = _queue.map(function(item){
       const selectedFolder = _writableFolders.find(function(f){ return f.id === item.folderId; });
       const disabled = item.status !== 'pending' ? 'disabled' : '';
-      const folderPicker = item.status === 'pending' ? _renderFolderPicker(item, selectedFolder) : '';
-      const metaRow = item.status === 'pending' ? _renderMetaRow(item) : '';
+      const isPending = item.status === 'pending';
+      // Alleen pending items zijn inklapbaar. Uploaded/error-items altijd expanded.
+      const collapsed = isPending && item.collapsed === true;
+      const folderPicker = isPending && !collapsed ? _renderFolderPicker(item, selectedFolder) : '';
+      const metaRow = isPending && !collapsed ? _renderMetaRow(item) : '';
 
       let statusLine = '';
       if (item.status === 'done') statusLine = '<div class="pu-status ok">✓ Geüpload</div>';
@@ -4696,26 +4764,61 @@ const PU = (function(){
         ? '<div class="pu-progress"><div class="pu-progress-bar" style="width:' + item.progress + '%"></div></div>'
         : '';
 
+      // Verplicht-status-badge in de header: aantal missing verplichte velden
+      let reqStatus = '';
+      if (isPending){
+        const missing = _missingRequiredFields(item).length;
+        const reqTotal = _getActiveFields().filter(function(f){ return (_uploadConfig.requiredFields || {})[f.uuid] === true; }).length;
+        if (missing > 0){
+          reqStatus = '<span class="queue-req-status miss" title="' + missing + ' verplicht' + (missing === 1 ? '' : 'e') + ' veld' + (missing === 1 ? '' : 'en') + ' nog niet ingevuld">! ' + missing + ' verplicht</span>';
+        } else if (reqTotal > 0){
+          reqStatus = '<span class="queue-req-status ok" title="Alle verplichte velden ingevuld">✓ compleet</span>';
+        }
+      }
+      // Chevron: ▸ dicht / ▾ open (isomorph klein element)
+      const toggleBtn = isPending
+        ? '<button class="queue-toggle' + (collapsed ? '' : ' is-open') + '" type="button" data-toggle="' + item.id + '" title="' + (collapsed ? 'Klap uit' : 'Klap in') + '" aria-label="' + (collapsed ? 'Klap uit' : 'Klap in') + '">▸</button>'
+        : '';
+      const itemCls = 'queue-item'
+        + (collapsed ? ' is-collapsed' : '')
+        + (isPending && _hasMissingRequired(item) ? ' has-missing-required' : '');
+
+      const bodyHtml = collapsed ? '' : (''
+        + '<div class="queue-body">'
+          + '<label>Beschrijving</label>'
+          + '<textarea data-field="description" data-id="' + item.id + '" ' + disabled + ' placeholder="Optioneel…">' + escapeHtml(item.description) + '</textarea>'
+          + '<div class="pu-desc-hint">Wordt als 1e opmerking bij het bestand opgeslagen in Trimble Connect. Ook gebruikt om regels te matchen op woorden die niet in de bestandsnaam staan.</div>'
+          + metaRow
+          + '<label>Map</label>'
+          + folderPicker
+          + (isPending && selectedFolder ? _renderPathPreview(item) : '')
+          + progressBar
+          + statusLine
+        + '</div>');
+
       return ''
-        + '<div class="queue-item" data-id="' + item.id + '">'
+        + '<div class="' + itemCls + '" data-id="' + item.id + '">'
           + '<div class="queue-head">'
-            + '<div class="queue-name" title="' + escapeHtml(item.file.name) + '">' + escapeHtml(item.file.name) + '</div>'
+            + toggleBtn
+            + '<div class="queue-name" title="' + escapeHtml(item.file.name) + '"' + (isPending ? ' data-toggle-name="' + item.id + '"' : '') + '>' + escapeHtml(item.file.name) + '</div>'
+            + reqStatus
             + '<div class="queue-size">' + _formatBytes(item.file.size) + '</div>'
-            + (item.status === 'pending' ? '<button class="queue-remove" type="button" data-remove="' + item.id + '" title="Verwijderen">×</button>' : '')
+            + (isPending ? '<button class="queue-remove" type="button" data-remove="' + item.id + '" title="Verwijderen">×</button>' : '')
           + '</div>'
-          + '<div class="queue-body">'
-            + '<label>Beschrijving</label>'
-            + '<textarea data-field="description" data-id="' + item.id + '" ' + disabled + ' placeholder="Optioneel…">' + escapeHtml(item.description) + '</textarea>'
-            + '<div class="pu-desc-hint">Wordt als 1e opmerking bij het bestand opgeslagen in Trimble Connect. Ook gebruikt om regels te matchen op woorden die niet in de bestandsnaam staan.</div>'
-            + metaRow
-            + '<label>Map</label>'
-            + folderPicker
-            + (item.status === 'pending' && selectedFolder ? _renderPathPreview(item) : '')
-            + progressBar
-            + statusLine
-          + '</div>'
+          + bodyHtml
         + '</div>';
     }).join('');
+
+    // Toggle-handler: chevron of naam klikken → collapse omkeren
+    qEl.querySelectorAll('[data-toggle],[data-toggle-name]').forEach(function(el){
+      el.addEventListener('click', function(){
+        const id = Number(el.getAttribute('data-toggle') || el.getAttribute('data-toggle-name'));
+        const item = _queue.find(function(i){ return i.id === id; });
+        if (!item || item.status !== 'pending') return;
+        item.collapsed = !item.collapsed;
+        renderQueue();
+      });
+    });
 
     // Event handlers — opnieuw binden na elke render
     qEl.querySelectorAll('[data-remove]').forEach(function(btn){
@@ -4951,12 +5054,12 @@ const PU = (function(){
         + '</div>';
       }
 
-      // Warn-decoratie (⚠, rode/gele rand) alleen bij verplichte velden.
+      // Warn-decoratie (rode !-badge, rode rand) alleen bij verplichte velden.
       // Leeg optioneel veld = geen probleem → visueel neutraal.
-      const icon = (missing && required) ? '<span class="warn-icon" title="Verplicht — moet ingevuld">⚠</span>' : '';
+      const icon = (missing && required) ? '<span class="req-badge" title="Verplicht — moet ingevuld">!</span>' : '';
       let cls = '';
       if (required){
-        cls = missing ? 'warn-select req-missing' : 'req-filled';
+        cls = missing ? 'req-missing' : 'req-filled';
       }
       const autoAttr = auto ? ' data-auto="1" title="Automatisch ingevuld op basis van mapstructuur of bestandsnaam"' : '';
       let inputHtml;
@@ -9470,6 +9573,14 @@ const DL = (function(){
       th.setAttribute('draggable', 'true');
       th.addEventListener('dragstart', function(e){
         if (e.target.closest('.dl-resizer')){ e.preventDefault(); return; }
+        // v1.4 hotfix (Marco/VW: 'bij loslaten resize verplaatst kolom mee'):
+        // Als resize net actief was of nog is, cancel de dragstart. Race-scenario:
+        // mouseup zet draggable=true → browser interpreteert de resterende muis-actie
+        // als drag-init op de TH → kolom-reorder trigert per ongeluk.
+        if (window._dlResizeJustEnded && (Date.now() - window._dlResizeJustEnded) < 400){
+          e.preventDefault();
+          return;
+        }
         const k = th.getAttribute('data-sort');
         if (!k) return;
         e.dataTransfer.setData('text/plain', k);
@@ -9809,6 +9920,9 @@ const DL = (function(){
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       _saveColsConfig();
+      // v1.4 hotfix (Marco/VW): markeer moment van resize-eind zodat _bindThDragHandlers
+      // een dragstart binnen 400ms kan annuleren (voorkomt per-ongeluk kolom-reorder na resize)
+      window._dlResizeJustEnded = Date.now();
     });
 
     // Dubbelklik op grip → auto-fit: meet breedste content via canvas en zet kolombreedte.
