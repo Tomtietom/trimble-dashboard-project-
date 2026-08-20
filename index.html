@@ -1133,6 +1133,38 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .settings-overlay .btn-primary:hover{background:var(--af2)}
 .settings-overlay .btn-secondary{padding:8px 16px;background:transparent;color:var(--g5);border:1px solid var(--hl);border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;font-family:'Poppins',sans-serif;transition:border-color .15s}
 .settings-overlay .btn-secondary:hover{border-color:var(--g3)}
+/* =========================================
+   Diagnose-paneel (fase 2)
+   ========================================= */
+.ftr .diag-link{cursor:pointer}
+.ftr .diag-link.has-issue::after{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warn);margin-left:5px;vertical-align:middle}
+.diag-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:40px var(--s4);z-index:1001;backdrop-filter:blur(2px)}
+.diag-overlay.vis{display:flex}
+.diag-overlay .pu-modal{max-width:720px}
+.diag-sec-title{font-family:'Montserrat',sans-serif;font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--g4);margin:var(--s5) 0 var(--s2);border-bottom:1px solid var(--hl-light);padding-bottom:4px}
+.diag-count,.diag-busy{font-weight:500;text-transform:none;letter-spacing:normal;color:var(--g3);margin-left:8px}
+.diag-empty{color:var(--g4);font-size:var(--fs-md);padding:var(--s2) 0}
+.diag-row{display:grid;grid-template-columns:16px 175px 1fr;gap:var(--s2);align-items:baseline;padding:5px 0;font-size:var(--fs-md);border-bottom:1px solid var(--g1)}
+.diag-ic{font-size:11px}
+.diag-lab{font-weight:600;color:var(--dk)}
+.diag-det{color:var(--g5);word-break:break-word}
+.diag-row.diag-ok .diag-ic{color:var(--ok)}
+.diag-row.diag-warn .diag-ic{color:var(--af)}
+.diag-row.diag-fail .diag-ic{color:var(--warn)}
+.diag-row.diag-fail .diag-lab{color:var(--warn)}
+.diag-log{max-height:240px;overflow-y:auto;background:var(--g1);border:1px solid var(--hl-light);border-radius:var(--r-sm);padding:var(--s2)}
+.diag-log-row{display:grid;grid-template-columns:48px 1fr;gap:var(--s2);font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:var(--fs-xs);line-height:1.5;padding:2px 0;word-break:break-word}
+.diag-log-row.diag-fail{color:var(--warn)}
+.diag-log-row.diag-warn{color:var(--g6)}
+.diag-log-row.diag-info{color:var(--g4)}
+.diag-t{color:var(--g3);text-align:right}
+.diag-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:var(--s5);align-items:center;flex-wrap:wrap}
+.diag-actions .diag-msg{margin-right:auto;font-size:var(--fs-sm);color:var(--ok);font-weight:600}
+.diag-actions .diag-msg.err{color:var(--warn)}
+.diag-overlay .btn-primary{padding:8px 16px;background:var(--af);color:#fff;border:none;border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;font-family:'Poppins',sans-serif;transition:background .15s}
+.diag-overlay .btn-primary:hover{background:var(--af2)}
+.diag-overlay .btn-secondary{padding:8px 16px;background:transparent;color:var(--g5);border:1px solid var(--hl);border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;font-family:'Poppins',sans-serif;transition:border-color .15s}
+.diag-overlay .btn-secondary:hover{border-color:var(--g3)}
 </style>
 </head>
 <body>
@@ -1265,7 +1297,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   </main>
 
   <footer class="ftr">
-    At Fielt Cockpit · <a href="mailto:info@atfielt.nl">info@atfielt.nl</a> · <a href="https://bimplementeer.nl" target="_blank" rel="noopener">bimplementeer.nl</a>
+    At Fielt Cockpit · <a href="mailto:info@atfielt.nl">info@atfielt.nl</a> · <a href="https://bimplementeer.nl" target="_blank" rel="noopener">bimplementeer.nl</a> · <a class="diag-link" id="diagLink" role="button" tabindex="0" title="Controleer verbinding, toegang en opslag — en kopieer een rapport voor support">Diagnose</a>
   </footer>
 </div>
 
@@ -1274,6 +1306,377 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 //  Slug in de hub-database (moet matchen)
 // ============================================================
 const EXTENSION_SLUG = 'cockpit';
+
+// ============================================================
+//  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
+//  klantmelding meteen weten welke build iemand draait.
+// ============================================================
+const COCKPIT_VERSION = '1.5';
+
+// ============================================================
+//  DIAG — diagnose (fase 2)
+//  Drie onderdelen:
+//    1. Error-buffer  — vangt console.warn/error, scriptfouten en niet-
+//       afgehandelde promises in een ring-buffer. Werkvoorbereiders openen
+//       geen F12-console; zo hebben we de meldingen toch.
+//    2. Sanity-check  — draait na de load en toetst token, hub, regio,
+//       API-bereikbaarheid en lokale opslag.
+//    3. Kopieerrapport — één knop levert een platte-tekst rapport dat in
+//       een mail geplakt kan worden.
+//  Staat bewust bovenaan het script: alles wat hierna misgaat wordt gevangen.
+// ============================================================
+const DIAG = (function(){
+  const MAX_LINES = 120;
+  const _t0 = Date.now();
+  const _buf = [];
+  let _lastSanity = null;
+
+  function _fmt(a){
+    if (a === null) return 'null';
+    if (a === undefined) return 'undefined';
+    if (typeof a === 'string') return a;
+    if (a instanceof Error) return (a.name || 'Error') + ': ' + (a.message || '');
+    if (typeof a === 'object'){
+      try { const j = JSON.stringify(a); return j === undefined ? String(a) : j; }
+      catch(_){ return '[object]'; }
+    }
+    return String(a);
+  }
+
+  // Ring-buffer. Mag nooit gooien: logging die de app omtrekt is erger dan geen logging.
+  function push(lvl, args){
+    try {
+      let msg = Array.prototype.map.call(args, _fmt).join(' ').replace(/%c/g, '').trim();
+      if (!msg) return;
+      if (msg.length > 400) msg = msg.slice(0, 400) + ' …[afgekapt]';
+      const last = _buf[_buf.length - 1];
+      if (last && last.lvl === lvl && last.msg === msg){ last.n++; last.ms = Date.now() - _t0; return; }
+      _buf.push({ ms: Date.now() - _t0, lvl: lvl, msg: msg, n: 1 });
+      while (_buf.length > MAX_LINES) _buf.shift();
+    } catch(_){}
+  }
+
+  // console.log bewust niet gepatcht — honderden regels per sessie en zelden
+  // relevant voor een storingsmelding. warn/error wel.
+  ['warn','error'].forEach(function(lvl){
+    const orig = console[lvl] ? console[lvl].bind(console) : function(){};
+    console[lvl] = function(){ push(lvl, arguments); orig.apply(null, arguments); };
+  });
+
+  window.addEventListener('error', function(ev){
+    push('error', ['Scriptfout: ' + (ev.message || '?')
+      + ' @ ' + String(ev.filename || '?').split('/').pop() + ':' + (ev.lineno || '?')]);
+  });
+  window.addEventListener('unhandledrejection', function(ev){
+    const r = ev && ev.reason;
+    push('error', ['Onafgehandelde fout: ' + (r && r.message ? r.message : _fmt(r))]);
+  });
+
+  // ---------- hulpjes voor de sanity-check ----------
+
+  function _tokenExpiry(){
+    if (!tcToken) return null;
+    try {
+      const parts = String(tcToken).split('.');
+      if (parts.length < 3) return null;
+      const p = JSON.parse(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')));
+      return (p && p.exp) ? p.exp * 1000 : null;
+    } catch(_){ return null; }
+  }
+
+  // localStorage kan in het TC-iframe geblokkeerd zijn (third-party cookies uit).
+  // Dat verklaart "mijn kolommen worden niet onthouden" zonder zichtbare fout.
+  function _storageInfo(){
+    const info = { ok:false, err:'', keys:0, kb:0 };
+    try {
+      const probe = '__diag_' + _t0;
+      localStorage.setItem(probe, '1');
+      info.ok = localStorage.getItem(probe) === '1';
+      localStorage.removeItem(probe);
+      let bytes = 0;
+      for (let i = 0; i < localStorage.length; i++){
+        const k = localStorage.key(i);
+        info.keys++;
+        bytes += k.length + (localStorage.getItem(k) || '').length;
+      }
+      info.kb = Math.round(bytes / 1024);
+    } catch(e){ info.err = (e && e.message) || String(e); }
+    return info;
+  }
+
+  async function _probe(url){
+    const t = Date.now();
+    try {
+      const r = await fetch(url, { headers: { Authorization:'Bearer '+tcToken, Accept:'application/json' } });
+      return { ok: r.status === 206 || r.ok, status: r.status, ms: Date.now() - t };
+    } catch(e){
+      return { ok:false, status:'netwerk/CORS', ms: Date.now() - t };
+    }
+  }
+
+  function _activeView(){
+    const el = document.querySelector('.cp-tab.active');
+    return el ? el.textContent.trim() : '-';
+  }
+
+  // ---------- sanity-check ----------
+
+  async function sanity(){
+    const rows = [];
+    function add(label, status, detail){
+      rows.push({ label: label, status: status, detail: detail == null ? '' : String(detail) });
+    }
+
+    const wapi = window.WorkspaceAPI || window.Extensions || window.TrimbleConnectWorkspace;
+    add('Workspace API', wapi ? 'ok' : 'fail',
+        wapi ? 'geladen' : 'script van components.connect.trimble.com is niet geladen');
+
+    add('Project', (tcProject && tcProject.id) ? 'ok' : 'fail',
+        tcProject ? ((tcProject.name || '?') + ' · ' + (tcProject.id || '?'))
+                  : 'geen project ontvangen van Trimble Connect');
+
+    const exp = _tokenExpiry();
+    if (!tcToken){
+      add('Access token', 'fail', 'geen token — de extensie heeft geen toegang gekregen');
+    } else if (exp === null){
+      add('Access token', 'warn', 'aanwezig (lengte ' + tcToken.length + '), vervaldatum niet leesbaar');
+    } else {
+      const min = Math.round((exp - Date.now()) / 60000);
+      add('Access token', min <= 0 ? 'fail' : (min < 5 ? 'warn' : 'ok'),
+          min <= 0 ? 'verlopen (' + (-min) + ' min geleden) — tab sluiten en opnieuw openen'
+                   : 'nog ' + min + ' min geldig');
+    }
+
+    if (!window.atfieltHub){
+      add('At Fielt Hub', 'fail', 'hub-client niet geladen — geen toegangscontrole mogelijk');
+    } else if (typeof window.atfieltHub.auth !== 'function'){
+      add('At Fielt Hub', 'warn', 'oude hub-client zonder auth() — alle modules staan fail-closed');
+    } else {
+      const yes = EXTENSIONS.filter(function(e){ return e.allowed === true; }).map(function(e){ return e.key; });
+      const no  = EXTENSIONS.filter(function(e){ return e.allowed !== true; }).map(function(e){ return e.key; });
+      add('At Fielt Hub', yes.length ? 'ok' : 'warn',
+          'toegang: ' + (yes.join(', ') || 'geen module') + (no.length ? ' · geweigerd: ' + no.join(', ') : ''));
+    }
+
+    let host = TC_API_BASE;
+    try { host = new URL(TC_API_BASE).host; } catch(_){}
+    add('Regio', 'ok', tcRegion + ' → ' + host
+        + (tcProject && tcProject.location ? ' (project: ' + tcProject.location + ')' : ''));
+
+    // De check die het vaakst "werkt bij ons, niet bij de klant" verklaart:
+    // een bedrijfsproxy die de directe TC-call blokkeert waardoor alles via
+    // onze Cloudflare-proxy moet (trager, maar werkend).
+    if (tcToken && tcProject && tcProject.id){
+      const path = '/projects/' + encodeURIComponent(tcProject.id);
+      const direct = await _probe(TC_API_BASE + path);
+      if (direct.ok){
+        add('Verbinding met Trimble', direct.ms > 3000 ? 'warn' : 'ok',
+            'direct · ' + direct.ms + ' ms' + (direct.ms > 3000 ? ' (traag)' : ''));
+      } else {
+        const via = await _probe(TC_PROXY_BASE + '/tc/' + tcRegionShort() + path);
+        add('Verbinding met Trimble', via.ok ? 'warn' : 'fail',
+            via.ok ? 'alleen via At Fielt-proxy · ' + via.ms + ' ms (direct geweigerd: ' + direct.status + ')'
+                   : 'onbereikbaar — direct: ' + direct.status + ', proxy: ' + via.status);
+      }
+    } else {
+      add('Verbinding met Trimble', 'warn', 'niet getest (geen token of project)');
+    }
+
+    const st = _storageInfo();
+    add('Lokale opslag', st.ok ? (st.kb > 4000 ? 'warn' : 'ok') : 'fail',
+        st.ok ? st.keys + ' sleutels · ' + st.kb + ' KB'
+                + (st.kb > 4000 ? ' — bijna vol, cache legen kan helpen' : '')
+              : 'geblokkeerd (' + st.err + ') — kolommen, filters en cache worden niet bewaard');
+
+    const clip = !!(navigator.clipboard && navigator.clipboard.writeText);
+    add('Klembord', clip ? 'ok' : 'warn',
+        clip ? 'beschikbaar' : 'niet beschikbaar — kopiëren valt terug op oude methode');
+
+    let inFrame = true;
+    try { inFrame = window.top !== window.self; } catch(_){ inFrame = true; }
+    add('Omgeving', navigator.onLine === false ? 'fail' : 'ok',
+        (inFrame ? 'in Trimble Connect' : 'los tabblad')
+        + ' · ' + (navigator.onLine === false ? 'OFFLINE' : 'online')
+        + ' · venster ' + window.innerWidth + '×' + window.innerHeight);
+
+    const errs  = _buf.filter(function(e){ return e.lvl === 'error'; }).length;
+    const warns = _buf.filter(function(e){ return e.lvl === 'warn'; }).length;
+    add('Meldingen deze sessie', errs ? 'fail' : 'ok',
+        errs + ' fout(en), ' + warns + ' waarschuwing(en) — zie logboek hieronder');
+
+    _lastSanity = { ts: Date.now(), rows: rows };
+    return rows;
+  }
+
+  // Draait non-blocking na de load. Bij een harde fout krijgt de Diagnose-link
+  // in de footer een rood stipje; de app zelf loopt gewoon door.
+  function startupCheck(){
+    return sanity().then(function(rows){
+      const fails = rows.filter(function(r){ return r.status === 'fail'; });
+      const warns = rows.filter(function(r){ return r.status === 'warn'; });
+      console.log('[Diag] Sanity-check:', (rows.length - fails.length - warns.length) + ' ok,',
+                  warns.length + ' let op,', fails.length + ' fout');
+      if (fails.length){
+        console.warn('[Diag] Problemen: ' + fails.map(function(r){ return r.label + ' (' + r.detail + ')'; }).join(' | '));
+      }
+      const link = document.getElementById('diagLink');
+      if (link) link.classList.toggle('has-issue', fails.length > 0);
+      return rows;
+    }).catch(function(e){
+      console.warn('[Diag] Sanity-check zelf faalde:', e.message);
+      return [];
+    });
+  }
+
+  // ---------- modulestatus ----------
+
+  function _moduleState(){
+    const out = [];
+    function grab(label, mod){
+      try {
+        out.push({ label: label, state: (mod && typeof mod.diagnostics === 'function') ? mod.diagnostics() : null });
+      } catch(e){ out.push({ label: label, state: { fout: (e && e.message) || String(e) } }); }
+    }
+    try { grab('Project Dashboard', PD); } catch(_){ out.push({ label:'Project Dashboard', state:null }); }
+    try { grab('Documentenlijst',   DL); } catch(_){ out.push({ label:'Documentenlijst',   state:null }); }
+    try { grab('Rechten',           RV); } catch(_){ out.push({ label:'Rechten',           state:null }); }
+    try { grab('Upload',            PU); } catch(_){ out.push({ label:'Upload',            state:null }); }
+    return out;
+  }
+
+  // ---------- rapport ----------
+
+  const _STATUS_TXT = { ok:'OK  ', warn:'LET ', fail:'FOUT' };
+
+  function _kv(k, v){ return (k + ':').padEnd(20) + v; }
+
+  function report(){
+    const L = [];
+    L.push('AT FIELT COCKPIT — DIAGNOSERAPPORT');
+    L.push('='.repeat(52));
+    L.push(_kv('Gegenereerd', new Date().toLocaleString('nl-NL')));
+    L.push(_kv('Cockpit-versie', COCKPIT_VERSION));
+    L.push(_kv('Sessieduur', Math.round((Date.now() - _t0) / 1000) + ' s'));
+    L.push('');
+    L.push('-- CONTEXT --');
+    L.push(_kv('Gebruiker', currentUserEmail || 'onbekend'));
+    L.push(_kv('Project', (tcProject && tcProject.name) || 'onbekend'));
+    L.push(_kv('Project-ID', (tcProject && tcProject.id) || '-'));
+    L.push(_kv('Regio', tcRegion + ' (' + TC_API_BASE + ')'));
+    L.push(_kv('Actieve weergave', _activeView()));
+    L.push(_kv('Browser', navigator.userAgent));
+    L.push('');
+    L.push('-- CONTROLES --');
+    const rows = (_lastSanity && _lastSanity.rows) || [];
+    if (!rows.length) L.push('(nog geen controle uitgevoerd)');
+    rows.forEach(function(r){
+      L.push('[' + (_STATUS_TXT[r.status] || '?   ') + '] ' + r.label + ' — ' + r.detail);
+    });
+    L.push('');
+    L.push('-- MODULES --');
+    _moduleState().forEach(function(m){
+      let v = 'niet geladen';
+      if (m.state){ try { v = JSON.stringify(m.state); } catch(_){ v = '(niet leesbaar)'; } }
+      L.push(m.label + ': ' + v);
+    });
+    L.push('');
+    L.push('-- LOGBOEK (' + _buf.length + ' regels) --');
+    if (!_buf.length) L.push('(geen meldingen deze sessie)');
+    _buf.forEach(function(e){
+      L.push('+' + String(Math.round(e.ms / 1000)).padStart(4) + 's  '
+        + (e.lvl === 'error' ? 'FOUT' : (e.lvl === 'warn' ? 'WAAR' : 'INFO'))
+        + (e.n > 1 ? ' (' + e.n + '×)' : '') + '  ' + e.msg);
+    });
+    L.push('');
+    L.push('Stuur dit rapport naar info@atfielt.nl.');
+    return L.join('\n');
+  }
+
+  function copy(){
+    const text = report();
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      return navigator.clipboard.writeText(text);
+    }
+    // Fallback voor iframes zonder clipboard-permissie
+    return new Promise(function(resolve, reject){
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) resolve(); else reject(new Error('browser weigerde kopiëren'));
+      } catch(e){ reject(e); }
+    });
+  }
+
+  // ---------- paneel ----------
+
+  const _ICON = { ok:'●', warn:'▲', fail:'✕' };
+
+  function render(busy){
+    const body = document.getElementById('diag-body');
+    if (!body) return;
+    const rows = (_lastSanity && _lastSanity.rows) || [];
+    let h = '<div class="diag-sec-title">Controles'
+      + (busy ? '<span class="diag-busy">bezig…</span>' : '') + '</div>';
+    if (!rows.length) h += '<div class="diag-empty">Controle loopt…</div>';
+    rows.forEach(function(r){
+      h += '<div class="diag-row diag-' + r.status + '">'
+        + '<span class="diag-ic">' + _ICON[r.status] + '</span>'
+        + '<span class="diag-lab">' + escapeHtml(r.label) + '</span>'
+        + '<span class="diag-det">' + escapeHtml(r.detail) + '</span></div>';
+    });
+    const errs = _buf.filter(function(e){ return e.lvl === 'error'; }).length;
+    h += '<div class="diag-sec-title">Logboek<span class="diag-count">'
+      + _buf.length + ' regels · ' + errs + ' fout(en)</span></div>';
+    if (!_buf.length){
+      h += '<div class="diag-empty">Geen meldingen deze sessie.</div>';
+    } else {
+      h += '<div class="diag-log">';
+      _buf.slice(-40).reverse().forEach(function(e){
+        const cls = e.lvl === 'error' ? 'diag-fail' : (e.lvl === 'warn' ? 'diag-warn' : 'diag-info');
+        h += '<div class="diag-log-row ' + cls + '">'
+          + '<span class="diag-t">+' + Math.round(e.ms / 1000) + 's</span>'
+          + '<span>' + escapeHtml(e.msg) + (e.n > 1 ? ' (' + e.n + '×)' : '') + '</span></div>';
+      });
+      h += '</div>';
+    }
+    body.innerHTML = h;
+  }
+
+  function open(){
+    const ov = document.getElementById('diagOverlay');
+    if (!ov) return;
+    const msg = document.getElementById('diag-msg');
+    if (msg) msg.textContent = '';
+    ov.classList.add('vis');
+    render(true);
+    sanity().then(function(){ render(false); }).catch(function(){ render(false); });
+  }
+
+  function close(){
+    const ov = document.getElementById('diagOverlay');
+    if (ov) ov.classList.remove('vis');
+  }
+
+  return {
+    note: function(msg){ push('info', [msg]); },
+    sanity: sanity,
+    startupCheck: startupCheck,
+    report: report,
+    copy: copy,
+    open: open,
+    close: close,
+    buffer: function(){ return _buf.slice(); }
+  };
+})();
+
+// Handig bij telefonische support: cockpitDiag.report() in de console.
+window.cockpitDiag = DIAG;
+
 
 // ============================================================
 //  SVG-iconen (inline — geen externe requests, schalen scherp)
@@ -1637,6 +2040,7 @@ async function init(){
     ? tcAPI.project.getProject()
     : tcAPI.project.getCurrentProject());
   console.log('[TC] Project:', tcProject.name);
+  DIAG.note('Verbonden met Trimble Connect — project "' + (tcProject.name || '?') + '"');
   setStep('tc','done');
 
   // Menu-item registreren als enkel top-level command (dashboard-first nav).
@@ -1704,6 +2108,7 @@ async function init(){
     throw new Error('Geen access token beschikbaar. Controleer of de extensie toegang heeft tot het project.');
   }
   console.log('[TC] Token OK, lengte:', tcToken.length);
+  DIAG.note('Access token ontvangen (lengte ' + tcToken.length + ')');
   setStep('token','done');
 
   // V1 — Region discovery: vervang hardcoded base-URL door /regions API (skill: #1 integratie-fout)
@@ -1737,12 +2142,18 @@ async function init(){
   // ║  EINDE AT FIELT HUB BLOK                                 ║
   // ╚══════════════════════════════════════════════════════════╝
   setStep('hub','done');
+  DIAG.note('Hub-toegang verleend');
 
   currentUserEmail = (window.atfieltTcContext && window.atfieltTcContext.userEmail) || null;
 
   setStep('data','active');
   await loadDashboard();
   setStep('data','done');
+  DIAG.note('Dashboard geladen');
+
+  // Fase 2 — sanity-check draait non-blocking. Bij een harde fout krijgt de
+  // Diagnose-link in de footer een rood stipje; de app zelf gaat gewoon door.
+  DIAG.startupCheck();
 
   // [HUB] logEvent — niet verwijderen
   if (window.atfieltHub){
@@ -2821,6 +3232,13 @@ const PD = (function(){
 
   // Public API
   return {
+    diagnostics: function(){
+      return {
+        geladen: _isLoaded, laadt: _isLoading,
+        projecten: _projects.length,
+        favorieten: _favorites ? _favorites.size : 0
+      };
+    },
     activate: function(){
       injectHtml();
       loadFavs();
@@ -5282,6 +5700,17 @@ const PU = (function(){
 
   // Public API
   return {
+    diagnostics: function(){
+      return {
+        geladen: _isLoaded, laadt: _isLoading,
+        schrijfbareMappen: _writableFolders.length,
+        wachtrij: _queue.length,
+        configGeladen: _configLoaded,
+        regels: (_uploadConfig && _uploadConfig.rules ? _uploadConfig.rules.length : 0),
+        schemaGeladen: _schemaLoaded,
+        psetOk: _psetStats.ok, psetFout: _psetStats.fail
+      };
+    },
     activate: function(){
       // Hub-access respecteren (defense-in-depth bovenop tile/tab disable)
       const ext = EXTENSIONS.find(function(e){ return e.key === 'project-upload'; });
@@ -7898,13 +8327,20 @@ const DL = (function(){
     });
   }
 
-  // Lazy-load SheetJS (xlsx) vanaf CDN (alleen bij eerste Excel-export)
-  async function _ensureXLSX(){
-    if (window.XLSX) return window.XLSX;
+  // Lazy-load ExcelJS vanaf CDN (alleen bij eerste Excel-export).
+  // v1.5: vervangt SheetJS Community. Reden: die kan geen cel-styling schrijven (alleen
+  // SheetJS Pro), waardoor eigen opmaak/logo onmogelijk was. ExcelJS kan dat wel en kan
+  // bovendien een bestaand .xlsx inlezen — de basis voor Marco's eigen template.
+  // Deze stap houdt de output bewust identiek; opmaak volgt later.
+  async function _ensureExcelJS(){
+    if (window.ExcelJS) return window.ExcelJS;
     return new Promise(function(resolve, reject){
       const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      s.onload = function(){ resolve(window.XLSX); };
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+      s.onload = function(){
+        if (window.ExcelJS) resolve(window.ExcelJS);
+        else reject(new Error('Excel-library geladen maar ExcelJS ontbreekt'));
+      };
       s.onerror = function(){ reject(new Error('Excel-library kon niet worden geladen vanaf CDN')); };
       document.head.appendChild(s);
     });
@@ -7920,7 +8356,7 @@ const DL = (function(){
     const btn = document.getElementById('dl-ftr-export');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Exporteren…'; }
     try {
-      const XLSX = await _ensureXLSX();
+      const ExcelJS = await _ensureExcelJS();
       // Bepaal rij-scope
       const hasSelection = _selectedVids && _selectedVids.size > 0;
       let rows;
@@ -7984,14 +8420,28 @@ const DL = (function(){
         });
         aoa.push(rowVals);
       });
-      // Genereer workbook
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      // Genereer workbook (ExcelJS). aoa-rij-index r  =>  Excel-rij r+1, exact een-op-een:
+      // lege separator-rijen tussen groepen krijgen simpelweg geen cellen, net als voorheen.
+      const wb = new ExcelJS.Workbook();
+      const sheetName = 'Documenten';
+      const ws = wb.addWorksheet(sheetName);
+      const lastCol = finalHeaders.length;
+      const lastRow = aoa.length;
+      for (let r = 0; r < aoa.length; r++){
+        const arr = aoa[r];
+        if (!arr || arr.length === 0) continue; // blank-rij tussen groepen
+        for (let c = 0; c < arr.length; c++){
+          const v = arr[c];
+          if (v === '' || v == null) continue;
+          ws.getCell(r + 1, c + 1).value = v;
+        }
+      }
       // v1.4 fix (Marco/VW: hyperlinks waren niet blauw):
-      // We gebruiken nu een =HYPERLINK("url","Text") formule i.p.v. cell.l property.
-      // SheetJS Community exporteert cell.l wel als hyperlink-relation, maar Excel toont
-      // de tekst dan in normale zwart — voor blauw+underline is expliciete cell-styling
-      // nodig (alleen in SheetJS Pro). De HYPERLINK-formule krijgt automatisch de
-      // hyperlink-style van Excel/Numbers/LibreOffice: blauw + onderstreept + klikbaar.
+      // We gebruiken een =HYPERLINK("url","Text") formule i.p.v. een hyperlink-property.
+      // Excel/Numbers/LibreOffice geven zo'n formule automatisch de hyperlink-stijl
+      // (blauw + onderstreept + klikbaar) zonder expliciete cel-styling. Blijft onder
+      // ExcelJS ongewijzigd; result= zorgt dat clients die de formule niet evalueren
+      // alsnog de bestandsnaam tonen.
       const bnaamColIdx = cols.findIndex(function(c){ return c.k === 'bestandsnaam'; });
       if (bnaamColIdx >= 0){
         let rowsIdx = 0; // cursor in rows[]
@@ -8003,48 +8453,47 @@ const DL = (function(){
           if (!doc) continue;
           const url = _tcFileUrl(doc);
           if (!url) continue;
-          const cellRef = XLSX.utils.encode_cell({ c: bnaamColIdx, r: rowI });
-          if (ws[cellRef]){
-            const displayText = String(ws[cellRef].v || doc.bestandsnaam || '');
-            // Escape dubbele quotes in de formule-args (dubbele quote → 2× dubbele quote)
-            const safeUrl = url.replace(/"/g, '""');
-            const safeText = displayText.replace(/"/g, '""');
-            ws[cellRef].f = 'HYPERLINK("' + safeUrl + '","' + safeText + '")';
-            ws[cellRef].t = 'str'; // string-type
-            // Behoud v voor het geval een client de formule niet kan evalueren
-            ws[cellRef].v = displayText;
-          }
+          const cell = ws.getCell(rowI + 1, bnaamColIdx + 1);
+          const displayText = String(cell.value == null ? (doc.bestandsnaam || '') : cell.value);
+          if (!displayText) continue;
+          // Escape dubbele quotes in de formule-args (dubbele quote -> 2x dubbele quote)
+          const safeUrl = url.replace(/"/g, '""');
+          const safeText = displayText.replace(/"/g, '""');
+          cell.value = { formula: 'HYPERLINK("' + safeUrl + '","' + safeText + '")', result: displayText };
         }
       }
-      // Kolom-breedtes op basis van tekst-lengte (max 60)
-      ws['!cols'] = finalHeaders.map(function(h, idx){
+      // Kolom-breedtes op basis van tekst-lengte (max 60).
+      // ExcelJS' column.width gebruikt dezelfde tekenbreedte-eenheid als SheetJS' wch,
+      // dus de berekende getallen blijven ongewijzigd.
+      finalHeaders.forEach(function(h, idx){
         let maxLen = String(h).length;
         for (let i = 1; i < aoa.length && i < 500; i++){
           const cell = String(aoa[i][idx] || '');
           if (cell.length > maxLen) maxLen = cell.length;
         }
-        return { wch: Math.min(60, Math.max(10, maxLen + 2)) };
+        ws.getColumn(idx + 1).width = Math.min(60, Math.max(10, maxLen + 2));
       });
       // Freeze header-rij + auto-filter
-      ws['!freeze'] = { xSplit: 0, ySplit: 1 };
-      const range = XLSX.utils.decode_range(ws['!ref']);
-      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{c:0,r:0}, e:{c:range.e.c, r:range.e.r} }) };
-      // Merge group-header-rijen over alle kolommen zodat "━━━ NAAM (N) ━━━" visueel één brede header wordt
-      if (groupHeaderRows.length > 0){
-        ws['!merges'] = ws['!merges'] || [];
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: lastRow, column: lastCol } };
+      // Merge group-header-rijen over alle kolommen zodat "GROEPNAAM (N)" visueel een brede header wordt.
+      // Bij een enkele zichtbare kolom valt er niets te mergen (ExcelJS weigert een 1x1-merge).
+      if (lastCol > 1){
         groupHeaderRows.forEach(function(rowIdx){
-          ws['!merges'].push({ s: { c: 0, r: rowIdx }, e: { c: range.e.c, r: rowIdx } });
+          ws.mergeCells(rowIdx + 1, 1, rowIdx + 1, lastCol);
         });
       }
-      const wb = XLSX.utils.book_new();
-      const sheetName = 'Documenten';
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
       // Filename: projectnaam + datum
       const projName = (tcProject && tcProject.name) || 'project';
       const safeProj = projName.replace(/[\/\\:*?"<>|]/g, '_').slice(0, 60);
       const today = new Date().toISOString().slice(0, 10);
       const filename = 'documentenlijst_' + safeProj + '_' + today + '.xlsx';
-      XLSX.writeFile(wb, filename);
+      const buf = await wb.xlsx.writeBuffer();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      a.download = filename;
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
       console.log('[DL] Excel-export:', rows.length, 'rijen,', finalHeaders.length, 'kolommen →', filename);
       if (btn) { btn.textContent = '✓ Gedownload'; setTimeout(function(){ if (btn) { btn.disabled = false; _updateExportBtnLabel(); } }, 2500); }
     } catch(e) {
@@ -10012,6 +10461,25 @@ const DL = (function(){
 
   // Public API
   return {
+    diagnostics: function(){
+      // onleesbareMappen is de belangrijkste: verklaart waarom een gebruiker
+      // minder documenten ziet dan een admin (403 op een submap).
+      return {
+        geladen: _isLoaded, laadt: _isLoading,
+        documenten: _docs.length,
+        zichtbareKolommen: _visibleColKeys.size,
+        actieveFilters: Object.keys(_filters).filter(function(k){
+          const v = _filters[k];
+          return Array.isArray(v) ? v.length > 0 : !!v;
+        }).length,
+        sortering: _sortK + ' ' + _sortD,
+        cacheSleutel: (function(){ try { return _cacheKey(); } catch(_){ return '?'; } })(),
+        onleesbareMappen: _folderWalkErrors.length,
+        onleesbareMappenTop: _folderWalkErrors.slice(0, 10).map(function(f){
+          return f.path + ' [' + f.status + ']';
+        })
+      };
+    },
     activate: function(){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
       if (ext && ext.allowed === false){
@@ -10878,6 +11346,12 @@ const RV = (function(){
   }
 
   return {
+    diagnostics: function(){
+      return {
+        geladen: _isLoaded, laadt: _isLoading,
+        mappen: _data && _data.csvData ? Math.max(0, _data.csvData.length - 1) : 0
+      };
+    },
     activate: function(){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'rechten-viewer'; });
       if (ext && ext.allowed === false){
@@ -10933,14 +11407,20 @@ const SETTINGS_DEFAULTS = {
   showTodos: true        // todo's prominent tonen
 };
 function getSetting(key){
-  const raw = localStorage.getItem(SETTINGS_PREFIX + key);
+  // Fail-soft: in sommige browserconfiguraties (third-party cookies geblokkeerd)
+  // gooit localStorage in het TC-iframe. Terugvallen op de default i.p.v. de
+  // hele dashboard-load laten klappen. De sanity-check meldt dit apart.
+  let raw = null;
+  try { raw = localStorage.getItem(SETTINGS_PREFIX + key); }
+  catch(e){ console.warn('[Settings] Lokale opslag niet beschikbaar:', e.message); return SETTINGS_DEFAULTS[key]; }
   if (raw === null) return SETTINGS_DEFAULTS[key];
   if (raw === 'true') return true;
   if (raw === 'false') return false;
   return raw;
 }
 function setSetting(key, value){
-  localStorage.setItem(SETTINGS_PREFIX + key, String(value));
+  try { localStorage.setItem(SETTINGS_PREFIX + key, String(value)); }
+  catch(e){ console.warn('[Settings] Opslaan mislukt:', e.message); }
 }
 function openSettingsModal(){
   document.getElementById('setting-period').value = getSetting('period');
@@ -10971,6 +11451,33 @@ document.addEventListener('DOMContentLoaded', function(){
   const settingsBg = document.getElementById('settingsOverlay');
   if (settingsBg) settingsBg.addEventListener('click', function(e){
     if (e.target === settingsBg) closeSettingsModal();
+  });
+
+  // Diagnose-paneel (fase 2)
+  const diagLink = document.getElementById('diagLink');
+  if (diagLink){
+    diagLink.addEventListener('click', function(e){ e.preventDefault(); DIAG.open(); });
+    diagLink.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); DIAG.open(); }
+    });
+  }
+  const diagBg = document.getElementById('diagOverlay');
+  if (diagBg) diagBg.addEventListener('click', function(e){ if (e.target === diagBg) DIAG.close(); });
+  const diagClose = document.getElementById('diag-close');
+  if (diagClose) diagClose.addEventListener('click', function(){ DIAG.close(); });
+  const diagRerun = document.getElementById('diag-rerun');
+  if (diagRerun) diagRerun.addEventListener('click', function(){ DIAG.open(); });
+  const diagCopy = document.getElementById('diag-copy');
+  if (diagCopy) diagCopy.addEventListener('click', function(){
+    const msg = document.getElementById('diag-msg');
+    DIAG.copy().then(function(){
+      if (msg){ msg.classList.remove('err'); msg.textContent = '✓ Gekopieerd — plak het in een mail naar info@atfielt.nl'; }
+    }).catch(function(err){
+      if (msg){ msg.classList.add('err'); msg.textContent = 'Kopiëren mislukt (' + err.message + ') — gebruik cockpitDiag.report() in de console'; }
+    });
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') DIAG.close();
   });
 
   init().catch(function(e){
@@ -11009,8 +11516,24 @@ document.addEventListener('DOMContentLoaded', function(){
     </label>
 
     <div class="actions">
+      <button class="btn-secondary" type="button" onclick="closeSettingsModal();window.cockpitDiag.open()" style="margin-right:auto">Diagnose…</button>
       <button class="btn-secondary" onclick="closeSettingsModal()">Annuleren</button>
       <button class="btn-primary" onclick="saveSettingsModal()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Diagnose-paneel (fase 2) — sanity-check + kopieerbaar supportrapport -->
+<div id="diagOverlay" class="diag-overlay">
+  <div class="pu-modal">
+    <h2>Diagnose — Cockpit</h2>
+    <p class="sub">Controleert verbinding, toegang en opslag. Werkt iets niet? Klik op <strong>Kopieer diagnose</strong> en plak het resultaat in een mail naar <a href="mailto:info@atfielt.nl">info@atfielt.nl</a>.</p>
+    <div id="diag-body"></div>
+    <div class="diag-actions">
+      <span class="diag-msg" id="diag-msg"></span>
+      <button class="btn-secondary" type="button" id="diag-rerun">Opnieuw controleren</button>
+      <button class="btn-secondary" type="button" id="diag-close">Sluiten</button>
+      <button class="btn-primary" type="button" id="diag-copy">Kopieer diagnose</button>
     </div>
   </div>
 </div>
