@@ -2,6 +2,34 @@
 
 ---
 
+## Versie 1.7 — 20 augustus 2026
+
+### Klaargezette weergaves: "DO Architect", "UO Aannemer"
+
+Een werkvoorbereider zet elke ochtend dezelfde dingen goed: de juiste kolommen aan, twee filters, groeperen op map, sorteren op documentnummer. Bij een wissel van rol of project begint dat opnieuw. Dat is nu één keer werk.
+
+**Wat is er veranderd?**
+
+- **Weergave opslaan onder een naam** — zet de documentenlijst precies zoals je hem wilt en klik op **Weergaves → Opslaan als…**. Je geeft hem een naam (*"DO Architect"*, *"UO Aannemer"*, *"Mijn werkvoorraad"*) en hij staat er de volgende keer weer.
+- **Wat er allemaal in gaat** — zichtbare kolommen, hun volgorde én breedte, alle actieve filters (inclusief de *Uitzonderen*-stand), de bestandstype-chips, de groepering, de sortering, en of je in Lijst- of Mappen-weergave stond. Met één klik staat dat allemaal weer goed. De zoekbalk gaat er bewust níét in: die is van het moment.
+- **Gedeeld of alleen voor jezelf** — projectbeheerders kunnen een weergave met **Opslaan voor project** klaarzetten voor iedereen. Die verschijnt bij elke collega onder *Gedeeld in dit project*. Weergaves die je zelf opslaat blijven van jou en staan onder *Alleen voor jou*.
+- **Je ziet wanneer je bent afgeweken** — zodra je iets aanpast terwijl er een weergave actief is, verschijnt er een oranje stipje achter de naam. Bijwerken doe je met het ↻-knopje bij die weergave; wil je de aanpassing niet bewaren, kies dan de weergave gewoon opnieuw.
+- **Hernoemen en verwijderen** — met het potlood en het prullenbakje in de lijst. Bij gedeelde weergaves kan dat alleen door een projectbeheerder, zodat niemand per ongeluk de weergave van het hele team weggooit.
+- **Losmaken** — met de knop *Losmaken* laat je de weergave los zonder dat er iets verandert aan wat je op het scherm ziet. Handig als je vanaf hier vrij verder wilt werken.
+
+**Waar staat het?** In de kop van de documentenlijst, links van de knop Kolommen. Zolang er geen weergave actief is heet de knop *Weergaves*; daarna toont hij de naam van de weergave die je gekozen hebt.
+
+**Let op:** weergaves horen bij één project. In een ander project begin je met een schone lijst — een beheerder zet daar zijn eigen gedeelde weergaves klaar.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+**Wat volgt:**
+- Eigen Excel-sjabloon met bewaard logo + opmaak — technisch mogelijk sinds versie 1.6, wacht op het sjabloon van de klant
+- Publieke deel-links per document voor uitvoerders zonder Trimble Connect-account
+
+---
+
 ## Versie 1.6 — 20 augustus 2026
 
 ### Map kiezen in de uploader: van eindeloze lijst naar uitklapbare boom

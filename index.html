@@ -669,6 +669,21 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-cols-picker-foot{padding:8px 14px;border-top:1px solid var(--hl-light);display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}
 .dl-cols-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;background:#fff;color:var(--dk);cursor:pointer}
 .dl-cols-reset:hover{border-color:var(--af);background:var(--afl)}
+/* Benoemde weergaves — knop + popover, leunt op de kolom-picker-stijl */
+.dl-cols-btn.dl-views-on{border-color:var(--af);background:var(--afl);font-weight:600}
+.dl-views-dirty{color:var(--af);font-size:18px;line-height:0;margin-left:2px}
+.dl-views-picker{min-width:300px}
+.dl-views-group{padding:10px 14px 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--g4)}
+.dl-views-empty{padding:2px 14px 8px;font-size:12px;color:var(--g4);line-height:1.5}
+.dl-views-row{display:flex;align-items:center;gap:8px;padding:6px 14px;cursor:pointer;transition:background .1s}
+.dl-views-row:hover{background:var(--afl)}
+.dl-views-row.active{background:var(--afl);box-shadow:inset 3px 0 0 var(--af)}
+.dl-views-row.active .dl-views-name{font-weight:600;color:var(--af2)}
+.dl-views-name{flex:1;font-size:14px;color:var(--dk);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl-views-acts{display:flex;gap:2px;opacity:0;transition:opacity .1s}
+.dl-views-row:hover .dl-views-acts,.dl-views-row.active .dl-views-acts{opacity:1}
+.dl-views-act{background:transparent;border:none;padding:2px 4px;cursor:pointer;font-size:12px;color:var(--g4);border-radius:3px;line-height:1}
+.dl-views-act:hover{background:rgba(0,0,0,.07);color:var(--af)}
 .dl-loading{padding:var(--s5);text-align:center;color:var(--g5);font-size:var(--fs-sm)}
 .dl-error{background:#fee;border-left:3px solid #d00;padding:var(--s3) var(--s4);border-radius:var(--r-sm);margin-bottom:var(--s4);font-size:var(--fs-sm);color:#7a0000}
 /* Sprint 2 layout-fix: max-height berekent nu op basis van TC-top-bar (48px) + cockpit tabs (~50px)
@@ -1343,7 +1358,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.6';
+const COCKPIT_VERSION = '1.7';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -6232,6 +6247,7 @@ const DL = (function(){
       if (cfg && cfg.order && Array.isArray(cfg.order)) _colOrder = cfg.order;
       if (cfg && cfg.widths && typeof cfg.widths === 'object' && !Array.isArray(cfg.widths)) _colWidths = cfg.widths;
       if (cfg && typeof cfg.groupBy === 'string') _groupBy = cfg.groupBy;
+      if (cfg && typeof cfg.activeViewId === 'string') _activeViewId = cfg.activeViewId;
     } catch(_){}
   }
   function _saveColsConfig(){
@@ -6243,6 +6259,7 @@ const DL = (function(){
         order:   _colOrder,
         widths:  _colWidths,
         groupBy: _groupBy,
+        activeViewId: _activeViewId,
       }));
     } catch(_){}
   }
@@ -6305,6 +6322,10 @@ const DL = (function(){
   let _projectDefaultVisible = null; // null = nog niet geladen; array = hub default; [] = leeg in hub
   let _projectDefaultOrder = null;
   let _isProjectAdmin = false;
+
+  // Benoemde weergaves (v1.7). Twee scopes; zie _viewSnapshot voor wat erin zit.
+  let _views = { shared: [], personal: [] };
+  let _activeViewId = '';
   // Auto-refresh + updates-banner
   let _autoRefreshTimer = null;
   let _isCheckingUpdates = false;
@@ -7962,6 +7983,7 @@ const DL = (function(){
     if (!tbody || !count) return;
 
     _renderViewToggle();
+    _renderViewsButton();   // houdt het "aangepast"-stipje actueel bij elke wijziging
     _renderMetaBanner();
     _renderFilterBar();
     _renderExtChips();
@@ -8380,6 +8402,358 @@ const DL = (function(){
     catch(_){ return ''; }
   }
 
+
+  // ============================================================
+  //  Benoemde weergaves — "DO Architect", "UO Aannemer" (Marco/VW)
+  //
+  //  Een weergave bundelt kolommen + volgorde + breedtes + filters +
+  //  bestandstype-chips + groepering + sortering + lijst/mappen-modus.
+  //  De vrije zoekterm zit er bewust NIET in: die is van het moment,
+  //  niet van de weergave.
+  //
+  //  Twee scopes:
+  //    personal — localStorage per project, iedereen mag opslaan
+  //    shared   — hub-config key 'saved_views', iedereen leest,
+  //               alleen project-admins schrijven (hub geeft 403)
+  //  Hergebruikt de hub-plumbing van _loadProjectColConfig hieronder.
+  // ============================================================
+
+  function _viewsKey(){
+    // Zelfde voorzorg als _colsConfigKey: zonder project-id niet onder een
+    // tijdelijke sleutel opslaan, want die raakt kwijt bij project-wissel.
+    if (!tcProject || !tcProject.id) return null;
+    return 'dl-views-' + tcProject.id;
+  }
+
+  function _viewNewId(){
+    return 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  function _viewSnapshot(){
+    // visible en exts gesorteerd: hun volgorde heeft geen betekenis, en zonder
+    // sortering zou het aan/uit zetten van dezelfde kolom al "gewijzigd" lijken.
+    return {
+      visible:  Array.from(_visibleColKeys).sort(),
+      order:    _colOrder.slice(),
+      widths:   Object.assign({}, _colWidths),
+      filters:  JSON.parse(JSON.stringify(_filters || {})),
+      exts:     Array.from(_filterExts || []).sort(),
+      groupBy:  _groupBy,
+      sortK:    _sortK,
+      sortD:    _sortD,
+      viewMode: _viewMode,
+      folder:   _selectedFolder || '',
+    };
+  }
+
+  // Oude filter-vorm (platte string, van vóór de multi-select van v1.4) wordt
+  // meegemigreerd zodat een weergave van eerder nu nog steeds toepasbaar is.
+  function _viewNormalizeFilters(f){
+    const out = {};
+    Object.keys(f || {}).forEach(function(k){
+      const v = f[k];
+      if (typeof v === 'string'){ if (v) out[k] = { selected: [v], exclude: false }; }
+      else if (v && Array.isArray(v.selected)) out[k] = { selected: v.selected.slice(), exclude: !!v.exclude };
+    });
+    return out;
+  }
+
+  function _viewApply(st){
+    if (!st) return;
+    if (Array.isArray(st.visible) && st.visible.length){
+      _visibleColKeys = new Set(st.visible);
+      _visibleColKeys.add('bestandsnaam');
+    }
+    _colOrder   = Array.isArray(st.order) ? st.order.slice() : [];
+    _colWidths  = (st.widths && typeof st.widths === 'object' && !Array.isArray(st.widths))
+      ? Object.assign({}, st.widths) : {};
+    _filters    = _viewNormalizeFilters(st.filters);
+    _filterExts = new Set(Array.isArray(st.exts) ? st.exts : []);
+    if (typeof st.groupBy === 'string') _groupBy = st.groupBy;
+    if (st.sortK) _sortK = st.sortK;
+    if (st.sortD === 'asc' || st.sortD === 'desc') _sortD = st.sortD;
+    _viewMode   = st.viewMode === 'tree' ? 'tree' : 'list';
+    _selectedFolder = _viewMode === 'tree' ? (st.folder || '') : '';
+    // De mappen-split hangt aan een klasse op #dl-main die _renderTable() niet zet.
+    const root = getRoot();
+    const main = root && root.querySelector('#dl-main');
+    if (main) main.classList.toggle('dl-main-tree', _viewMode === 'tree');
+    _saveColsConfig();
+    _renderColPicker();
+    _renderTable();
+  }
+
+  function _viewFind(id){
+    if (!id) return null;
+    return _views.shared.concat(_views.personal).find(function(v){ return v.id === id; }) || null;
+  }
+
+  // Stabiele serialisatie: sleutelvolgorde in objecten mag het "gewijzigd"-stipje
+  // niet bepalen. Array-volgorde blijft wél betekenisvol (_colOrder).
+  function _viewCanon(st){
+    function walk(o){
+      if (Array.isArray(o)) return o.map(walk);
+      if (o && typeof o === 'object'){
+        const out = {};
+        Object.keys(o).sort().forEach(function(k){ out[k] = walk(o[k]); });
+        return out;
+      }
+      return o;
+    }
+    try { return JSON.stringify(walk(st)); } catch(_){ return ''; }
+  }
+
+  function _viewIsDirty(){
+    const v = _viewFind(_activeViewId);
+    if (!v) return false;
+    return _viewCanon(_viewSnapshot()) !== _viewCanon(v.state);
+  }
+
+  // ---------- opslag ----------
+
+  function _viewsLoadPersonal(){
+    try {
+      const key = _viewsKey();
+      if (!key) return;
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)){
+        _views.personal = arr.filter(function(v){ return v && v.id && v.name && v.state; });
+      }
+    } catch(e){ console.warn('[DL] persoonlijke weergaves lezen mislukt:', e.message); }
+  }
+
+  function _viewsSavePersonal(){
+    try {
+      const key = _viewsKey();
+      if (!key) return false;
+      localStorage.setItem(key, JSON.stringify(_views.personal));
+      return true;
+    } catch(e){
+      console.warn('[DL] persoonlijke weergaves opslaan mislukt:', e.message);
+      return false;
+    }
+  }
+
+  async function _viewsLoadShared(){
+    if (!tcProject || !tcProject.id) return;
+    const session = _getHubSessionTokenDL();
+    if (!session){ console.log('[DL] geen hub-sessie — gedeelde weergaves overgeslagen'); return; }
+    try {
+      const url = HUB_CONFIG_URL_DL + '?slug=' + encodeURIComponent(EXTENSION_SLUG_DL)
+        + '&project=' + encodeURIComponent(tcProject.id) + '&key=saved_views';
+      const r = await fetch(url, { headers: { 'X-Session': session, 'Accept': 'application/json' } });
+      if (r.status === 404 || r.status === 401){ console.log('[DL] geen gedeelde weergaves ingesteld'); return; }
+      if (!r.ok){ console.warn('[DL] gedeelde weergaves fout:', r.status); return; }
+      const data = await r.json();
+      const val = data && data.found ? data.value : null;
+      const arr = (val && Array.isArray(val.views)) ? val.views : (Array.isArray(val) ? val : []);
+      _views.shared = arr.filter(function(v){ return v && v.id && v.name && v.state; });
+      console.log('[DL] gedeelde weergaves geladen:', _views.shared.length);
+      _renderViewsButton();
+      _renderViewsPicker();
+    } catch(e){ console.warn('[DL] gedeelde weergaves laden mislukt:', e.message); }
+  }
+
+  async function _viewsSaveShared(){
+    const session = _getHubSessionTokenDL();
+    if (!session) throw new Error('Geen hub-sessie — herlaad de cockpit.');
+    const r = await fetch(HUB_CONFIG_URL_DL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Session': session, 'Accept': 'application/json' },
+      body: JSON.stringify({
+        slug: EXTENSION_SLUG_DL, project: tcProject.id, key: 'saved_views',
+        value: { views: _views.shared }, tcToken: tcToken,
+      }),
+    });
+    if (r.status === 403) throw new Error('Alleen projectbeheerders kunnen gedeelde weergaves wijzigen.');
+    if (!r.ok){
+      const d = await r.json().catch(function(){ return {}; });
+      throw new Error((d && d.error) || ('hub gaf ' + r.status));
+    }
+    return true;
+  }
+
+  // Eén schrijfpad voor beide scopes. Bij een mislukte gedeelde write halen we de
+  // hub-lijst opnieuw op: de lokale array is dan al gemuteerd en zou anders een
+  // wijziging tonen die nooit is opgeslagen.
+  async function _viewPersist(scope){
+    if (scope === 'shared'){
+      try { await _viewsSaveShared(); }
+      catch(e){
+        alert('Opslaan mislukt: ' + e.message);
+        await _viewsLoadShared();
+        throw e;
+      }
+    } else if (!_viewsSavePersonal()){
+      alert('Opslaan mislukt — de browser blokkeert lokale opslag binnen Trimble Connect.\n\nKlik onderaan op Diagnose voor details.');
+      throw new Error('localStorage geblokkeerd');
+    }
+  }
+
+  // ---------- acties ----------
+  //
+  //  Alle vier muteren eerst de lokale lijst en schrijven daarna weg. Gaat het
+  //  schrijven mis, dan mag die mutatie niet blijven staan — anders ziet de
+  //  gebruiker een weergave die na een herlaad weer weg is.
+  //  Terugdraaien verschilt per scope:
+  //    personal — herstel de lokale kopie die we vooraf maakten
+  //    shared   — niets doen; _viewPersist heeft de hub-lijst al opnieuw
+  //               opgehaald en dát is de waarheid. De lokale kopie erover
+  //               heen zetten zou die verse serverstand juist weggooien.
+
+  function _viewsBackup(scope){
+    try { return JSON.parse(JSON.stringify(_views[scope])); }
+    catch(_){ return _views[scope].slice(); }
+  }
+
+  function _viewsRollback(scope, backup){
+    if (scope === 'personal') _views[scope] = backup;
+  }
+
+  async function _viewSaveAs(scope){
+    const naam = (window.prompt(scope === 'shared'
+      ? 'Naam voor deze gedeelde weergave (zichtbaar voor iedereen in dit project):'
+      : 'Naam voor deze weergave:', '') || '').trim();
+    if (!naam) return;
+    const list = _views[scope];
+    const bestaand = list.find(function(v){ return v.name.toLowerCase() === naam.toLowerCase(); });
+    if (bestaand && !window.confirm('"' + bestaand.name + '" bestaat al. Overschrijven met de huidige instellingen?')) return;
+    const backup = _viewsBackup(scope);
+    const view = bestaand || { id: _viewNewId(), name: naam };
+    view.name      = naam;
+    view.state     = _viewSnapshot();
+    view.updatedBy = currentUserEmail || '';
+    view.updatedAt = Date.now();
+    if (!bestaand) list.push(view);
+    try { await _viewPersist(scope); }
+    catch(_){ _viewsRollback(scope, backup); _renderViewsPicker(); return; }
+    _activeViewId = view.id;
+    _saveColsConfig();
+    _renderViewsButton();
+    _renderViewsPicker();
+    console.log('[DL] weergave opgeslagen:', scope, naam);
+  }
+
+  async function _viewUpdate(v, scope){
+    const backup = _viewsBackup(scope);
+    v.state     = _viewSnapshot();
+    v.updatedBy = currentUserEmail || '';
+    v.updatedAt = Date.now();
+    try { await _viewPersist(scope); }
+    catch(_){ _viewsRollback(scope, backup); _renderViewsPicker(); return; }
+    _activeViewId = v.id;
+    _saveColsConfig();
+    _renderViewsButton();
+    _renderViewsPicker();
+  }
+
+  async function _viewRename(v, scope){
+    const naam = (window.prompt('Nieuwe naam:', v.name) || '').trim();
+    if (!naam || naam === v.name) return;
+    const backup = _viewsBackup(scope);
+    v.name = naam;
+    try { await _viewPersist(scope); }
+    catch(_){ _viewsRollback(scope, backup); _renderViewsPicker(); return; }
+    _renderViewsButton();
+    _renderViewsPicker();
+  }
+
+  async function _viewDelete(v, scope){
+    if (!window.confirm('Weergave "' + v.name + '" verwijderen?')) return;
+    const backup = _viewsBackup(scope);
+    _views[scope] = _views[scope].filter(function(x){ return x.id !== v.id; });
+    try { await _viewPersist(scope); }
+    catch(_){ _viewsRollback(scope, backup); _renderViewsPicker(); return; }
+    if (_activeViewId === v.id){ _activeViewId = ''; _saveColsConfig(); }
+    _renderViewsButton();
+    _renderViewsPicker();
+  }
+
+  // ---------- weergave ----------
+
+  function _renderViewsButton(){
+    const root = getRoot();
+    const btn = root && root.querySelector('#dl-views-btn');
+    if (!btn) return;
+    const v = _viewFind(_activeViewId);
+    const dirty = v && _viewIsDirty();
+    btn.innerHTML = '<span class="dl-cols-icon">▤</span>'
+      + _esc(v ? v.name : 'Weergaves')
+      + (dirty ? '<span class="dl-views-dirty" title="Aangepast ten opzichte van de opgeslagen weergave">•</span>' : '');
+    btn.classList.toggle('dl-views-on', !!v);
+    btn.title = v
+      ? 'Actieve weergave: ' + v.name + (dirty ? ' (aangepast)' : '')
+      : 'Kolommen, filters, groepering en sortering samen bewaren onder een naam';
+  }
+
+  function _renderViewsPicker(){
+    const root = getRoot();
+    const body = root && root.querySelector('#dl-views-picker-body');
+    if (!body) return;
+
+    function groep(scope, label, leegTekst){
+      const list = _views[scope];
+      let h = '<div class="dl-views-group">' + label + '</div>';
+      if (!list.length) return h + '<div class="dl-views-empty">' + leegTekst + '</div>';
+      list.forEach(function(v){
+        const mag = scope === 'personal' || _isProjectAdmin;
+        const wie = v.updatedBy ? 'Laatst opgeslagen door ' + v.updatedBy : '';
+        h += '<div class="dl-views-row' + (v.id === _activeViewId ? ' active' : '') + '"'
+          + ' data-view-id="' + _esc(v.id) + '" data-view-scope="' + scope + '">'
+          + '<span class="dl-views-name" title="' + _esc(wie) + '">' + _esc(v.name) + '</span>'
+          + (mag
+              ? '<span class="dl-views-acts">'
+                + '<button type="button" class="dl-views-act" data-view-act="update" title="Bijwerken met de huidige instellingen">↻</button>'
+                + '<button type="button" class="dl-views-act" data-view-act="rename" title="Hernoemen">✎</button>'
+                + '<button type="button" class="dl-views-act" data-view-act="delete" title="Verwijderen">🗑</button>'
+                + '</span>'
+              : '')
+          + '</div>';
+      });
+      return h;
+    }
+
+    body.innerHTML =
+      groep('shared', 'Gedeeld in dit project',
+            _isProjectAdmin ? 'Nog geen — stel er een in met "Opslaan voor project".'
+                            : 'Nog geen ingesteld door de projectbeheerder.')
+      + groep('personal', 'Alleen voor jou', 'Nog geen — bewaar je huidige instellingen met "Opslaan als".');
+
+    body.querySelectorAll('.dl-views-row').forEach(function(row){
+      const id = row.getAttribute('data-view-id');
+      const scope = row.getAttribute('data-view-scope');
+      const v = (_views[scope] || []).find(function(x){ return x.id === id; });
+      if (!v) return;
+      row.addEventListener('click', function(e){
+        if (e.target.closest('.dl-views-act')) return;
+        _activeViewId = v.id;
+        _viewApply(v.state);
+        _renderViewsButton();
+        _renderViewsPicker();
+        // Popover sluiten: je hebt gekozen, je wilt de tabel zien.
+        const pick = root.querySelector('#dl-views-picker');
+        const pbtn = root.querySelector('#dl-views-btn');
+        if (pick) pick.style.display = 'none';
+        if (pbtn) pbtn.classList.remove('active');
+        console.log('[DL] weergave toegepast:', v.name);
+      });
+      row.querySelectorAll('.dl-views-act').forEach(function(b){
+        b.addEventListener('click', function(e){
+          e.stopPropagation();
+          const act = b.getAttribute('data-view-act');
+          if (act === 'update') _viewUpdate(v, scope);
+          else if (act === 'rename') _viewRename(v, scope);
+          else if (act === 'delete') _viewDelete(v, scope);
+        });
+      });
+    });
+
+    const saveProj = root.querySelector('#dl-views-save-project');
+    if (saveProj) saveProj.style.display = _isProjectAdmin ? '' : 'none';
+  }
+
   // Laad project-standaard kolommen vanuit hub. Toepassen pas wanneer gebruiker zelf nog geen
   // localStorage-config heeft (anders overschrijven we persoonlijke keuze).
   async function _loadProjectColConfig(){
@@ -8492,8 +8866,10 @@ const DL = (function(){
   // Toon "Opslaan voor project" knop in kolom-picker footer alleen voor project-admins
   function _updateAdminSaveButton(){
     const btn = document.getElementById('dl-cols-save-project');
-    if (!btn) return;
-    btn.style.display = _isProjectAdmin ? '' : 'none';
+    if (btn) btn.style.display = _isProjectAdmin ? '' : 'none';
+    // De admin-check is async: de weergave-picker moet opnieuw renderen zodra
+    // hij binnen is, anders mist een admin de bewerk-knoppen bij gedeelde weergaves.
+    try { _renderViewsPicker(); } catch(_){}
   }
 
   // === Releases ===
@@ -9872,6 +10248,8 @@ const DL = (function(){
     _loadColsConfig();
     // Async: hub project-defaults + admin-check (UI past zich aan zodra binnen)
     _loadProjectColConfig().catch(function(e){ console.warn('[DL] project-config laden mislukt:', e.message); });
+    _viewsLoadPersonal();
+    _viewsLoadShared().catch(function(e){ console.warn('[DL] gedeelde weergaves laden mislukt:', e.message); });
     _checkProjectAdmin().catch(function(e){ console.warn('[DL] admin-check mislukt:', e.message); });
     // Initiële render: gebruik _getActiveCols() zodat we direct de juiste kolom-set
     // tonen. Bij verandering van _hasMetaSchema later updateert _renderTableHeader().
@@ -9894,12 +10272,22 @@ const DL = (function(){
           '<div class="dl-app-head-right">' +
             '<div id="dl-view-toggle" class="dl-view-toggle"></div>' +
             '<button type="button" id="dl-edit-mode-btn" class="dl-cols-btn" title="Metadata bewerken — toggle aan/uit">🔒 Bewerken</button>' +
+            '<button type="button" id="dl-views-btn" class="dl-cols-btn" title="Kolommen, filters, groepering en sortering samen bewaren onder een naam"><span class="dl-cols-icon">▤</span>Weergaves</button>' +
             '<button type="button" id="dl-cols-btn" class="dl-cols-btn" title="Kolommen kiezen"><span class="dl-cols-icon">☰</span>Kolommen</button>' +
             '<button type="button" id="dl-releases-btn" class="dl-cols-btn" title="Toon releases van dit project">📦 Releases</button>' +
             '<button type="button" id="dl-qr-btn" class="dl-cols-btn" title="Genereer QR-codes naar kopersmappen">📱 QR-codes</button>' +
             '<button type="button" id="dl-export-btn" class="dl-cols-btn" title="Exporteer huidige weergave als Excel (respecteert kolommen, volgorde, filters, groepering)">📊 Excel</button>' +
             '<button type="button" id="dl-refresh" class="dl-refresh-btn" title="Cache wissen en opnieuw laden (forceert verse metadata-fetch)"><span class="dl-refresh-icon">↻</span>Vernieuwen</button>' +
             '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
+            '<div id="dl-views-picker" class="dl-cols-picker dl-views-picker" style="display:none">' +
+              '<div class="dl-cols-picker-head">Klaargezette weergaves</div>' +
+              '<div class="dl-cols-picker-body" id="dl-views-picker-body"></div>' +
+              '<div class="dl-cols-picker-foot">' +
+                '<button type="button" class="dl-cols-reset" id="dl-views-clear" title="Laat de actieve weergave los — je instellingen blijven staan">Losmaken</button>' +
+                '<button type="button" class="dl-cols-reset" id="dl-views-save-project" style="display:none;background:var(--af);color:#fff;border-color:var(--af)" title="Bewaar de huidige instellingen als gedeelde weergave voor het hele project">Opslaan voor project</button>' +
+                '<button type="button" class="dl-cols-reset" id="dl-views-save" title="Bewaar de huidige instellingen onder een naam, alleen voor jou">Opslaan als…</button>' +
+              '</div>' +
+            '</div>' +
             '<div id="dl-cols-picker" class="dl-cols-picker" style="display:none">' +
               '<div class="dl-cols-picker-head">Kolommen tonen</div>' +
               '<div class="dl-cols-picker-body" id="dl-cols-picker-body"></div>' +
@@ -10465,6 +10853,45 @@ const DL = (function(){
         _hideUpdatesBanner();
       });
     }
+    // Weergave-picker: zelfde popover-patroon als de kolom-picker. Beide hangen
+    // aan dezelfde relatieve container, dus bij het openen sluiten we de ander
+    // expliciet — de document-listener komt er niet aan toe door stopPropagation.
+    const viewsBtn = root.querySelector('#dl-views-btn');
+    const viewsPicker = root.querySelector('#dl-views-picker');
+    if (viewsBtn && viewsPicker){
+      viewsBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        const isOpen = viewsPicker.style.display !== 'none';
+        const cp = root.querySelector('#dl-cols-picker');
+        if (cp){ cp.style.display = 'none'; const cb = root.querySelector('#dl-cols-btn'); if (cb) cb.classList.remove('active'); }
+        if (isOpen){
+          viewsPicker.style.display = 'none';
+          viewsBtn.classList.remove('active');
+        } else {
+          _renderViewsPicker();
+          viewsPicker.style.display = '';
+          viewsBtn.classList.add('active');
+        }
+      });
+      viewsPicker.addEventListener('click', function(e){ e.stopPropagation(); });
+      document.addEventListener('click', function(){
+        if (viewsPicker.style.display === 'none') return;
+        viewsPicker.style.display = 'none';
+        viewsBtn.classList.remove('active');
+      });
+      const vSave = root.querySelector('#dl-views-save');
+      if (vSave) vSave.addEventListener('click', function(){ _viewSaveAs('personal'); });
+      const vSaveProj = root.querySelector('#dl-views-save-project');
+      if (vSaveProj) vSaveProj.addEventListener('click', function(){ _viewSaveAs('shared'); });
+      const vClear = root.querySelector('#dl-views-clear');
+      if (vClear) vClear.addEventListener('click', function(){
+        _activeViewId = '';
+        _saveColsConfig();
+        _renderViewsButton();
+        _renderViewsPicker();
+      });
+    }
+
     // Kolom-picker: knop opent/sluit popover, outside-click sluit, reset-knop herstelt defaults
     const colsBtn = root.querySelector('#dl-cols-btn');
     const colsPicker = root.querySelector('#dl-cols-picker');
@@ -10476,6 +10903,8 @@ const DL = (function(){
           colsPicker.style.display = 'none';
           colsBtn.classList.remove('active');
         } else {
+          const vp = root.querySelector('#dl-views-picker');
+          if (vp){ vp.style.display = 'none'; const vb = root.querySelector('#dl-views-btn'); if (vb) vb.classList.remove('active'); }
           _renderColPicker();
           colsPicker.style.display = '';
           colsBtn.classList.add('active');
@@ -10501,7 +10930,9 @@ const DL = (function(){
           }
           _colWidths = {};
           _filters = {};
+          _activeViewId = '';
           _saveColsConfig();
+          _renderViewsButton();
           _renderColPicker();
           _renderFilterBar();
           _renderTableHeader();
@@ -10690,6 +11121,11 @@ const DL = (function(){
           return k + '=' + (f.exclude ? 'NIET ' : '') + f.selected.join('/');
         }),
         zoekterm: _searchQuery || '',
+        weergave: (function(){
+          const v = _viewFind(_activeViewId);
+          return v ? v.name + (_viewIsDirty() ? ' (aangepast)' : '') : '';
+        })(),
+        weergavesOpgeslagen: _views.shared.length + ' gedeeld / ' + _views.personal.length + ' persoonlijk',
         weergave: _viewMode + (_selectedFolder ? ' @ ' + _selectedFolder : ''),
         bestandstypeChips: _filterExts && _filterExts.size ? Array.from(_filterExts) : [],
         sortering: _sortK + ' ' + _sortD,
