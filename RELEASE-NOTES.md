@@ -34,7 +34,7 @@ Sluit Trimble Connect één keer volledig en open opnieuw.
 
 ### Map kiezen in de uploader: van eindeloze lijst naar uitklapbare boom
 
-Bij VolkerWessels telt een project ruim 700 mappen. De "Bulk-instellen"-balk bood die als één platte keuzelijst aan — scrollen door honderden regels met volledige paden, zonder houvast. Dat is vervangen door een mappenboom.
+In een groot project lopen de mappen al snel in de honderden. De "Bulk-instellen"-balk bood die als één platte keuzelijst aan — scrollen door honderden regels met volledige paden, zonder houvast. Dat is vervangen door een mappenboom.
 
 **Wat is er veranderd?**
 
@@ -83,9 +83,9 @@ Niets. Sluit Trimble Connect één keer volledig en open opnieuw.
 
 ## Versie 1.4 — 20 augustus 2026
 
-### Snelle verbeteringen op basis van klant-feedback
+### Snelle verbeteringen op basis van gebruikersfeedback
 
-Vier concrete verzoeken opgepakt na de v1.3-release, vooral van de werkvoorbereiders van VolkerWessels.
+Vier concrete verzoeken opgepakt na de v1.3-release, vooral vanuit de werkvoorbereiding.
 
 **Wat is er veranderd?**
 
@@ -119,7 +119,7 @@ Sluit Trimble Connect één keer volledig, open opnieuw. Alle verbeteringen zijn
 
 ### Documentenlijst voelt weer als een echte tool
 
-Feedback van klanten (o.a. Poel BV): "de standalone versie is fijner dan in de cockpit". We hebben de hele weergave herzien met vijf gerichte fixes plus een langverwachte Excel-export.
+Een terugkerend signaal uit de praktijk: de losse versie werkte prettiger dan de Documentenlijst in de Cockpit. We hebben de hele weergave herzien met vijf gerichte fixes plus een langverwachte Excel-export.
 
 **Wat is er veranderd?**
 
@@ -142,8 +142,8 @@ Nieuwe **Excel**-knop bovenaan (en in de voetregel). Één klik → download `.x
 
 ### Onder de motorkap
 
-Extra betrouwbaarheidsfixes gebaseerd op klant-incidenten:
-- Dubbele bestanden in de folder-boom worden nu correct ontdubbeld (loste Poel BV melding op: "Marco ziet 182 files, admin 180")
+Extra betrouwbaarheidsfixes naar aanleiding van meldingen uit de praktijk:
+- Dubbele bestanden in de folder-boom worden nu correct ontdubbeld (verklaart het verschil waarbij twee collega's een ander aantal documenten zagen)
 - Folders waar een gebruiker geen leesrechten voor heeft worden vastgelegd (voor toekomstige diagnose-knop)
 - Release-download vindt nu correcte map-prefix als bestandsnamen dubbel voorkomen (ipv willekeurig kiezen)
 
@@ -240,8 +240,8 @@ Eerste publieke versie van de At Fielt Cockpit. Eén Trimble Connect-extensie wa
 ## Testomgevingen
 
 Live geverifieerd in:
-- **Grip op projectinformatie** (klein project: 26 docs, 9 mappen, 72 projecten in regio)
-- **DigitaalBouwen@VolkerWessels** (groot project: 860 docs, 786 mappen, 92 groepen, 44 gebruikers)
+- Een klein project (26 documenten, 9 mappen, 72 projecten in de regio)
+- Een groot project (860 documenten, 786 mappen, 92 groepen, 44 gebruikers)
 
 ## Disclaimer
 
