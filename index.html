@@ -786,6 +786,19 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-filter:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 2px var(--afl)}
 .dl-filter-reset{padding:6px 12px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 13px 'Poppins',sans-serif;color:var(--g5);transition:all .15s}
 .dl-filter-reset:hover{background:var(--af);color:#fff;border-color:var(--af)}
+/* v1.4 Marco/VW: multi-select filter — knop met popover van checkboxes */
+.dl-filter-wrap{position:relative;display:inline-block}
+.dl-filter-multi{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;text-align:left}
+.dl-filter-multi.active{border-color:var(--af);background:var(--afl);color:var(--dk);font-weight:600}
+.dl-filter-caret{font-size:10px;color:var(--g5)}
+.dl-filter-multi:hover .dl-filter-caret{color:var(--af)}
+.dl-filter-pop{position:absolute;top:calc(100% + 4px);left:0;min-width:220px;max-width:320px;max-height:340px;overflow:auto;background:#fff;border:1px solid var(--hl);border-radius:var(--r-sm);box-shadow:0 6px 18px rgba(0,0,0,.12);z-index:100;padding:8px 0}
+.dl-filter-pop-head{padding:4px 12px 8px;border-bottom:1px solid var(--hl-light);display:flex;flex-direction:column;gap:4px;margin-bottom:4px}
+.dl-filter-all,.dl-filter-excl,.dl-filter-opt{display:flex;align-items:center;gap:8px;padding:4px 12px;cursor:pointer;font:12px 'Poppins',sans-serif;color:var(--dk);border-radius:2px}
+.dl-filter-all,.dl-filter-excl{font-weight:600}
+.dl-filter-all:hover,.dl-filter-excl:hover,.dl-filter-opt:hover{background:var(--afl)}
+.dl-filter-all input,.dl-filter-excl input,.dl-filter-opt input{cursor:pointer;accent-color:var(--af)}
+.dl-filter-excl{color:var(--warn)}
 .dl-ext-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:var(--s3);padding:8px var(--s3);background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-sm)}
 .dl-ext-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--hl);border-radius:var(--r-pill);background:#fff;cursor:pointer;font:600 11px 'Poppins',sans-serif;letter-spacing:.04em;color:var(--g5);text-transform:uppercase;transition:all .15s}
 .dl-ext-chip:hover{border-color:var(--af);color:var(--af)}
@@ -5434,10 +5447,22 @@ const DL = (function(){
   function _filterableVisibleCols(){
     return _getActiveCols().filter(function(c){ return !SKIP_FILTER.has(c.k); });
   }
-  function _colsConfigKey(){ return 'dl-cols-' + (tcProject && tcProject.id || 'unknown'); }
+  // v1.4 bug-fix (Marco/VW: 'kolombreedte werkt niet in nieuw project'):
+  // Als tcProject.id nog niet bestaat → return null; save/load-flow slaat over.
+  // Voorheen viel key op 'dl-cols-unknown' → widths werden onder verkeerde key opgeslagen
+  // en gingen verloren zodra tcProject.id gezet werd. Nu wachten we netjes tot project geladen is.
+  function _colsConfigKey(){
+    if (!tcProject || !tcProject.id) {
+      console.warn('[DL] _colsConfigKey: tcProject.id ontbreekt — kolom-config skip');
+      return null;
+    }
+    return 'dl-cols-' + tcProject.id;
+  }
   function _loadColsConfig(){
     try {
-      const raw = localStorage.getItem(_colsConfigKey());
+      const key = _colsConfigKey();
+      if (!key) return; // v1.4: geen tcProject.id — skip zonder key-corruptie
+      const raw = localStorage.getItem(key);
       if (!raw) return;
       const cfg = JSON.parse(raw);
       if (cfg && cfg.visible && Array.isArray(cfg.visible) && cfg.visible.length){
@@ -5451,7 +5476,9 @@ const DL = (function(){
   }
   function _saveColsConfig(){
     try {
-      localStorage.setItem(_colsConfigKey(), JSON.stringify({
+      const key = _colsConfigKey();
+      if (!key) return; // v1.4: geen tcProject.id — skip in plaats van onder 'unknown' opslaan
+      localStorage.setItem(key, JSON.stringify({
         visible: Array.from(_visibleColKeys),
         order:   _colOrder,
         widths:  _colWidths,
@@ -5507,6 +5534,7 @@ const DL = (function(){
   let _selectedDoc = null;   // huidige doc in detail-paneel ('_vid' van geselecteerde rij)
   let _escListener = null;   // escape-key handler tijdens panel open
   let _selectedVids = new Set(); // bestanden geselecteerd via checkbox (voor bulk-acties: delen, download, edit)
+  let _lastClickedVid = null; // v1.4: anchor voor shift-click range-select (Marco/VW feedback)
   const _commentCache = new Map(); // vid → first-comment object | null (in-memory, lifetime = page-load)
   const _versionsCache = new Map(); // vid → array van versies | null (in-memory, lifetime = page-load)
   const _releasesCache = { all: null, byId: new Map() }; // in-memory, lifetime = page-load
@@ -6701,12 +6729,24 @@ const DL = (function(){
         return _filterExts.has(e);
       });
     }
-    // Metadata-filters: dynamische dropdown-state per zichtbare kolom
-    const activeFilterKeys = Object.keys(_filters).filter(function(k){ return _filters[k]; });
+    // Metadata-filters: dynamische multi-select-state per zichtbare kolom (v1.4 Marco/VW).
+    // _filters[k] is nu een object: { selected: string[], exclude: bool }.
+    // Backwards-compat: oude string-values worden bij _renderFilterBar naar object gemigreerd.
+    // - selected leeg → filter niet actief (alles door)
+    // - exclude false → doc.value moet IN selected staan (OR-match)
+    // - exclude true  → doc.value moet NIET in selected staan (uitzondering-modus voor "alles behalve X")
+    const activeFilterKeys = Object.keys(_filters).filter(function(k){
+      const f = _filters[k];
+      return f && f.selected && f.selected.length > 0;
+    });
     if (activeFilterKeys.length){
       d = d.filter(function(doc){
         for (const k of activeFilterKeys){
-          if ((doc[k] || '') !== _filters[k]) return false;
+          const f = _filters[k];
+          const val = String(doc[k] || '');
+          const inSet = f.selected.indexOf(val) !== -1;
+          const match = f.exclude ? !inSet : inSet;
+          if (!match) return false;
         }
         return true;
       });
@@ -6770,27 +6810,57 @@ const DL = (function(){
         }).join('')
       + '</select>';
 
-    // Filter-dropdowns per zichtbare kolom (alleen bij metadata)
+    // v1.4 (Marco/VW): migreer eventueel oude string-values naar { selected, exclude } schema
+    filterCols.forEach(function(c){
+      const cur = _filters[c.k];
+      if (typeof cur === 'string' && cur){
+        _filters[c.k] = { selected: [cur], exclude: false };
+      }
+    });
+
+    // Filter-dropdowns per zichtbare kolom — v1.4: multi-select checkbox-dropdown ipv <select>.
+    // Knop toont "Alle status..." of "Status (2)" bij actieve selectie; klik = popover open.
     html += filterCols.map(function(c){
       const opts = _filterOptions(c.k);
-      const cur = _filters[c.k] || '';
-      const lbl = (FIELD_LABEL[c.k] || c.l).toLowerCase();
-      const optHtml = '<option value="">Alle ' + _esc(lbl) + '…</option>'
-        + opts.map(function(v){
-            return '<option value="' + _esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + _esc(v) + '</option>';
-          }).join('');
-      return '<select class="dl-filter" data-dl-filter="' + _esc(c.k) + '">' + optHtml + '</select>';
+      const f = _filters[c.k] || { selected: [], exclude: false };
+      const lbl = (FIELD_LABEL[c.k] || c.l);
+      const activeN = (f.selected || []).length;
+      const btnLabel = activeN === 0
+        ? 'Alle ' + _esc(lbl.toLowerCase()) + '…'
+        : (f.exclude ? 'Niet ' : '') + _esc(lbl) + ' (' + activeN + ')';
+      const btnClass = activeN > 0 ? 'dl-filter dl-filter-multi active' : 'dl-filter dl-filter-multi';
+      return '<div class="dl-filter-wrap" data-dl-filter-wrap="' + _esc(c.k) + '">'
+        + '<button type="button" class="' + btnClass + '" data-dl-filter="' + _esc(c.k) + '">'
+        +   '<span class="dl-filter-lbl">' + btnLabel + '</span>'
+        +   '<span class="dl-filter-caret">▾</span>'
+        + '</button>'
+        + '<div class="dl-filter-pop" data-dl-filter-pop="' + _esc(c.k) + '" style="display:none">'
+        +   '<div class="dl-filter-pop-head">'
+        +     '<label class="dl-filter-all"><input type="checkbox" data-dl-filter-all="' + _esc(c.k) + '"' + (activeN === opts.length && opts.length > 0 ? ' checked' : '') + '> <span>Alles</span></label>'
+        +     '<label class="dl-filter-excl"><input type="checkbox" data-dl-filter-excl="' + _esc(c.k) + '"' + (f.exclude ? ' checked' : '') + '> <span>Uitzonderen</span></label>'
+        +   '</div>'
+        +   '<div class="dl-filter-pop-body">'
+        +     opts.map(function(v){
+                const isCh = (f.selected || []).indexOf(v) !== -1;
+                return '<label class="dl-filter-opt"><input type="checkbox" data-dl-filter-val="' + _esc(v) + '"' + (isCh ? ' checked' : '') + '> <span>' + _esc(v) + '</span></label>';
+              }).join('')
+        +   '</div>'
+        + '</div>'
+        + '</div>';
     }).join('');
 
     // Reset-knop alleen als er een filter actief is
-    const anyActive = Object.keys(_filters).some(function(k){ return _filters[k]; });
+    const anyActive = filterCols.some(function(c){
+      const f = _filters[c.k];
+      return f && f.selected && f.selected.length > 0;
+    });
     if (anyActive){
       html += '<button class="dl-filter-reset" type="button" id="dl-filter-reset" title="Filters wissen">×</button>';
     }
     bar.innerHTML = html;
     bar.style.display = '';
 
-    // Bind events op nieuwe selects
+    // Bind events op group-select
     const groupSel = bar.querySelector('.dl-filter-group');
     if (groupSel){
       groupSel.addEventListener('change', function(){
@@ -6799,14 +6869,71 @@ const DL = (function(){
         _renderTable();
       });
     }
-    bar.querySelectorAll('.dl-filter:not(.dl-filter-group)').forEach(function(sel){
-      sel.addEventListener('change', function(){
-        const k = sel.getAttribute('data-dl-filter');
-        if (sel.value) _filters[k] = sel.value;
-        else delete _filters[k];
-        _renderTable();
+
+    // Bind events op multi-filter knoppen (open/close popover)
+    bar.querySelectorAll('.dl-filter-multi').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        const k = btn.getAttribute('data-dl-filter');
+        const pop = bar.querySelector('[data-dl-filter-pop="' + k + '"]');
+        if (!pop) return;
+        // Sluit andere popovers eerst
+        bar.querySelectorAll('.dl-filter-pop').forEach(function(p){
+          if (p !== pop) p.style.display = 'none';
+        });
+        pop.style.display = pop.style.display === 'none' ? '' : 'none';
       });
     });
+
+    // Click-outside sluit alle popovers
+    if (!bar._dlFilterOutsideBound){
+      document.addEventListener('click', function(){
+        bar.querySelectorAll('.dl-filter-pop').forEach(function(p){ p.style.display = 'none'; });
+      });
+      bar._dlFilterOutsideBound = true;
+    }
+    bar.querySelectorAll('.dl-filter-pop').forEach(function(pop){
+      pop.addEventListener('click', function(e){ e.stopPropagation(); });
+    });
+
+    // Bind: individuele value-checkbox
+    bar.querySelectorAll('[data-dl-filter-val]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        const k = cb.closest('[data-dl-filter-pop]').getAttribute('data-dl-filter-pop');
+        const val = cb.getAttribute('data-dl-filter-val');
+        if (!_filters[k] || typeof _filters[k] === 'string') _filters[k] = { selected: [], exclude: false };
+        const sel = _filters[k].selected;
+        const idx = sel.indexOf(val);
+        if (cb.checked && idx === -1) sel.push(val);
+        else if (!cb.checked && idx !== -1) sel.splice(idx, 1);
+        _renderTable();
+        _renderFilterBar(); // sync label + counter
+      });
+    });
+
+    // Bind: "Alles"-toggle bovenaan popover
+    bar.querySelectorAll('[data-dl-filter-all]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        const k = cb.getAttribute('data-dl-filter-all');
+        const opts = _filterOptions(k);
+        if (!_filters[k] || typeof _filters[k] === 'string') _filters[k] = { selected: [], exclude: false };
+        _filters[k].selected = cb.checked ? opts.slice() : [];
+        _renderTable();
+        _renderFilterBar();
+      });
+    });
+
+    // Bind: "Uitzonderen"-toggle
+    bar.querySelectorAll('[data-dl-filter-excl]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        const k = cb.getAttribute('data-dl-filter-excl');
+        if (!_filters[k] || typeof _filters[k] === 'string') _filters[k] = { selected: [], exclude: false };
+        _filters[k].exclude = cb.checked;
+        _renderTable();
+        _renderFilterBar();
+      });
+    });
+
     const resetBtn = bar.querySelector('#dl-filter-reset');
     if (resetBtn) resetBtn.addEventListener('click', function(){
       _filters = {};
@@ -7027,9 +7154,13 @@ const DL = (function(){
     }
     const headRow = tbl.querySelector('thead tr');
     if (headRow){
+      // v1.4 bug-fix (Marco/VW): TH's krijgen ook style.width (uit _colWidths indien gezet) zodat
+      // table-layout auto de expliciete breedte respecteert. Zonder dit: resize werkt niet in
+      // projecten waar user nog geen widths heeft ingesteld.
       headRow.innerHTML = '<th class="dl-th-cb"><input type="checkbox" id="dl-select-all" title="Alles selecteren (gefilterd)"></th>'
         + cols.map(function(c){
-            return '<th class="dl-th" data-sort="' + c.k + '">' + _esc(c.l)
+            const widthStyle = _colWidths[c.k] ? ' style="width:' + _colWidths[c.k] + ';min-width:' + _colWidths[c.k] + ';max-width:' + _colWidths[c.k] + '"' : '';
+            return '<th class="dl-th" data-sort="' + c.k + '"' + widthStyle + '>' + _esc(c.l)
               + '<span class="dl-sort-ind"></span>'
               + '<span class="dl-resizer" data-resize="' + _esc(c.k) + '"></span></th>';
           }).join('');
@@ -7174,9 +7305,40 @@ const DL = (function(){
       });
     });
 
-    // Per-rij checkboxes binden
+    // Per-rij checkboxes binden — v1.4: shift-click voor range-select (Marco/VW feedback)
     tbody.querySelectorAll('input.dl-row-cb').forEach(function(cb){
-      cb.addEventListener('click', function(e){ e.stopPropagation(); });
+      cb.addEventListener('click', function(e){
+        e.stopPropagation();
+        const vid = cb.getAttribute('data-vid');
+        if (!vid) return;
+        // Shift-click: range-select van laatste anchor tot huidige rij, via DOM-order
+        // (bij groepering/tree-mode klopt _filt() volgorde niet 1:1 met tabel-rendering).
+        if (e.shiftKey && _lastClickedVid && _lastClickedVid !== vid) {
+          const allCbs = Array.from(tbody.querySelectorAll('input.dl-row-cb'));
+          const anchorIdx = allCbs.findIndex(function(x){ return x.getAttribute('data-vid') === _lastClickedVid; });
+          const currentIdx = allCbs.findIndex(function(x){ return x === cb; });
+          if (anchorIdx >= 0 && currentIdx >= 0) {
+            const [start, end] = anchorIdx < currentIdx ? [anchorIdx, currentIdx] : [currentIdx, anchorIdx];
+            // Doel-status = wat de shift-klikker doet: de rij die gekozen is bepaalt de action (add/remove).
+            // cb.checked reflecteert de nieuwe status (browser heeft die al toegepast bij click).
+            const targetChecked = cb.checked;
+            for (let i = start; i <= end; i++){
+              const rangeVid = allCbs[i].getAttribute('data-vid');
+              if (!rangeVid) continue;
+              allCbs[i].checked = targetChecked;
+              if (targetChecked) _selectedVids.add(rangeVid); else _selectedVids.delete(rangeVid);
+              const rangeTr = allCbs[i].closest('tr.dl-row');
+              if (rangeTr) rangeTr.classList.toggle('dl-row-selected', targetChecked);
+            }
+            _lastClickedVid = vid;
+            _updateSelectionBar();
+            _updateSelectAllState();
+            return; // change-handler mag niet nog eens vuren
+          }
+        }
+        // Normale single-click: onthoud als nieuwe anchor voor volgende shift-klik
+        _lastClickedVid = vid;
+      });
       cb.addEventListener('change', function(){
         const vid = cb.getAttribute('data-vid');
         if (!vid) return;
@@ -7477,7 +7639,8 @@ const DL = (function(){
       if (cfg.order && Array.isArray(cfg.order)) _projectDefaultOrder = cfg.order;
       console.log('[DL] project-defaults geladen vanuit hub:', (_projectDefaultVisible || []).length, 'velden, opgeslagen door', data.updatedBy || '(onbekend)');
       // Toepassen alleen als gebruiker nog géén persoonlijke config heeft
-      const raw = localStorage.getItem(_colsConfigKey());
+      const _cfgKey = _colsConfigKey();
+      const raw = _cfgKey ? localStorage.getItem(_cfgKey) : null;
       if (!raw){
         if (_projectDefaultVisible){
           _visibleColKeys = new Set(_projectDefaultVisible);
@@ -7703,6 +7866,27 @@ const DL = (function(){
       });
       // Genereer workbook
       const ws = XLSX.utils.aoa_to_sheet(aoa);
+      // v1.4: Excel bestandsnaam-cel wordt klikbare hyperlink naar TC-viewer (Marco/VW feedback:
+      // uitvoerders kunnen vanaf de Excel-lijst direct het document openen zonder zoeken).
+      // We hebben de rows-array + bestandsnaam-kolom-index nodig om de juiste cellen te vinden.
+      const bnaamColIdx = cols.findIndex(function(c){ return c.k === 'bestandsnaam'; });
+      if (bnaamColIdx >= 0){
+        // Loop door aoa (skip header + group-header-rows + blank rows), match met rows-array
+        let rowsIdx = 0; // cursor in rows[]
+        for (let rowI = 1; rowI < aoa.length; rowI++){
+          if (groupHeaderRows.indexOf(rowI) !== -1) continue; // sla group-header-rijen over
+          const arr = aoa[rowI];
+          if (!arr || arr.length === 0) continue; // sla blank-rijen tussen groepen over
+          const doc = rows[rowsIdx++];
+          if (!doc) continue;
+          const url = _tcFileUrl(doc);
+          if (!url) continue;
+          const cellRef = XLSX.utils.encode_cell({ c: bnaamColIdx, r: rowI });
+          if (ws[cellRef]){
+            ws[cellRef].l = { Target: url, Tooltip: 'Open in Trimble Connect' };
+          }
+        }
+      }
       // Kolom-breedtes op basis van tekst-lengte (max 60)
       ws['!cols'] = finalHeaders.map(function(h, idx){
         let maxLen = String(h).length;
@@ -9573,14 +9757,23 @@ const DL = (function(){
       const dx = e.clientX - _resizeState.startX;
       const w = Math.max(40, _resizeState.startWidth + dx);
       _colWidths[_resizeState.key] = w + 'px';
-      // Live update: alleen het ene col-element aanpassen waar geresized wordt
+      // v1.4 bug-fix (Marco/VW): table-layout auto negeert <col>-widths bij nieuw project zonder
+      // opgeslagen widths — resize deed niets zichtbaar. Fix: forceer óók de <th> width + min/max.
+      // Zo werkt resize bij alle projecten, ongeacht auto/fixed layout of aanwezigheid _colWidths.
+      const wpx = w + 'px';
       const tbl = root.querySelector('.dl-tbl');
       const colgroup = tbl && tbl.querySelector('colgroup');
-      if (!colgroup) return;
-      const cols = _getActiveCols();
-      const colEls = colgroup.querySelectorAll('col');
-      const idx = cols.findIndex(function(c){ return c.k === _resizeState.key; });
-      if (idx >= 0 && colEls[idx]) colEls[idx].style.width = w + 'px';
+      if (colgroup){
+        const cols = _getActiveCols();
+        const colEls = colgroup.querySelectorAll('col');
+        const idx = cols.findIndex(function(c){ return c.k === _resizeState.key; });
+        if (idx >= 0 && colEls[idx]) colEls[idx].style.width = wpx;
+      }
+      if (_resizeState.th){
+        _resizeState.th.style.width = wpx;
+        _resizeState.th.style.minWidth = wpx;
+        _resizeState.th.style.maxWidth = wpx;
+      }
     });
     document.addEventListener('mouseup', function(){
       if (!_resizeState) return;
