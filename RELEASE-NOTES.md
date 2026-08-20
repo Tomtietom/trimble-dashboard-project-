@@ -16,6 +16,16 @@ Vier concrete verzoeken opgepakt na de v1.3-release, vooral van de werkvoorberei
 - **Kolombreedte werkt in élk project** — de resize-handle tussen kolomkoppen werkt nu ook in nieuwe projecten. Onder water: eerdere versie sloeg breedtes soms op onder een tijdelijke sleutel die verloren ging bij project-wissel; nu wordt de config-sleutel pas gebruikt wanneer het project-ID volledig geladen is.
 - **Resize verplaatst niet meer per ongeluk de kolom** — bij het loslaten van een resize-handle (vooral bij naar links slepen) kon de kolom soms van positie wisselen, alsof je hem verslepen wilde. Dat komt niet meer voor: na een resize wordt een korte grace-period ingelast waarbinnen een per-ongeluk-drag automatisch wordt genegeerd.
 
+### Uploader — verplichte velden meteen zichtbaar + slimmer werken bij meerdere bestanden
+
+De metadata-velden onder een geüpload bestand toonden bij elk leeg veld hetzelfde oranje driehoekje. Verplicht en optioneel waren visueel niet te onderscheiden, en bij het slepen van vijf bestanden tegelijk kreeg je vijf keer hetzelfde volledige formulier onder elkaar. Drie gerichte verbeteringen:
+
+- **Verplichte velden zijn rood en staan bovenaan** — rode label, dikke rode rand, en een witte **!** in een rode cirkel bij een leeg verplicht veld. Optionele velden blijven neutraal (geen waarschuwing meer bij "leeg is prima"). Binnen de meta-rij worden verplichte velden automatisch als eerste getoond, ongeacht de veld-volgorde in het admin-schema.
+- **Bulk-bar toont nu álle velden** — de "Bulk-instellen voor alle X bestanden"-balk boven de queue toonde eerder alleen drie hardcoded selects (Discipline, Fase, Status). Nu verschijnt élk actief veld — inclusief tekst-invoer en datum-picker — met verplichte velden bovenaan en dezelfde rode markering. Titel-hint telt hoeveel verplichte velden er zijn zodat je die als eerste doet.
+- **Ingeklapte bestanden bij bulk-upload** — sleep je twee of meer bestanden tegelijk in de uploader, dan klappen alle rijen dicht tot alleen naam + status-badge (`! N verplicht` in rood of `✓ compleet` in groen). Rijen met een ontbrekend verplicht veld krijgen ook een rode linker-balk. Klik op de chevron of de bestandsnaam om die ene rij open te klappen en handmatig aan te passen. Bij één bestand blijft de rij automatisch open.
+
+**Werkvolgorde bij meerdere bestanden:** sleep alle bestanden erin → vul de verplichte velden in de bulk-balk in → klik "Toepassen op alle" → klap alleen de bestanden open waar iets afwijkt.
+
 **Wat moet je doen?**
 Sluit Trimble Connect één keer volledig, open opnieuw. Alle verbeteringen zijn direct beschikbaar.
 
