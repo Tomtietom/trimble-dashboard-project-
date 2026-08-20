@@ -536,6 +536,38 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .pu-bulk-bar .bulk-req-hint{color:#dc2626;font-weight:600;font-size:var(--fs-sm);margin-left:6px}
 .pu-bulk-bar .bulk-fields input[type=text],.pu-bulk-bar .bulk-fields input[type=date]{width:100%;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font-family:'Poppins',sans-serif;font-size:var(--fs-md);background:#fff;color:var(--dk);outline:none;box-sizing:border-box}
 .pu-bulk-bar .bulk-fields input[type=text]:focus,.pu-bulk-bar .bulk-fields input[type=date]:focus{border-color:var(--af)}
+
+/* Bulk-folder tree-picker (v1.6): uitklapbare map-selectie per pad-segment */
+.bft-widget{position:relative;width:100%}
+.bft-header{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);background:#fff;font-family:'Poppins',sans-serif;font-size:var(--fs-md);color:var(--dk);cursor:pointer;text-align:left;transition:border-color .15s;box-sizing:border-box}
+.bft-header:hover{border-color:var(--af)}
+.bft-widget.is-open .bft-header{border-color:var(--af);border-bottom-left-radius:0;border-bottom-right-radius:0}
+.bft-header-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bft-placeholder{color:var(--g4)}
+.bft-chevron{color:var(--g4);font-size:12px;transition:transform .15s;flex-shrink:0}
+.bft-widget.is-open .bft-chevron{transform:rotate(180deg)}
+.bft-clear{background:none;border:0;color:var(--g4);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;border-radius:var(--r-sm);flex-shrink:0}
+.bft-clear:hover{background:var(--gr);color:var(--warn)}
+.bft-panel{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--af);border-top:0;border-radius:0 0 var(--r-sm) var(--r-sm);box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:20;max-height:480px;display:flex;flex-direction:column}
+.bft-search{margin:8px 8px 4px;padding:6px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font-family:'Poppins',sans-serif;font-size:var(--fs-sm);outline:none;transition:border-color .15s}
+.bft-search:focus{border-color:var(--af)}
+.bft-tree{flex:1;overflow-y:auto;padding:4px 0 8px;font-size:var(--fs-sm)}
+.bft-empty{padding:12px;text-align:center;color:var(--g4);font-style:italic;font-size:var(--fs-sm)}
+.bft-node{display:flex;align-items:center;gap:4px;padding:3px 8px;line-height:1.35;transition:background .1s}
+.bft-node:hover{background:var(--afl)}
+.bft-node.bft-root-node{background:var(--gr);border-bottom:1px dashed var(--hl-light);margin-bottom:2px}
+.bft-toggle{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;cursor:pointer;color:var(--g4);font-size:10px;flex-shrink:0;transition:transform .12s;border-radius:2px;user-select:none}
+.bft-toggle:hover{color:var(--dk);background:rgba(0,0,0,.06)}
+.bft-toggle.is-open{transform:rotate(90deg)}
+.bft-toggle-spacer{display:inline-block;width:16px;flex-shrink:0}
+.bft-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Poppins',sans-serif}
+.bft-name.is-group{color:var(--g6);font-weight:500;cursor:pointer}
+.bft-name.is-group:hover{color:var(--dk)}
+.bft-name.is-leaf{color:var(--dk);cursor:pointer;padding:2px 6px;border-radius:var(--r-sm)}
+.bft-name.is-leaf:hover{background:var(--afl);color:var(--af)}
+.bft-name.is-selected{background:var(--af)!important;color:#fff!important;font-weight:600}
+.bft-leaf-tick{width:12px;color:var(--af);font-size:10px;text-align:center;flex-shrink:0}
+.bft-children{display:contents}
 .pu-bulk-bar .bulk-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--s2) var(--s3);margin-bottom:var(--s3)}
 .pu-bulk-bar .bulk-fields label{display:block;font-size:var(--fs-sm);color:var(--g5);margin-bottom:3px}
 .pu-bulk-bar .bulk-fields select{width:100%;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font-family:'Poppins',sans-serif;font-size:var(--fs-md);background:#fff;color:var(--dk);outline:none}
@@ -3350,6 +3382,11 @@ const PU = (function(){
   let _bulkMeta = {};
   let _bulkFolderId = '';
   let _bulkOnlyEmpty = true;
+  // Bulk-folder tree-picker state (v1.6). Vervangt de vlakke <select> die bij
+  // VW-schaal (700+ mappen) onbruikbaar was — nu uitklapbaar per pad-segment.
+  let _bulkFolderPickerOpen = false;
+  let _bulkFolderExpanded = new Set();  // fullPath-strings van expanded nodes
+  let _bulkFolderSearchText = '';
 
   // Hub config endpoint (admin-set rules per project)
   const EXTENSION_SLUG_PU = 'project-upload';
@@ -4872,6 +4909,91 @@ const PU = (function(){
     return '<div class="path-preview">' + tags + '</div>';
   }
 
+  // Bouwt een boom-structuur uit de vlakke _writableFolders lijst.
+  // TC-paden zijn " / "-gescheiden. Elke node krijgt: name, path, children (Map),
+  // folderId (null voor tussenliggende groepen, ID voor writable eindpunten).
+  // Root krijgt speciaal een 'projectroot'-child bovenaan zodat die snel klikbaar is.
+  function _buildFolderTree(folders){
+    const root = { name: '', path: '', children: new Map(), folderId: null, isRoot: null };
+    const sep = ' / ';
+    for (const f of folders){
+      const p = f.path || '';
+      if (!p || p === '(projectroot)'){
+        // Projectroot toont als aparte pseudo-node bovenaan de tree
+        root.isRoot = f.id;
+        continue;
+      }
+      const parts = p.split(sep).filter(Boolean);
+      let node = root;
+      let cur = '';
+      for (let i = 0; i < parts.length; i++){
+        const seg = parts[i];
+        cur = cur ? cur + sep + seg : seg;
+        if (!node.children.has(seg)){
+          node.children.set(seg, { name: seg, path: cur, children: new Map(), folderId: null });
+        }
+        node = node.children.get(seg);
+      }
+      // Eindpunt: dit exacte pad is writable
+      node.folderId = f.id;
+    }
+    return root;
+  }
+
+  // Recursief renderen van een tree-node. depth voor indent, ancestorMatch voor
+  // "iemand in dit sub-tree matcht" bij search (dan altijd uitklappen).
+  function _renderFolderTreeNode(node, depth, searchLc){
+    const hasChildren = node.children.size > 0;
+    const isLeaf = node.folderId !== null;
+    const nameLc = node.name.toLowerCase();
+    const pathLc = node.path.toLowerCase();
+    const selfMatch = searchLc ? (nameLc.indexOf(searchLc) >= 0 || pathLc.indexOf(searchLc) >= 0) : true;
+    // Bij search: verzamel alleen nodes waarvan zelf of een afstammeling matcht.
+    let childrenHtml = '';
+    let anyDescendantMatch = false;
+    if (hasChildren){
+      const parts = [];
+      // Sorteer children op naam (VW gebruikt numerieke prefixen die alphabetisch al goed lopen)
+      const sorted = Array.from(node.children.values()).sort(function(a,b){
+        return a.name.localeCompare(b.name, 'nl', { numeric: true });
+      });
+      for (const child of sorted){
+        const rendered = _renderFolderTreeNode(child, depth + 1, searchLc);
+        if (rendered.hasVisible){
+          parts.push(rendered.html);
+          anyDescendantMatch = true;
+        }
+      }
+      childrenHtml = parts.join('');
+    }
+    // Bij search: skip nodes zonder self/descendant match
+    if (searchLc && !selfMatch && !anyDescendantMatch) return { html: '', hasVisible: false };
+
+    // Bij search: forceer expand (alle levels zichtbaar). Anders: gebruiker-state.
+    const forceExpand = !!searchLc && anyDescendantMatch;
+    const expanded = forceExpand || _bulkFolderExpanded.has(node.path);
+    const selected = isLeaf && node.folderId === _bulkFolderId;
+
+    const chevron = hasChildren
+      ? '<span class="bft-toggle' + (expanded ? ' is-open' : '') + '" data-bft-toggle="' + escapeHtml(node.path) + '">▸</span>'
+      : '<span class="bft-toggle-spacer"></span>';
+    const nameCls = 'bft-name'
+      + (isLeaf ? ' is-leaf' : ' is-group')
+      + (selected ? ' is-selected' : '');
+    const nameAttr = isLeaf ? ' data-bft-pick="' + escapeHtml(node.folderId) + '"' : ' data-bft-toggle="' + escapeHtml(node.path) + '"';
+    const leafBadge = isLeaf ? '<span class="bft-leaf-tick" title="Kies deze map">' + (selected ? '●' : '') + '</span>' : '';
+
+    let html = '<div class="bft-node" style="padding-left:' + (depth * 16) + 'px">'
+      + chevron
+      + '<span class="' + nameCls + '"' + nameAttr + '>' + escapeHtml(node.name) + '</span>'
+      + leafBadge
+      + '</div>';
+    if (expanded && childrenHtml){
+      html += '<div class="bft-children">' + childrenHtml + '</div>';
+    }
+    return { html: html, hasVisible: true };
+  }
+
   function _renderBulkBar(){
     const root = getRoot();
     if (!root) return;
@@ -4914,11 +5036,55 @@ const PU = (function(){
       return '<div><label' + labelCls + '>' + escapeHtml(field.label) + reqMark + reqBadge + '</label>' + input + '</div>';
     }).join('');
 
-    const folderOpts = ['<option value="">— niet wijzigen —</option>'].concat(
-      _writableFolders.map(function(f){
-        return '<option value="' + escapeHtml(f.id) + '"' + (f.id === _bulkFolderId ? ' selected' : '') + '>' + escapeHtml(f.path) + '</option>';
-      })
-    ).join('');
+    // Folder tree-picker (v1.6): vervangt vlakke <select> die bij >100 mappen
+    // onwerkbaar was. Custom widget: header met huidige selectie + panel met
+    // zoekbalk en uitklapbare tree.
+    const selectedFolder = _writableFolders.find(function(f){ return f.id === _bulkFolderId; });
+    const headerLabel = selectedFolder
+      ? escapeHtml(selectedFolder.path === '(projectroot)' ? 'Projectroot' : selectedFolder.path)
+      : '<span class="bft-placeholder">— niet wijzigen —</span>';
+    const clearBtn = _bulkFolderId
+      ? '<button class="bft-clear" type="button" data-bft-clear="1" title="Wis map-selectie">×</button>'
+      : '';
+    let treeHtml = '';
+    if (_bulkFolderPickerOpen){
+      const tree = _buildFolderTree(_writableFolders);
+      const searchLc = _bulkFolderSearchText.trim().toLowerCase();
+      // Projectroot als speciale pseudo-node bovenaan (indien writable)
+      let rootHtml = '';
+      if (tree.isRoot && (!searchLc || 'projectroot'.indexOf(searchLc) >= 0)){
+        const sel = tree.isRoot === _bulkFolderId;
+        rootHtml = '<div class="bft-node bft-root-node">'
+          + '<span class="bft-toggle-spacer"></span>'
+          + '<span class="bft-name is-leaf' + (sel ? ' is-selected' : '') + '" data-bft-pick="' + escapeHtml(tree.isRoot) + '">📁 Projectroot</span>'
+          + '<span class="bft-leaf-tick">' + (sel ? '●' : '') + '</span>'
+          + '</div>';
+      }
+      // Root's children (top-level folders) elk renderen
+      const sorted = Array.from(tree.children.values()).sort(function(a,b){
+        return a.name.localeCompare(b.name, 'nl', { numeric: true });
+      });
+      const parts = [];
+      for (const child of sorted){
+        const r = _renderFolderTreeNode(child, 0, searchLc);
+        if (r.hasVisible) parts.push(r.html);
+      }
+      const inner = rootHtml + parts.join('');
+      treeHtml = ''
+        + '<div class="bft-panel">'
+          + '<input type="text" class="bft-search" data-bft-search="1" value="' + escapeHtml(_bulkFolderSearchText) + '" placeholder="Zoek in mappen…" autocomplete="off">'
+          + '<div class="bft-tree">' + (inner || '<div class="bft-empty">Geen matches</div>') + '</div>'
+        + '</div>';
+    }
+    const folderWidget = ''
+      + '<div class="bft-widget' + (_bulkFolderPickerOpen ? ' is-open' : '') + '">'
+        + '<button class="bft-header" type="button" data-bft-toggle-picker="1">'
+          + '<span class="bft-header-label">' + headerLabel + '</span>'
+          + clearBtn
+          + '<span class="bft-chevron">▾</span>'
+        + '</button>'
+        + treeHtml
+      + '</div>';
 
     let suggestionHtml = '';
     if (Object.keys(_bulkMeta).some(function(k){ return _bulkMeta[k]; })){
@@ -4946,7 +5112,7 @@ const PU = (function(){
       '<div class="bulk-title">Bulk-instellen voor alle ' + pendingCount + ' bestanden' + reqHint + '</div>'
       + '<div class="bulk-fields">'
         + metaFields
-        + '<div><label>Map</label><select data-bulk-folder="1">' + folderOpts + '</select></div>'
+        + '<div><label>Map</label>' + folderWidget + '</div>'
       + '</div>'
       + suggestionHtml
       + '<div class="bulk-actions">'
@@ -4965,8 +5131,53 @@ const PU = (function(){
         if (evt === 'change') _renderBulkBar();
       });
     });
-    const folderEl = bar.querySelector('select[data-bulk-folder]');
-    if (folderEl) folderEl.addEventListener('change', function(){ _bulkFolderId = folderEl.value; _renderBulkBar(); });
+    // Folder-tree widget handlers
+    const headerBtn = bar.querySelector('[data-bft-toggle-picker]');
+    if (headerBtn) headerBtn.addEventListener('click', function(ev){
+      // Wis-knop niet meetellen als toggle
+      if (ev.target.closest('[data-bft-clear]')) return;
+      _bulkFolderPickerOpen = !_bulkFolderPickerOpen;
+      _renderBulkBar();
+      // Focus zoekveld direct bij openen
+      if (_bulkFolderPickerOpen){
+        const searchEl = bar.querySelector('[data-bft-search]');
+        if (searchEl) searchEl.focus();
+      }
+    });
+    const clearFolderBtn = bar.querySelector('[data-bft-clear]');
+    if (clearFolderBtn) clearFolderBtn.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      _bulkFolderId = '';
+      _renderBulkBar();
+    });
+    bar.querySelectorAll('[data-bft-toggle]').forEach(function(el){
+      el.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        const path = el.getAttribute('data-bft-toggle');
+        if (_bulkFolderExpanded.has(path)) _bulkFolderExpanded.delete(path);
+        else _bulkFolderExpanded.add(path);
+        _renderBulkBar();
+      });
+    });
+    bar.querySelectorAll('[data-bft-pick]').forEach(function(el){
+      el.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        _bulkFolderId = el.getAttribute('data-bft-pick') || '';
+        _bulkFolderPickerOpen = false;
+        _bulkFolderSearchText = '';
+        _renderBulkBar();
+      });
+    });
+    const searchInp = bar.querySelector('[data-bft-search]');
+    if (searchInp){
+      searchInp.addEventListener('input', function(){
+        const caret = searchInp.selectionStart;
+        _bulkFolderSearchText = searchInp.value;
+        _renderBulkBar();
+        const again = bar.querySelector('[data-bft-search]');
+        if (again){ again.focus(); try { again.setSelectionRange(caret, caret); } catch(_){} }
+      });
+    }
     const cb = bar.querySelector('input[data-bulk-only-empty]');
     if (cb) cb.addEventListener('change', function(){ _bulkOnlyEmpty = cb.checked; });
     const btn = bar.querySelector('button[data-bulk-apply]');
@@ -10468,10 +10679,19 @@ const DL = (function(){
         geladen: _isLoaded, laadt: _isLoading,
         documenten: _docs.length,
         zichtbareKolommen: _visibleColKeys.size,
+        // Zelfde definitie van "actief" als _filt(): selected leeg = niet actief.
+        // Samen met viewMode/map/extensies verklaart dit "ik zie minder rijen
+        // dan mijn collega" zonder dat iemand hoeft te beschrijven wat hij aan had staan.
         actieveFilters: Object.keys(_filters).filter(function(k){
-          const v = _filters[k];
-          return Array.isArray(v) ? v.length > 0 : !!v;
-        }).length,
+          const f = _filters[k];
+          return !!(f && f.selected && f.selected.length);
+        }).map(function(k){
+          const f = _filters[k];
+          return k + '=' + (f.exclude ? 'NIET ' : '') + f.selected.join('/');
+        }),
+        zoekterm: _searchQuery || '',
+        weergave: _viewMode + (_selectedFolder ? ' @ ' + _selectedFolder : ''),
+        bestandstypeChips: _filterExts && _filterExts.size ? Array.from(_filterExts) : [],
         sortering: _sortK + ' ' + _sortD,
         cacheSleutel: (function(){ try { return _cacheKey(); } catch(_){ return '?'; } })(),
         onleesbareMappen: _folderWalkErrors.length,
