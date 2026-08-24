@@ -1771,6 +1771,7 @@ const ICON_DOCS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 const ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
 const ICON_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+const ICON_QR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3z"/><path d="M21 14v2"/><path d="M14 21h2"/><path d="M21 20v1h-1"/></svg>';
 const ICON_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
 
 // ============================================================
@@ -1809,6 +1810,14 @@ const EXTENSIONS = [
     desc: 'Begeleide upload-wizard: documenten met metadata op de juiste plek.',
     url: 'https://tomtietom.github.io/trimble-project-upload/',
   },
+  {
+    // v1.10: eigen module met eigen hub-slug (was een knop in de Documentenlijst).
+    // Geen url/iconUrl: bestond nooit als losse extensie; generator leeft in DL.
+    key: 'qr-codes',
+    title: 'QR-codes',
+    icon: ICON_QR,
+    desc: 'QR-codes per submap voor kopersmappen — met bedrijfslogo, als ZIP, PDF of losse afbeeldingen.',
+  },
 ];
 
 // ============================================================
@@ -1826,7 +1835,6 @@ let tcToken = null;
 let tcProject = null;
 let tcRegion = 'europe';
 let currentUserEmail = null;
-let qrAllowed = false; // hub-slug 'qr-codes' — eigen module sinds v1.10, fail-closed
 
 // ============================================================
 //  Helpers
@@ -2280,19 +2288,10 @@ async function loadDashboard(){
       e.allowed = false;
     }
   }));
-  // QR-codes: eigen hub-slug (los verkoopbaar), zelfde fail-closed regels als de rest
-  try {
-    if (typeof window.atfieltHub.auth === 'function'){
-      const rq = await window.atfieltHub.auth('qr-codes');
-      qrAllowed = !!(rq && rq.allowed === true);
-    }
-  } catch (err) {
-    console.warn('[Cockpit] auth-check faalde voor qr-codes — fail-closed:', err.message);
-    qrAllowed = false;
-  }
-  console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', ') + ', qr-codes=' + (qrAllowed?'ja':'nee'));
+  console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', '));
 
   renderTiles();
+  updateTileStat('qr-codes', 'direct klaar'); // geen prefetch — generator laadt bij openen
   renderPlaceholders();
   bindTopbar(); // moet ná de access-check zodat .allowed correct in tabs landt
 
@@ -2553,7 +2552,6 @@ function bindTopbar(){
     btn.addEventListener('click', function(){
       const v = btn.getAttribute('data-view');
       if (v === 'dashboard') { showView('dashboard'); return; }
-      if (v === 'qr-codes'){ if (!qrAllowed) return; showView(v); return; }
       const ext = EXTENSIONS.find(function(e){ return e.key === v; });
       if (ext && ext.allowed === false) return;
       showView(v);
@@ -2570,18 +2568,11 @@ function bindTopbar(){
       }
     }
   });
-  if (!qrAllowed){
-    const qt = document.querySelector('#cpTabs .cp-tab[data-view="qr-codes"]');
-    if (qt){
-      qt.classList.add('disabled');
-      qt.setAttribute('aria-disabled','true');
-      qt.title = 'Geen toegang — vraag aan info@atfielt.nl';
-    }
-  }
   // QR-open-knop op de eigen view
   const qrOpenBtn = document.getElementById('qr-open-btn');
   if (qrOpenBtn) qrOpenBtn.addEventListener('click', function(){
-    if (!qrAllowed) return;
+    const qext = EXTENSIONS.find(function(e){ return e.key === 'qr-codes'; });
+    if (qext && qext.allowed === false) return;
     const st = document.getElementById('qr-view-status');
     qrOpenBtn.disabled = true;
     if (st) st.textContent = 'Documenten en mappen laden…';
@@ -2941,7 +2932,7 @@ function openExtension(key){
 // Renders placeholder-content in de extensie-views die nog geen inline UI hebben
 // Fase B: project-dashboard heeft een eigen module (PD) die zijn HTML zelf injecteert
 function renderPlaceholders(){
-  const INLINE_VIEWS = new Set(['project-dashboard', 'project-upload', 'documentenlijst', 'rechten-viewer']); // skip placeholders voor views met inline UI
+  const INLINE_VIEWS = new Set(['project-dashboard', 'project-upload', 'documentenlijst', 'rechten-viewer', 'qr-codes']); // skip placeholders voor views met inline UI (qr-codes heeft statische markup)
   EXTENSIONS.forEach(function(ext){
     if (INLINE_VIEWS.has(ext.key)) return;
     const container = document.getElementById('view-' + ext.key);
