@@ -729,6 +729,12 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl tbody td{padding:8px 12px;vertical-align:middle;color:var(--dk);white-space:nowrap;overflow:hidden}
 .dl-tbl tbody td.dl-cell-name{font-weight:500;max-width:380px;text-overflow:ellipsis}
 .dl-tbl tbody td.dl-cell-folder{max-width:280px;text-overflow:ellipsis}
+/* Metadata-cellen: zelfde opvouw-gedrag als de mapnaam-kolom. white-space:normal maakt
+   de minimale kolombreedte gelijk aan het langste woord i.p.v. de hele zin (bij nowrap
+   kon de kolom nooit smaller dan de langste celtekst — resize deed dan niks).
+   overflow-wrap:anywhere vangt waarden zonder spaties (lange documentnummers) af.
+   max-width is het startpunt; wie de kolom zelf sleept overschrijft dit via _colWidths. */
+.dl-tbl tbody td.dl-cell-meta{white-space:normal;overflow-wrap:anywhere;max-width:320px}
 .dl-tbl tbody td.dl-cell-name a{color:var(--dk);text-decoration:none}
 .dl-tbl tbody td.dl-cell-name a:hover{color:var(--af);text-decoration:underline}
 .dl-tbl tbody td.dl-cell-folder{color:var(--g5);font-size:var(--fs-xs)}
@@ -1358,7 +1364,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.7';
+const COCKPIT_VERSION = '1.8';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -6019,6 +6025,16 @@ const DL = (function(){
   // Runtime mappings — starten als kopie van defaults, vervangen bij _loadPSetSchema succes.
   let PROP_MAP = Object.assign({}, PROP_MAP_DEFAULT);
   let ENUM_VALUES = Object.assign({}, ENUM_VALUES_DEFAULT);
+  // fieldKey → 'enum' | 'date' (uit schema.props def.format / def.enum). Velden die er
+  // niet in staan zijn vrij tekst. Gevuld door _loadPSetSchema; leeg zonder schema.
+  let FIELD_TYPES = {};
+  // Datumherkenning: schema-type wint, naam-heuristiek blijft als vangnet voor
+  // projecten zonder schema (daar bestaat FIELD_TYPES niet).
+  function _isDateField(k){
+    if (FIELD_TYPES[k] === 'date') return true;
+    if (FIELD_TYPES[k]) return false;
+    return /datum/.test(k);
+  }
   // TCM = naam → interne fieldKey. Gebruikt om i18n-property-namen aan interne velden te koppelen.
   const TCM_MAP = {
     'File location': 'file_location',
@@ -6123,7 +6139,7 @@ const DL = (function(){
       const k = PROP_MAP[id];
       if (!k) continue;
       if (ENUM_VALUES[k]) continue;
-      if (/datum/.test(k) || /timestamp/.test(k)) continue;
+      if (_isDateField(k) || /timestamp/.test(k)) continue;
       out.push(k);
     }
     return out;
@@ -6178,8 +6194,13 @@ const DL = (function(){
     if (EXT_3D.indexOf(ext) >= 0){
       return 'https://web.connect.trimble.com/projects/' + pid + '/viewer/3d?modelId=' + vid;
     }
-    // 2D / PDF / images / office — version=vid werkt als "huidige versie"
-    return 'https://web.connect.trimble.com/projects/' + pid + '/viewer/2D?id=' + vid + '&version=' + vid;
+    // 2D / PDF / images / office. GEEN version-parameter: dan kiest Trimble zelf de
+    // actuele versie. Eerdere versie stuurde `&version=<bestand-id>` mee in de aanname
+    // dat dat "huidige versie" betekende, maar version verwacht een versie-id (zie
+    // /files/{id}/versions → versionId). Met een bestand-id in dat veld opende de link
+    // niet de laatste versie. Een link naar een specifieke versie wordt apart gebouwd
+    // in het detailpaneel, met de echte versionId erin.
+    return 'https://web.connect.trimble.com/projects/' + pid + '/viewer/2D?id=' + vid;
   }
   function _tcFolderUrl(pathLoc){
     if (!pathLoc || pathLoc === '(projectroot)' || !tcProject || !tcProject.id) return '';
@@ -6607,7 +6628,7 @@ const DL = (function(){
 
   // PSet-definitie cache (7d TTL): project schema verandert zelden, scheelt grote fetch per load.
   const _PSET_DEF_TTL = 7 * 24 * 60 * 60 * 1000;
-  function _psetDefCacheKey(){ return 'dl-psetdef-' + (tcProject && tcProject.id || 'unknown'); }
+  function _psetDefCacheKey(){ return 'dl-psetdef-v2-' + (tcProject && tcProject.id || 'unknown'); }
   function _psetDefCacheGet(){
     try {
       const raw = localStorage.getItem(_psetDefCacheKey());
@@ -6687,38 +6708,77 @@ const DL = (function(){
     } else {
       console.log('[DL] Geen TCM-mapping uit project-schema gevonden; behoud hardcoded fallback');
     }
-    // Bouw ENUM_VALUES dynamisch uit i18n (pattern "{uuid}.enum.{key}": "DisplayWaarde")
-    const enumSets = {};
-    function extractEnums(obj, parentKey){
-      if (!obj || typeof obj !== 'object') return;
-      for (const key in obj){
-        const val = obj[key];
-        if (typeof val === 'string'){
-          // Probeer key te parsen als {uuid}.enum.{keyName} — niet alle i18n volgt dit format,
-          // dus we proberen ook samengevoegde keys
-          const compositeKey = parentKey ? (parentKey + '.' + key) : key;
-          const m = compositeKey.match(/^([0-9a-f-]{36})\.[^.]*\.(.+)$/);
-          if (m){
-            const uuid = m[1];
-            const fieldName = PROP_MAP[uuid];
-            if (fieldName){
-              if (!enumSets[fieldName]) enumSets[fieldName] = new Set();
-              enumSets[fieldName].add(val);
-            }
-          }
-        } else if (typeof val === 'object'){
-          extractEnums(val, parentKey ? (parentKey + '.' + key) : key);
+    // Enum-waarden + veldtypes uit het schema. Twee bronnen, in deze volgorde:
+    //
+    //   1. schema.props[uuid].enum — de gezaghebbende definitie (zelfde bron als de
+    //      Uploader gebruikt). Levert ook def.format voor datumherkenning. TC's schema
+    //      gebruikt "--" als leeg-placeholder; die filteren we eruit, anders wordt hij
+    //      een kiesbare waarde.
+    //   2. i18n, geflattened tot bladsleutels, zoekend op de letterlijke tekst ".enum."
+    //      — het patroon van de standalone tc-viewer (regel 1906-1938 aldaar), dat in
+    //      productie bewezen werkt. Vult alleen velden aan waarvoor bron 1 niks gaf.
+    //
+    // De vorige implementatie hier plakte oudersleutels vóór de i18n-sleutel en testte
+    // met een regex verankerd op ^{uuid} — met een locale-laag eromheen (nl.{uuid}.…)
+    // matchte die nooit. En het resultaat VERVING de complete ENUM_VALUES, waardoor
+    // velden zonder scrape-resultaat ook hun defaults verloren. Symptomen bij de klant:
+    // vrij invulveld i.p.v. keuzelijst, of een keuzelijst met precies 1 optie.
+    // Daarom nu per veld mergen bovenop ENUM_VALUES_DEFAULT.
+    const enumSets = {};   // fieldKey → Set van waarden
+    const typeOut = {};    // fieldKey → 'enum' | 'date' | 'text' (uit schema.props)
+
+    // Bron 1 — schema.props
+    for (const uuid in schemaProps){
+      const fieldName = PROP_MAP[uuid];
+      if (!fieldName) continue;
+      const def = schemaProps[uuid] || {};
+      if (def.enum && Array.isArray(def.enum)){
+        const vals = def.enum.filter(function(v){ return v && v !== '--'; });
+        if (vals.length){
+          enumSets[fieldName] = new Set(vals);
+          typeOut[fieldName] = 'enum';
         }
+      } else if (def.format === 'date'){
+        typeOut[fieldName] = 'date';
       }
     }
-    extractEnums(i18n, '');
-    const enumOut = {};
-    for (const f in enumSets){
-      enumOut[f] = Array.from(enumSets[f]).sort(function(a, b){ return a.localeCompare(b, 'nl'); });
+
+    // Bron 2 — i18n-flatten (standalone-patroon): alleen bladsleutels bewaren,
+    // zoeken op ".enum." als substring. Vult velden aan die bron 1 miste.
+    const flatI18n = {};
+    (function flattenI18n(obj){
+      if (!obj || typeof obj !== 'object') return;
+      for (const k in obj){
+        if (typeof obj[k] === 'string') flatI18n[k] = obj[k];
+        else if (typeof obj[k] === 'object') flattenI18n(obj[k]);
+      }
+    })(i18n);
+    for (const ik in flatI18n){
+      const dotEnum = ik.indexOf('.enum.');
+      if (dotEnum === -1) continue;
+      const eUuid = ik.substring(0, dotEnum);
+      const eVal = flatI18n[ik];
+      const fieldName = PROP_MAP[eUuid];
+      if (!fieldName || !eVal || eVal === '--') continue;
+      if (enumSets[fieldName] && typeOut[fieldName] === 'enum') continue; // bron 1 wint
+      if (!enumSets[fieldName]) enumSets[fieldName] = new Set();
+      enumSets[fieldName].add(eVal);
     }
-    if (Object.keys(enumOut).length){
-      ENUM_VALUES = enumOut;
-      console.log('[DL] ENUM_VALUES dynamisch uit project-schema:', Object.keys(ENUM_VALUES).length, 'velden');
+
+    // Mergen per veld bovenop de defaults — nooit meer alles vervangen.
+    let dynCount = 0;
+    for (const f in enumSets){
+      const vals = Array.from(enumSets[f]);
+      if (!vals.length) continue;
+      ENUM_VALUES[f] = vals;
+      dynCount++;
+    }
+    FIELD_TYPES = typeOut;
+    if (dynCount){
+      console.log('[DL] ENUM_VALUES uit project-schema:', dynCount, 'velden bijgewerkt,',
+        Object.keys(ENUM_VALUES).length, 'totaal');
+    } else {
+      console.log('[DL] Geen enum-waarden in project-schema gevonden — defaults blijven staan');
     }
   }
 
@@ -7085,7 +7145,7 @@ const DL = (function(){
     td.classList.add('dl-cell-editing');
     const origHtml = td.innerHTML;
     const curVal = doc[fieldKey] != null ? String(doc[fieldKey]) : '';
-    const isDate = /datum/.test(fieldKey);
+    const isDate = _isDateField(fieldKey);
     const enumVals = ENUM_VALUES[fieldKey];
     let input;
     if (enumVals && enumVals.length){
@@ -7902,13 +7962,18 @@ const DL = (function(){
       else if (c.k === 'document_status' && v){
         // Sprint 1 UX-fix: gekleurde badge voor Status ipv platte tekst
         v = _sBdg(v);
+        cls = 'dl-cell-meta';
         if (_editMode && _isEditableField(c.k)){
-          cls = 'dl-cell-editable';
+          cls += ' dl-cell-editable';
           extraAttrs = ' data-editable="' + _esc(c.k) + '" title="Dubbelklik om te bewerken — wijziging gaat direct naar TC"';
         }
       }
       else {
         v = _esc(v == null ? '' : v);
+        // Metadata-kolommen krijgen dl-cell-meta zodat lange teksten afbreken en de
+        // kolom versmalbaar is (klant-melding: alleen de mapnaam-kolom "vouwde op").
+        // Technische kolommen (_versie e.d.) blijven op één regel.
+        if (_isMetaCol(c.k)) cls = 'dl-cell-meta';
         // Metadata-velden zijn inline-editbaar ALLEEN wanneer bewerk-modus aan staat.
         // Zonder edit-mode: cel toont alleen-lezen tekst, geen dblclick-handler, geen hover-cue.
         if (_editMode && _isEditableField(c.k)){
@@ -9107,9 +9172,19 @@ const DL = (function(){
     return body && body.url;
   }
 
-  // Maak nette pad-prefix voor in een ZIP: "001. Voorbereiding/03. UO" → "001_VO/03_UO"
-  function _zipFolderPath(loc){
+  // Pad-prefix voor in een ZIP. Twee stijlen, gekozen in het download-dialoog:
+  //   ingekort (default) — "001. Voorbereiding/03. UO" → "001-Voorbereiding_03-UO":
+  //     per segment <nummer>-<eerste woord>. Compact, maar bij naamgeving als
+  //     "0-02 Bouwkundig" blijft alleen "0-02" over (klant-melding aug 2026).
+  //   volledig — mapnaam intact; alleen tekens die in een bestandspad niet mogen
+  //     worden vervangen door "_". Echte submappen in de ZIP (join op "/").
+  function _zipFolderPath(loc, volledig){
     if (!loc || loc === '(projectroot)') return '';
+    if (volledig){
+      return loc.split('/').map(function(seg){
+        return seg.trim().replace(/[<>:"|?*\\\/]/g, '_').replace(/\s+/g, ' ').slice(0, 100) || '_';
+      }).join('/');
+    }
     return loc.split('/').map(function(seg){
       seg = seg.trim();
       const m = seg.match(/^([A-Za-z0-9]+\.?\d*\.?\d*)\s*[-.]?\s*(.*)/);
@@ -9120,6 +9195,70 @@ const DL = (function(){
       const label = rest.split(/[\s/\\()\[\]]+/)[0].replace(/[^a-zA-Z0-9._-]/g, '');
       return num + '-' + label;
     }).join('_');
+  }
+
+  // Voorkeur voor de mapnaam-stijl per project onthouden (alleen als voorselectie
+  // van het dialoog — er wordt bij elke download opnieuw gevraagd).
+  function _zipStyleKey(){ return 'dl-zipstyle-' + (tcProject && tcProject.id || 'unknown'); }
+  function _zipStyleGet(){
+    try { return localStorage.getItem(_zipStyleKey()) === 'volledig' ? 'volledig' : 'ingekort'; }
+    catch(_){ return 'ingekort'; }
+  }
+  function _zipStyleSet(style){
+    try { localStorage.setItem(_zipStyleKey(), style); } catch(_){}
+  }
+
+  // Klein keuze-dialoog vóór de ZIP-download: aantal bestanden + mapnaam-stijl.
+  // Resolvet met 'ingekort' | 'volledig' | null (geannuleerd).
+  function _zipConfirmDialog(fileCount, relName){
+    return new Promise(function(resolve){
+      const old = document.getElementById('dl-zip-confirm');
+      if (old) old.parentNode.removeChild(old);
+      const wrap = document.createElement('div');
+      wrap.id = 'dl-zip-confirm';
+      wrap.className = 'dl-share-modal';
+      const cur = _zipStyleGet();
+      wrap.innerHTML =
+        '<div class="dl-share-backdrop" data-zip-cancel></div>' +
+        '<div class="dl-share-panel" role="dialog" aria-label="Download als ZIP" style="max-width:440px">' +
+          '<div class="dl-share-head">' +
+            '<h3 class="dl-share-title">Download als ZIP</h3>' +
+            '<button type="button" class="dl-share-close" aria-label="Annuleren" data-zip-cancel>×</button>' +
+          '</div>' +
+          '<div class="dl-share-body">' +
+          '<p style="margin:0 0 var(--s3);font-size:var(--fs-md);color:var(--g5)">' +
+            fileCount + ' bestand' + (fileCount === 1 ? '' : 'en') + ' uit "' + _esc(relName) + '".</p>' +
+          '<div class="dl-share-label" style="margin-bottom:var(--s2)">Mapnamen in de ZIP</div>' +
+          '<label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;cursor:pointer;font-size:var(--fs-md)">' +
+            '<input type="radio" name="dl-zip-style" value="ingekort"' + (cur === 'ingekort' ? ' checked' : '') + ' style="margin-top:3px;accent-color:var(--af)">' +
+            '<span><strong>Ingekort</strong><br><span style="color:var(--g5);font-size:var(--fs-sm)">Nummer + eerste woord, bv. <code>15-Ontwerp</code>. Compacte paden.</span></span>' +
+          '</label>' +
+          '<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:var(--fs-md)">' +
+            '<input type="radio" name="dl-zip-style" value="volledig"' + (cur === 'volledig' ? ' checked' : '') + ' style="margin-top:3px;accent-color:var(--af)">' +
+            '<span><strong>Volledig</strong><br><span style="color:var(--g5);font-size:var(--fs-sm)">Mapnamen zoals in Trimble Connect, bv. <code>0-02 Bouwkundig</code>.</span></span>' +
+          '</label>' +
+          '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:var(--s4)">' +
+            '<button type="button" class="dl-share-btn" data-zip-cancel>Annuleren</button>' +
+            '<button type="button" class="dl-share-btn dl-share-btn-primary" data-zip-ok>Downloaden</button>' +
+          '</div>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(wrap);
+      wrap.style.display = '';
+      function close(result){
+        if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+        resolve(result);
+      }
+      wrap.addEventListener('click', function(e){
+        if (e.target.closest('[data-zip-cancel]')) close(null);
+        else if (e.target.closest('[data-zip-ok]')){
+          const sel = wrap.querySelector('input[name="dl-zip-style"]:checked');
+          const style = sel && sel.value === 'volledig' ? 'volledig' : 'ingekort';
+          _zipStyleSet(style);
+          close(style);
+        }
+      });
+    });
   }
 
   // Verwijder een bestand uit een release. Werkt direct in op de cache + UI.
@@ -9155,7 +9294,9 @@ const DL = (function(){
     const files = await _fetchReleaseFiles(relId);
     const rel = (_releasesCache.all || []).find(function(r){ return r.id === relId; });
     if (!files.length){ alert('Geen bestanden in deze release.'); return; }
-    if (!confirm('Download ' + files.length + ' bestand' + (files.length === 1 ? '' : 'en') + ' uit "' + (rel && rel.name || 'release') + '" als ZIP?')) return;
+    const zipStyle = await _zipConfirmDialog(files.length, (rel && rel.name) || 'release');
+    if (!zipStyle) return;
+    const volledigeNamen = zipStyle === 'volledig';
 
     const origText = btn ? btn.textContent : '';
     if (btn){ btn.disabled = true; btn.textContent = '⏳ 0/' + files.length; }
@@ -9182,7 +9323,7 @@ const DL = (function(){
             doc = nameMatches[0];
           }
         }
-        const folder = (doc && doc.file_location) ? _zipFolderPath(doc.file_location) : '';
+        const folder = (doc && doc.file_location) ? _zipFolderPath(doc.file_location, volledigeNamen) : '';
         const fname = f.name || ('bestand_' + (i + 1));
         const zipPath = folder ? folder + '/' + fname : fname;
         zip.file(zipPath, await fileResp.blob());
@@ -9535,7 +9676,7 @@ const DL = (function(){
     slot.innerHTML = '';
     if (!fieldKey) return;
     const enumVals = ENUM_VALUES[fieldKey];
-    const isDate = /datum/.test(fieldKey);
+    const isDate = _isDateField(fieldKey);
     let input;
     if (enumVals && enumVals.length){
       input = document.createElement('select');
@@ -10674,6 +10815,7 @@ const DL = (function(){
     try { localStorage.removeItem(_psetDefCacheKey()); } catch(_){} // PSet-schema cache ook leeg
     PROP_MAP = Object.assign({}, PROP_MAP_DEFAULT); // back to defaults — wordt heropgebouwd door _loadPSetSchema
     ENUM_VALUES = Object.assign({}, ENUM_VALUES_DEFAULT);
+    FIELD_TYPES = {};
     _hasPSetSchema = false; // wordt opnieuw gezet bij _loadPSetSchema
     _docs = [];
     _isLoaded = false;

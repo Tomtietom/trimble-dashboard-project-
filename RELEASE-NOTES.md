@@ -2,6 +2,24 @@
 
 ---
 
+## Versie 1.8 — 24 augustus 2026
+
+### Vier fixes uit de praktijk
+
+Een testronde bij een klant leverde vier concrete meldingen op. Alle vier opgepakt.
+
+**Wat is er veranderd?**
+
+- **Keuzelijsten bij metadata doen het weer** — sommige velden toonden een vrij invulveld in plaats van een keuzelijst, of een lijstje met maar één optie dat niet aan te passen was. Oorzaak was het inlezen van het metadata-schema: een deel van de toegestane waarden werd overgeslagen, en wat wél gevonden werd verving per ongeluk de rest. Het inlezen gebruikt nu dezelfde bewezen aanpak als de eerdere losse Documentenlijst, met de schema-definitie zelf als eerste bron. Datumvelden krijgen daardoor ook netjes een datumkiezer op basis van het schema in plaats van de veldnaam.
+- **Kolommen met lange teksten zijn nu te versmallen** — een lange omschrijving duwde de kolom permanent breed; alleen de mapnaam-kolom "vouwde op". Nu breken alle metadata-kolommen hun tekst af over meerdere regels, precies zoals de mapnaam-kolom dat al deed. Versleep de kolomrand en de tekst voegt zich naar de nieuwe breedte.
+- **ZIP-download: kies zelf de mapnaam-stijl** — bij het downloaden van een release als ZIP kon de mappenstructuur onherkenbaar worden: van elke map bleef alleen het nummer en het eerste woord over. Dat inkorten is voor sommige projecten juist gewenst, dus het is nu een keuze. Vóór elke download verschijnt een venster met twee opties: **Ingekort** (zoals het was) of **Volledig** (mapnamen zoals in Trimble Connect). Je laatste keuze wordt per project onthouden als voorselectie.
+- **Bestandsnaam-links openen weer de laatste versie** — de klikbare bestandsnamen in de tabel, het detailpaneel en de Excel-export konden een oudere versie van het document openen. De link laat de versie-keuze nu aan Trimble Connect zelf, zodat je altijd op de actuele versie uitkomt. Links naar een spécifieke versie (in de versiegeschiedenis van het detailpaneel) blijven gewoon naar die versie wijzen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.7 — 20 augustus 2026
 
 ### Klaargezette weergaves: "DO Architect", "UO Aannemer"

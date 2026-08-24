@@ -4,6 +4,8 @@ node_modules/
 *.log
 
 # Interne dev-notes — niet voor publiek repo (blijven lokaal staan)
+ROADMAP-*.md
+*.pdf
 CLAUDE.md
 HANDOVER-PROMPT.md
 HANDOVER-PROMPT-PU.md
