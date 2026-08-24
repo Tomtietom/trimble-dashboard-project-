@@ -2,6 +2,25 @@
 
 ---
 
+## Versie 1.9 — 24 augustus 2026
+
+### Bewerken zonder raden, en de ZIP-knop waar je hem verwacht
+
+Direct vervolg op versie 1.8, na een nieuwe testronde dezelfde dag.
+
+**Wat is er veranderd?**
+
+- **Je ziet nu dat je aan het bewerken bent** — zodra je op 🔒 Bewerken klikt verschijnt een oranje balk boven de tabel die precies uitlegt hoe het werkt: dubbelklik op een gemarkeerde cel, Enter of ergens anders klikken bevestigt, Esc annuleert. En belangrijk: **elke wijziging wordt direct opgeslagen** — de knop 🔓 Vergrendelen is geen opslaan-knop maar alleen de beveiliging tegen per-ongeluk wijzigen.
+- **Keuzelijst of vrije tekst? Je ziet het aan de cel** — in bewerkmodus staat achter elke bewerkbare cel een klein symbool: **▾** betekent een keuzelijst, **✎** betekent vrije tekst. Ook de tekst die verschijnt als je op een cel stilstaat vertelt het verschil.
+- **Vrije tekstvelden zijn nu écht leeg te maken** — een waarde wissen ging al goed naar Trimble Connect, maar het scherm bleef de oude tekst tonen alsof er niets gebeurd was. Dat is opgelost: leegmaken is meteen zichtbaar.
+- **Download ZIP voor je selectie** — de ZIP-download bestond alleen per release (via de Releases-knop). Nu staat er ook een **📥 Download ZIP** in de oranje selectiebalk: vink bestanden aan en download ze als ZIP, met mappenstructuur, metadata-CSV en dezelfde keuze tussen ingekorte of volledige mapnamen als bij releases.
+- **Hele map in één keer selecteren** — bij groepering op map (of een ander veld) heeft elke groepskop nu een eigen selectievakje. Eén klik selecteert alle bestanden in die groep.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.8 — 24 augustus 2026
 
 ### Vier fixes uit de praktijk

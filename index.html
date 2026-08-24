@@ -722,6 +722,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl .dl-th.sorted.desc .dl-sort-ind::after{content:'▼'}
 .dl-tbl tbody tr{border-bottom:1px solid var(--hl-light)}
 .dl-tbl tbody tr.dl-row{cursor:pointer}
+.dl-group-cb{margin-right:6px;vertical-align:-2px;accent-color:var(--af);cursor:pointer}
 /* Sprint 1 UX-fix: zachte hover (was volle oranje-beige — schreeuwde bij mouse-over) */
 .dl-tbl tbody tr:hover:not(.dl-group){background:#FEFAF4}
 /* Sprint 1 UX-fix: vertical-align middle + nowrap = rustige rijhoogte. Auto-layout laat kolommen naar content groeien.
@@ -759,6 +760,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-ftr .dl-ftr-btn:hover:not(:disabled){border-color:var(--af);background:var(--afl)}
 .dl-ftr .dl-ftr-btn:disabled{opacity:.6;cursor:wait}
 .dl-filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:var(--s3);padding:10px var(--s3);background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm)}
+.dl-edit-banner{display:flex;gap:10px;align-items:flex-start;background:#fff7ec;border:1px solid #f0d4a3;border-left:4px solid var(--af);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:var(--s3);font-size:var(--fs-md);color:#6f4514;line-height:1.5}
+.dl-edit-banner-icon{font-size:16px;line-height:1.4}
+.dl-edit-banner-mark{display:inline-block;background:var(--afl);border:1px solid #f0d4a3;border-radius:3px;padding:0 5px;font-size:11px;color:var(--af2);font-weight:600}
 .dl-meta-banner{padding:10px 14px;background:#eef4fb;border:1px solid #c8d9ea;border-left:3px solid #4a82c1;border-radius:var(--r-sm);margin-bottom:var(--s3);font-size:var(--fs-sm);color:#2a4d72}
 .dl-meta-banner strong{color:#1a3d62}
 .dl-updates-banner{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff3cd;border:1px solid #ffeaa7;border-left:3px solid #e58e26;border-radius:var(--r-sm);margin-bottom:var(--s3);font-size:var(--fs-sm);color:#856404;animation:dl-fade-in .2s ease-out}
@@ -852,6 +856,10 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl tbody tr.dl-row.dl-row-selected:hover{background:var(--afl)}
 .dl-tbl tbody td.dl-cell-editable{cursor:cell;user-select:none;background-image:linear-gradient(135deg,transparent calc(100% - 8px),rgba(212,130,26,.35) calc(100% - 8px),rgba(212,130,26,.35) 100%)}
 .dl-tbl tbody td.dl-cell-editable:hover{background-color:rgba(212,130,26,.06);box-shadow:inset 0 0 0 1px var(--af)}
+/* Veldtype-marker in bewerkmodus: ▾ = keuzelijst, ✎ = vrije tekst */
+.dl-tbl tbody td.dl-cell-enum::after{content:'▾';color:var(--af);font-size:9px;margin-left:5px;opacity:.75}
+.dl-tbl tbody td.dl-cell-text::after{content:'✎';color:var(--af);font-size:10px;margin-left:5px;opacity:.6}
+.dl-tbl tbody td.dl-cell-editing::after{content:none}
 .dl-cols-btn.dl-edit-mode-active{background:var(--af);color:#fff;border-color:var(--af);font-weight:600}
 .dl-cols-btn.dl-edit-mode-active:hover{background:var(--af2);border-color:var(--af2)}
 .dl-tbl tbody td.dl-cell-editing{padding:2px 4px;background:#fff!important}
@@ -1364,7 +1372,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.8';
+const COCKPIT_VERSION = '1.9';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -6603,18 +6611,23 @@ const DL = (function(){
       const itemErr = item.error || item.errorMessage || 'Onbekende fout';
       throw new Error('TC weigerde: ' + itemErr);
     }
-    // Sync local doc-state met server-response (server is canonical)
+    // Sync local doc-state met server-response (server is canonical).
+    // LET OP: ook lege/afwezige props overnemen. De changeset VERVANGT de props
+    // (merged niet) — een veld dat we leegmaakten ontbreekt dus in de response.
+    // De oude conditie `if (v)` sloeg die over, waardoor de rij zijn oude waarde
+    // hield en leegmaken "niet leek te werken" (klant-melding aug 2026; de save
+    // zelf ging wél goed naar TC).
     const serverProps = resp && resp.items && resp.items[0] && resp.items[0].props;
     if (serverProps){
       for (const id in PROP_MAP){
         const fn = PROP_MAP[id];
         if (!fn) continue;
         const v = serverProps[id];
-        if (v && v !== '--') doc[fn] = String(v).trim();
+        doc[fn] = (v && v !== '--') ? String(v).trim() : '';
       }
     } else {
       // Fallback: alleen het gewijzigde veld lokaal updaten
-      doc[fieldKey] = newValue;
+      doc[fieldKey] = newValue == null ? '' : newValue;
     }
     // Recent-saved buffer: bewaar deze succesvolle save 3 min in localStorage zodat een
     // ↻ Vernieuwen vlak na de save de waarde niet kwijtraakt door TC's eventually-consistent
@@ -7124,16 +7137,22 @@ const DL = (function(){
 
   function _updateEditModeButton(){
     const btn = document.getElementById('dl-edit-mode-btn');
-    if (!btn) return;
-    if (_editMode){
-      btn.innerHTML = '🔓 Vergrendelen';
-      btn.classList.add('dl-edit-mode-active');
-      btn.title = 'Bewerk-modus is AAN — klik om te vergrendelen';
-    } else {
-      btn.innerHTML = '🔒 Bewerken';
-      btn.classList.remove('dl-edit-mode-active');
-      btn.title = 'Metadata bewerken — toggle aan/uit';
+    if (btn){
+      if (_editMode){
+        btn.innerHTML = '🔓 Vergrendelen';
+        btn.classList.add('dl-edit-mode-active');
+        btn.title = 'Bewerk-modus is AAN — klik om te vergrendelen';
+      } else {
+        btn.innerHTML = '🔒 Bewerken';
+        btn.classList.remove('dl-edit-mode-active');
+        btn.title = 'Metadata bewerken — toggle aan/uit';
+      }
     }
+    // Hint-balk: legt uit HOE je bewerkt en dat opslaan per cel direct gebeurt
+    // (klant dacht dat vergrendelen = opslaan). Vergrendelen is alleen de
+    // beveiliging tegen per-ongeluk-wijzigingen, geen save-knop.
+    const banner = document.getElementById('dl-edit-banner');
+    if (banner) banner.style.display = _editMode ? '' : 'none';
   }
 
   // Vervang een tabelcel door een input/select. Op blur of Enter → save, op Escape → cancel.
@@ -7964,8 +7983,8 @@ const DL = (function(){
         v = _sBdg(v);
         cls = 'dl-cell-meta';
         if (_editMode && _isEditableField(c.k)){
-          cls += ' dl-cell-editable';
-          extraAttrs = ' data-editable="' + _esc(c.k) + '" title="Dubbelklik om te bewerken — wijziging gaat direct naar TC"';
+          cls += ' dl-cell-editable dl-cell-enum';
+          extraAttrs = ' data-editable="' + _esc(c.k) + '" title="Dubbelklik — kies uit de lijst. Wijziging wordt direct opgeslagen."';
         }
       }
       else {
@@ -7977,8 +7996,12 @@ const DL = (function(){
         // Metadata-velden zijn inline-editbaar ALLEEN wanneer bewerk-modus aan staat.
         // Zonder edit-mode: cel toont alleen-lezen tekst, geen dblclick-handler, geen hover-cue.
         if (_editMode && _isEditableField(c.k)){
-          cls = (cls ? cls + ' ' : '') + 'dl-cell-editable';
-          extraAttrs = ' data-editable="' + _esc(c.k) + '" title="Dubbelklik om te bewerken — wijziging gaat direct naar TC"';
+          // ▾ = keuzelijst, ✎ = vrije tekst (klantvraag: maak het onderscheid zichtbaar)
+          const isEnum = !!(ENUM_VALUES[c.k] && ENUM_VALUES[c.k].length);
+          cls = (cls ? cls + ' ' : '') + 'dl-cell-editable ' + (isEnum ? 'dl-cell-enum' : 'dl-cell-text');
+          extraAttrs = ' data-editable="' + _esc(c.k) + '" title="'
+            + (isEnum ? 'Dubbelklik — kies uit de lijst. Wijziging wordt direct opgeslagen.'
+                      : 'Dubbelklik — vrije tekst, leegmaken kan. Wijziging wordt direct opgeslagen.') + '"';
         }
       }
       html += '<td' + (cls ? ' class="' + cls + '"' : '') + extraAttrs + '>' + v + '</td>';
@@ -8102,7 +8125,13 @@ const DL = (function(){
       const icon = _groupBy === 'file_location' ? '📁' : '🏷️';
       for (const g of groupOrder){
         const lbl = g === '.' ? '(deze map)' : g;
+        // Checkbox selecteert alle rijen van deze groep (klantvraag: "hele map selecteren").
+        // Checked-status: alle docs van de groep zitten in _selectedVids.
+        const groupVids = groups[g].map(function(d){ return d._vid; }).filter(Boolean);
+        const allSel = groupVids.length > 0 && groupVids.every(function(v){ return _selectedVids.has(v); });
         html += '<tr class="dl-group"><td colspan="' + colspan + '">'
+          + '<input type="checkbox" class="dl-group-cb" title="Alle bestanden in deze groep selecteren"'
+          + (allSel ? ' checked' : '') + '> '
           + icon + ' ' + _esc(lbl)
           + '<span class="dl-group-count">(' + groups[g].length + ')</span>'
           + '</td></tr>';
@@ -8192,6 +8221,27 @@ const DL = (function(){
         if (cb.checked) _selectedVids.add(vid); else _selectedVids.delete(vid);
         const tr = cb.closest('tr.dl-row');
         if (tr) tr.classList.toggle('dl-row-selected', cb.checked);
+        _updateSelectionBar();
+        _updateSelectAllState();
+      });
+    });
+
+    // Groep-checkbox: (de)selecteert alle rijen tussen deze header en de volgende.
+    // DOM-order gebruiken (net als shift-click) — bij groepering klopt _filt() niet 1:1.
+    tbody.querySelectorAll('input.dl-group-cb').forEach(function(gcb){
+      gcb.addEventListener('click', function(e){ e.stopPropagation(); });
+      gcb.addEventListener('change', function(){
+        const checked = gcb.checked;
+        let tr = gcb.closest('tr');
+        while ((tr = tr.nextElementSibling) && !tr.classList.contains('dl-group')){
+          const cb = tr.querySelector('input.dl-row-cb');
+          if (!cb) continue;
+          const vid = cb.getAttribute('data-vid');
+          if (!vid) continue;
+          cb.checked = checked;
+          if (checked) _selectedVids.add(vid); else _selectedVids.delete(vid);
+          tr.classList.toggle('dl-row-selected', checked);
+        }
         _updateSelectionBar();
         _updateSelectAllState();
       });
@@ -9259,6 +9309,69 @@ const DL = (function(){
         }
       });
     });
+  }
+
+  // Download de geselecteerde rijen als ZIP (klantvraag: "waar is de zip-knop?" —
+  // die bestond alleen per release). Zelfde keuze-dialoog en mappenstructuur als de
+  // release-ZIP; geen name-fallback nodig want de selectie kent zijn docs al.
+  async function _downloadSelectionZip(btn){
+    const docs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+    if (!docs.length){ alert('Geen bestanden geselecteerd.'); return; }
+    let JSZip;
+    try { JSZip = await _ensureJSZip(); }
+    catch(e){ alert('Kan ZIP-library niet laden — controleer internetverbinding.'); return; }
+    const zipStyle = await _zipConfirmDialog(docs.length, 'selectie');
+    if (!zipStyle) return;
+    const volledigeNamen = zipStyle === 'volledig';
+
+    const origText = btn ? btn.textContent : '';
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ 0/' + docs.length; }
+    const zip = new JSZip();
+    let ok = 0, fout = 0;
+    for (let i = 0; i < docs.length; i++){
+      const d = docs[i];
+      try {
+        const dlUrl = await _getFileDownloadUrl(d._vid);
+        if (!dlUrl){ fout++; continue; }
+        const fileResp = await fetch(dlUrl);
+        if (!fileResp.ok){ fout++; continue; }
+        const folder = d.file_location ? _zipFolderPath(d.file_location, volledigeNamen) : '';
+        const fname = d.bestandsnaam || ('bestand_' + (i + 1));
+        zip.file(folder ? folder + '/' + fname : fname, await fileResp.blob());
+        ok++;
+      } catch(e){
+        console.warn('[DL] selectie-zip file fout:', d.bestandsnaam, e.message);
+        fout++;
+      }
+      if (btn) btn.textContent = '⏳ ' + (ok + fout) + '/' + docs.length;
+    }
+    // Metadata-CSV meeleveren, zelfde vorm als de release-ZIP
+    const csvRows = [['Bestandsnaam', 'Revisie', 'Versie', 'Map'].join(';')];
+    docs.forEach(function(d){
+      csvRows.push([
+        '"' + (d.bestandsnaam || '').replace(/"/g, '""') + '"',
+        '"' + (d.revisie || '') + '"',
+        '"' + (d._versie || '') + '"',
+        '"' + (d.file_location || '').replace(/"/g, '""') + '"',
+      ].join(';'));
+    });
+    zip.file('_documentenlijst_selectie.csv', '\ufeff' + csvRows.join('\n'));
+    if (btn) btn.textContent = '⏳ ZIP maken…';
+    try {
+      const content = await zip.generateAsync({ type: 'blob' });
+      const safeName = ((tcProject && tcProject.name) || 'project').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(content);
+      a.download = 'documenten_' + safeName + '_' + new Date().toISOString().slice(0, 10) + '.zip';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 10000);
+      console.log('[DL] selectie-zip klaar:', ok, 'ok,', fout, 'fout');
+      if (fout) alert(fout + ' van ' + docs.length + ' bestanden konden niet worden gedownload — de ZIP bevat de rest.');
+    } catch(e){
+      alert('ZIP maken mislukt: ' + e.message);
+    } finally {
+      if (btn){ btn.disabled = false; btn.textContent = origText; }
+    }
   }
 
   // Verwijder een bestand uit een release. Werkt direct in op de cache + UI.
@@ -10442,6 +10555,10 @@ const DL = (function(){
         '<div id="dl-error" class="dl-error" style="display:none"></div>' +
         '<div id="dl-loading" class="dl-loading" style="display:none">Documenten laden…</div>' +
         '<div id="dl-meta-banner" class="dl-meta-banner" style="display:none"><strong>Geen metadata-schema in dit project.</strong> Filters en metadata-kolommen zijn uitgeschakeld. Bestandsnaam, versie, datum en map blijven beschikbaar.</div>' +
+        '<div id="dl-edit-banner" class="dl-edit-banner" style="display:none">' +
+          '<span class="dl-edit-banner-icon">🔓</span>' +
+          '<span><strong>Bewerkmodus aan.</strong> Dubbelklik op een gemarkeerde cel om te wijzigen — <strong>elke wijziging wordt direct opgeslagen</strong> in Trimble Connect (Enter of ergens anders klikken bevestigt, Esc annuleert). Cellen met <span class="dl-edit-banner-mark">▾</span> hebben een keuzelijst; cellen met <span class="dl-edit-banner-mark">✎</span> zijn vrije tekst en kun je ook leegmaken. Klaar? Klik op <strong>🔓 Vergrendelen</strong> — dat beschermt alleen tegen per-ongeluk wijzigen, opslaan is al gebeurd.</span>' +
+        '</div>' +
         '<div id="dl-updates-banner" class="dl-updates-banner" style="display:none">' +
           '<span class="dl-updates-icon">↻</span>' +
           '<span class="dl-updates-text" id="dl-updates-text"></span>' +
@@ -10453,6 +10570,7 @@ const DL = (function(){
           '<button type="button" id="dl-share-btn" class="dl-selection-btn dl-selection-btn-primary">📤 Delen</button>' +
           '<button type="button" id="dl-bulk-edit-btn" class="dl-selection-btn dl-selection-btn-primary">✏️ Bulk wijzigen</button>' +
           '<button type="button" id="dl-add-release-btn" class="dl-selection-btn dl-selection-btn-primary">📦 Naar release</button>' +
+          '<button type="button" id="dl-zip-btn" class="dl-selection-btn dl-selection-btn-primary" title="Download de geselecteerde bestanden als ZIP, met mappenstructuur en metadata-CSV">📥 Download ZIP</button>' +
           '<button type="button" id="dl-selection-clear" class="dl-selection-btn">Selectie wissen</button>' +
         '</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
@@ -10961,6 +11079,8 @@ const DL = (function(){
     const qrCsv = root.querySelector('#dl-qr-csv');
     if (qrCsv) qrCsv.addEventListener('click', _exportQrCsv);
     // Add-to-release dialog
+    const zipBtn = root.querySelector('#dl-zip-btn');
+    if (zipBtn) zipBtn.addEventListener('click', function(){ _downloadSelectionZip(zipBtn); });
     const addRelBtn = root.querySelector('#dl-add-release-btn');
     if (addRelBtn) addRelBtn.addEventListener('click', _openAddToReleaseDialog);
     const addRelClose = root.querySelector('#dl-addrel-close');
