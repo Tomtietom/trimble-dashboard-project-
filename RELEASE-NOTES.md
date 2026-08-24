@@ -15,6 +15,8 @@ Direct vervolg op versie 1.8, na een nieuwe testronde dezelfde dag.
 - **Vrije tekstvelden zijn nu écht leeg te maken** — een waarde wissen ging al goed naar Trimble Connect, maar het scherm bleef de oude tekst tonen alsof er niets gebeurd was. Dat is opgelost: leegmaken is meteen zichtbaar.
 - **Download ZIP voor je selectie** — de ZIP-download bestond alleen per release (via de Releases-knop). Nu staat er ook een **📥 Download ZIP** in de oranje selectiebalk: vink bestanden aan en download ze als ZIP, met mappenstructuur, metadata-CSV en dezelfde keuze tussen ingekorte of volledige mapnamen als bij releases.
 - **Hele map in één keer selecteren** — bij groepering op map (of een ander veld) heeft elke groepskop nu een eigen selectievakje. Eén klik selecteert alle bestanden in die groep.
+- **Bulk wijzigen vereist nu de bewerkmodus** — dezelfde beveiliging als bij het bewerken van losse cellen: de knop is pas actief nadat je 🔒 Bewerken hebt aangezet.
+- **Knoppen beter uit elkaar te houden** — *Deel-links maken* (🔗) en *Download ZIP* (💾) hadden bijna identieke pictogrammen; nu zie je in één oogopslag welke wat doet.
 
 **Wat moet je doen?**
 Sluit Trimble Connect één keer volledig en open opnieuw.

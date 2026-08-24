@@ -776,6 +776,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-selection-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--af);color:#fff;border-radius:var(--r-sm);margin-bottom:var(--s3);box-shadow:0 2px 8px rgba(0,0,0,.08);font-family:'Poppins',sans-serif}
 .dl-selection-count{font-weight:600;font-size:14px;flex:1}
 .dl-selection-btn{padding:6px 12px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:var(--r-sm);font:13px 'Poppins',sans-serif;cursor:pointer;transition:background .15s}
+.dl-selection-btn:disabled{opacity:.45;cursor:not-allowed}
 .dl-selection-btn:hover{background:rgba(255,255,255,.3)}
 .dl-selection-btn-primary{background:#fff;color:var(--af);border-color:#fff;font-weight:600}
 .dl-selection-btn-primary:hover{background:var(--afl);color:var(--af2)}
@@ -856,9 +857,10 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-tbl tbody tr.dl-row.dl-row-selected:hover{background:var(--afl)}
 .dl-tbl tbody td.dl-cell-editable{cursor:cell;user-select:none;background-image:linear-gradient(135deg,transparent calc(100% - 8px),rgba(212,130,26,.35) calc(100% - 8px),rgba(212,130,26,.35) 100%)}
 .dl-tbl tbody td.dl-cell-editable:hover{background-color:rgba(212,130,26,.06);box-shadow:inset 0 0 0 1px var(--af)}
-/* Veldtype-marker in bewerkmodus: ▾ = keuzelijst, ✎ = vrije tekst */
-.dl-tbl tbody td.dl-cell-enum::after{content:'▾';color:var(--af);font-size:9px;margin-left:5px;opacity:.75}
-.dl-tbl tbody td.dl-cell-text::after{content:'✎';color:var(--af);font-size:10px;margin-left:5px;opacity:.6}
+/* Veldtype-marker in bewerkmodus: ▾ = keuzelijst, ✎ = vrije tekst.
+   Vol af2-oranje + bold, geen opacity — eerste versie was te licht (klant-feedback). */
+.dl-tbl tbody td.dl-cell-enum::after{content:'▾';color:var(--af2);font-size:11px;font-weight:700;margin-left:6px}
+.dl-tbl tbody td.dl-cell-text::after{content:'✎';color:var(--af2);font-size:12px;font-weight:700;margin-left:6px}
 .dl-tbl tbody td.dl-cell-editing::after{content:none}
 .dl-cols-btn.dl-edit-mode-active{background:var(--af);color:#fff;border-color:var(--af);font-weight:600}
 .dl-cols-btn.dl-edit-mode-active:hover{background:var(--af2);border-color:var(--af2)}
@@ -7153,6 +7155,7 @@ const DL = (function(){
     // beveiliging tegen per-ongeluk-wijzigingen, geen save-knop.
     const banner = document.getElementById('dl-edit-banner');
     if (banner) banner.style.display = _editMode ? '' : 'none';
+    _updateBulkEditButton();
   }
 
   // Vervang een tabelcel door een input/select. Op blur of Enter → save, op Escape → cancel.
@@ -8252,6 +8255,17 @@ const DL = (function(){
     _updateSelectionBar();
   }
 
+  // Bulk wijzigen schrijft metadata — dus alleen beschikbaar wanneer de bewerkmodus
+  // aan staat, net als inline bewerken (klant: "dat is toch logisch gedrag?").
+  function _updateBulkEditButton(){
+    const b = document.getElementById('dl-bulk-edit-btn');
+    if (!b) return;
+    b.disabled = !_editMode;
+    b.title = _editMode
+      ? 'Geef één metadataveld dezelfde waarde voor alle geselecteerde bestanden'
+      : 'Zet eerst 🔒 Bewerken aan — bulk wijzigen schrijft metadata';
+  }
+
   // Selection-bar zichtbaar maken / teller bijwerken
   function _updateSelectionBar(){
     // Sprint 1: export-knop-label mee-updaten met selectie ("Exporteer Excel" ↔ "Exporteer selectie (N)")
@@ -8266,6 +8280,7 @@ const DL = (function(){
       bar.style.display = '';
       if (counter) counter.textContent = n + ' geselecteerd';
     }
+    _updateBulkEditButton();
   }
 
   // === Recent-saved buffer (anti-eventually-consistent) ===
@@ -10567,10 +10582,10 @@ const DL = (function(){
         '</div>' +
         '<div id="dl-selection-bar" class="dl-selection-bar" style="display:none">' +
           '<span class="dl-selection-count" id="dl-selection-count">0 geselecteerd</span>' +
-          '<button type="button" id="dl-share-btn" class="dl-selection-btn dl-selection-btn-primary">📤 Delen</button>' +
+          '<button type="button" id="dl-share-btn" class="dl-selection-btn dl-selection-btn-primary" title="Maak deel-links voor de geselecteerde bestanden">🔗 Deel-links maken</button>' +
           '<button type="button" id="dl-bulk-edit-btn" class="dl-selection-btn dl-selection-btn-primary">✏️ Bulk wijzigen</button>' +
           '<button type="button" id="dl-add-release-btn" class="dl-selection-btn dl-selection-btn-primary">📦 Naar release</button>' +
-          '<button type="button" id="dl-zip-btn" class="dl-selection-btn dl-selection-btn-primary" title="Download de geselecteerde bestanden als ZIP, met mappenstructuur en metadata-CSV">📥 Download ZIP</button>' +
+          '<button type="button" id="dl-zip-btn" class="dl-selection-btn dl-selection-btn-primary" title="Download de geselecteerde bestanden als ZIP, met mappenstructuur en metadata-CSV">💾 Download ZIP</button>' +
           '<button type="button" id="dl-selection-clear" class="dl-selection-btn">Selectie wissen</button>' +
         '</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
@@ -11033,7 +11048,10 @@ const DL = (function(){
     if (shareCopy) shareCopy.addEventListener('click', _copyShareLinks);
     // Bulk-edit dialog
     const bulkBtn = root.querySelector('#dl-bulk-edit-btn');
-    if (bulkBtn) bulkBtn.addEventListener('click', _openBulkEditDialog);
+    if (bulkBtn) bulkBtn.addEventListener('click', function(){
+      if (!_editMode){ alert('Zet eerst 🔒 Bewerken aan — bulk wijzigen schrijft metadata naar Trimble Connect.'); return; }
+      _openBulkEditDialog();
+    });
     const bulkClose = root.querySelector('#dl-bulk-close');
     if (bulkClose) bulkClose.addEventListener('click', _closeBulkEditDialog);
     const bulkCancel = root.querySelector('#dl-bulk-cancel');
