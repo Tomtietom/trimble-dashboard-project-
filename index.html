@@ -280,6 +280,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 /* =========================================
    Footer
    ========================================= */
+.qr-view-btn{padding:10px 20px;background:var(--af);color:#fff;border:none;border-radius:var(--r-pill);font:600 14px 'Poppins',sans-serif;cursor:pointer;transition:background .15s}
+.qr-view-btn:hover{background:var(--af2)}
+.qr-view-btn:disabled{opacity:.5;cursor:wait}
 .ftr{
   text-align:center;color:var(--g5);font-size:var(--fs-sm);
   padding:var(--s5);
@@ -1264,6 +1267,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
       <button class="cp-tab" type="button" role="tab" data-view="documentenlijst" aria-selected="false">Documentenlijst</button>
       <button class="cp-tab" type="button" role="tab" data-view="rechten-viewer" aria-selected="false">Rechten</button>
       <button class="cp-tab" type="button" role="tab" data-view="project-upload" aria-selected="false">Upload</button>
+      <button class="cp-tab" type="button" role="tab" data-view="qr-codes" aria-selected="false">QR-codes</button>
       <button class="cp-tab" type="button" role="tab" data-view="project-dashboard" aria-selected="false">Project Dashboard</button>
     </nav>
 
@@ -1343,6 +1347,24 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
             <div class="activity-empty">Nog geen favorieten — klik op een ster bij een map.</div>
           </div>
         </div>
+      </section>
+    </div>
+
+    <!-- View: QR-codes (v1.9 — verhuisd uit de documentenlijst-knoppenbalk; generator zelf zit in DL) -->
+    <div class="view" id="view-qr-codes">
+      <section class="sec">
+        <div class="overline">QR-codes</div>
+        <div class="sec-head"><h2>QR-codes voor <em>kopersmappen</em></h2></div>
+        <p style="max-width:640px;color:var(--g5);margin:0 0 var(--s4);line-height:1.7">
+          Genereer per submap een QR-code die direct naar die map in Trimble Connect verwijst —
+          om op te hangen of mee te printen, bijvoorbeeld bij kopersmappen. Voeg je bedrijfslogo
+          toe (wordt per project onthouden) en exporteer de codes los, als ZIP, als PDF of als CSV-lijst.
+        </p>
+        <p style="max-width:640px;color:var(--g4);font-size:var(--fs-sm);margin:0 0 var(--s4)">
+          Let op: wie een code scant heeft een Trimble Connect-account met toegang tot dit project nodig.
+        </p>
+        <button type="button" id="qr-open-btn" class="qr-view-btn">📱 QR-codes genereren</button>
+        <div id="qr-view-status" style="margin-top:var(--s3);font-size:var(--fs-sm);color:var(--g4)"></div>
       </section>
     </div>
 
@@ -2520,7 +2542,9 @@ function bindTopbar(){
     btn.addEventListener('click', function(){
       const v = btn.getAttribute('data-view');
       if (v === 'dashboard') { showView('dashboard'); return; }
-      const ext = EXTENSIONS.find(function(e){ return e.key === v; });
+      // QR-codes is functioneel onderdeel van de Documentenlijst — zelfde licentie
+      const licKey = v === 'qr-codes' ? 'documentenlijst' : v;
+      const ext = EXTENSIONS.find(function(e){ return e.key === licKey; });
       if (ext && ext.allowed === false) return;
       showView(v);
     });
@@ -2528,13 +2552,29 @@ function bindTopbar(){
   // Disabled-state spiegelen aan EXTENSIONS[].allowed (vereist: aanroep ná access-check)
   EXTENSIONS.forEach(function(e){
     if (e.allowed === false){
-      const t = document.querySelector('#cpTabs .cp-tab[data-view="'+e.key+'"]');
-      if (t){
-        t.classList.add('disabled');
-        t.setAttribute('aria-disabled','true');
-        t.title = 'Geen toegang — vraag aan info@atfielt.nl';
-      }
+      const keys = e.key === 'documentenlijst' ? [e.key, 'qr-codes'] : [e.key];
+      keys.forEach(function(k){
+        const t = document.querySelector('#cpTabs .cp-tab[data-view="'+k+'"]');
+        if (t){
+          t.classList.add('disabled');
+          t.setAttribute('aria-disabled','true');
+          t.title = 'Geen toegang — vraag aan info@atfielt.nl';
+        }
+      });
     }
+  });
+  // QR-open-knop op de eigen view
+  const qrOpenBtn = document.getElementById('qr-open-btn');
+  if (qrOpenBtn) qrOpenBtn.addEventListener('click', function(){
+    const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
+    if (ext && ext.allowed === false) return;
+    const st = document.getElementById('qr-view-status');
+    qrOpenBtn.disabled = true;
+    if (st) st.textContent = 'Documenten en mappen laden…';
+    DL.openQr(function(){
+      qrOpenBtn.disabled = false;
+      if (st) st.textContent = '';
+    });
   });
 }
 
@@ -6323,6 +6363,7 @@ const DL = (function(){
   let _searchTimer = null;
   let _searchQuery = '';
   let _filters = {};                          // dynamisch: { kolomKey: 'gekozen waarde', ... }
+  let _filterPeriod = '';                     // '' = alles | 'today' | '7' | '30' (dagen, op wijzigingsdatum)
   let _visibleColKeys = new Set(DEFAULT_VISIBLE);
   let _colOrder = [];                         // [] = default volgorde uit ALL_COLS; anders keys in custom volgorde
   let _colWidths = {};                        // { key: '120px' } overrides van default percentages
@@ -7592,6 +7633,20 @@ const DL = (function(){
         return _filterExts.has(e);
       });
     }
+    // Periode-filter: recent gewijzigd/geüpload (klantvraag aug 2026). Werkt op
+    // _modified met _created als vangnet. 'today' = sinds middernacht lokaal.
+    if (_filterPeriod){
+      let cutoff;
+      if (_filterPeriod === 'today'){
+        cutoff = new Date(); cutoff.setHours(0, 0, 0, 0); cutoff = cutoff.getTime();
+      } else {
+        cutoff = Date.now() - parseInt(_filterPeriod, 10) * 24 * 60 * 60 * 1000;
+      }
+      d = d.filter(function(doc){
+        const t = Date.parse(doc._modified || doc._created || '');
+        return isFinite(t) && t >= cutoff;
+      });
+    }
     // Metadata-filters: dynamische multi-select-state per zichtbare kolom (v1.4 Marco/VW).
     // _filters[k] is nu een object: { selected: string[], exclude: bool }.
     // Backwards-compat: oude string-values worden bij _renderFilterBar naar object gemigreerd.
@@ -7673,6 +7728,19 @@ const DL = (function(){
         }).join('')
       + '</select>';
 
+    // Periode-filter (recent gewijzigd) — geen metadata nodig, dus altijd zichtbaar
+    const periodOpts = [
+      { v: '',      l: 'Alle datums' },
+      { v: 'today', l: 'Gewijzigd: vandaag' },
+      { v: '7',     l: 'Gewijzigd: laatste 7 dagen' },
+      { v: '30',    l: 'Gewijzigd: laatste 30 dagen' },
+    ];
+    html += '<select class="dl-filter dl-filter-period" data-dl-period="1" title="Toon alleen documenten die recent zijn gewijzigd of toegevoegd">'
+      + periodOpts.map(function(o){
+          return '<option value="' + o.v + '"' + (o.v === _filterPeriod ? ' selected' : '') + '>' + _esc(o.l) + '</option>';
+        }).join('')
+      + '</select>';
+
     // v1.4 (Marco/VW): migreer eventueel oude string-values naar { selected, exclude } schema
     filterCols.forEach(function(c){
       const cur = _filters[c.k];
@@ -7729,6 +7797,13 @@ const DL = (function(){
       groupSel.addEventListener('change', function(){
         _groupBy = groupSel.value || '';
         _saveColsConfig();
+        _renderTable();
+      });
+    }
+    const periodSel = bar.querySelector('.dl-filter-period');
+    if (periodSel){
+      periodSel.addEventListener('change', function(){
+        _filterPeriod = periodSel.value || '';
         _renderTable();
       });
     }
@@ -8568,6 +8643,7 @@ const DL = (function(){
       widths:   Object.assign({}, _colWidths),
       filters:  JSON.parse(JSON.stringify(_filters || {})),
       exts:     Array.from(_filterExts || []).sort(),
+      period:   _filterPeriod || '',
       groupBy:  _groupBy,
       sortK:    _sortK,
       sortD:    _sortD,
@@ -8599,6 +8675,7 @@ const DL = (function(){
       ? Object.assign({}, st.widths) : {};
     _filters    = _viewNormalizeFilters(st.filters);
     _filterExts = new Set(Array.isArray(st.exts) ? st.exts : []);
+    _filterPeriod = (st.period === 'today' || st.period === '7' || st.period === '30') ? st.period : '';
     if (typeof st.groupBy === 'string') _groupBy = st.groupBy;
     if (st.sortK) _sortK = st.sortK;
     if (st.sortD === 'asc' || st.sortD === 'desc') _sortD = st.sortD;
@@ -10608,7 +10685,6 @@ const DL = (function(){
             '<button type="button" id="dl-views-btn" class="dl-cols-btn" title="Kolommen, filters, groepering en sortering samen bewaren onder een naam"><span class="dl-cols-icon">▤</span>Weergaves</button>' +
             '<button type="button" id="dl-cols-btn" class="dl-cols-btn" title="Kolommen kiezen"><span class="dl-cols-icon">☰</span>Kolommen</button>' +
             '<button type="button" id="dl-releases-btn" class="dl-cols-btn" title="Toon releases van dit project">📦 Releases</button>' +
-            '<button type="button" id="dl-qr-btn" class="dl-cols-btn" title="Genereer QR-codes naar kopersmappen">📱 QR-codes</button>' +
             '<button type="button" id="dl-export-btn" class="dl-cols-btn" title="Exporteer huidige weergave als Excel (respecteert kolommen, volgorde, filters, groepering)">📊 Excel</button>' +
             '<button type="button" id="dl-refresh" class="dl-refresh-btn" title="Cache wissen en opnieuw laden (forceert verse metadata-fetch)"><span class="dl-refresh-icon">↻</span>Vernieuwen</button>' +
             '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
@@ -11136,8 +11212,6 @@ const DL = (function(){
     const relBackdrop = root.querySelector('#dl-releases-backdrop');
     if (relBackdrop) relBackdrop.addEventListener('click', _closeReleasesDialog);
     // QR-codes dialog (Stage 1)
-    const qrBtn = root.querySelector('#dl-qr-btn');
-    if (qrBtn) qrBtn.addEventListener('click', _openQrDialog);
     const qrClose = root.querySelector('#dl-qr-close');
     if (qrClose) qrClose.addEventListener('click', _closeQrDialog);
     const qrCancel = root.querySelector('#dl-qr-cancel');
@@ -11274,6 +11348,7 @@ const DL = (function(){
           }
           _colWidths = {};
           _filters = {};
+          _filterPeriod = '';
           _activeViewId = '';
           _saveColsConfig();
           _renderViewsButton();
@@ -11447,6 +11522,22 @@ const DL = (function(){
 
   // Public API
   return {
+    // QR-tab (v1.9): de generator leeft in deze module (folder-map + logo-cache),
+    // maar wordt geopend vanaf de eigen QR-view. Zorgt zelf voor inject + data.
+    openQr: function(onReady){
+      injectHtml();
+      const open = function(){ if (onReady) onReady(); _openQrDialog(); };
+      if (_isLoaded){ open(); return; }
+      if (!_isLoading) _loadDocs().then(open).catch(function(e){
+        if (onReady) onReady();
+        alert('Documenten laden mislukte: ' + e.message);
+      });
+      else {
+        const t = setInterval(function(){
+          if (!_isLoading){ clearInterval(t); open(); }
+        }, 100);
+      }
+    },
     diagnostics: function(){
       // onleesbareMappen is de belangrijkste: verklaart waarom een gebruiker
       // minder documenten ziet dan een admin (403 op een submap).
@@ -11465,6 +11556,7 @@ const DL = (function(){
           return k + '=' + (f.exclude ? 'NIET ' : '') + f.selected.join('/');
         }),
         zoekterm: _searchQuery || '',
+        periodeFilter: _filterPeriod || '',
         weergave: (function(){
           const v = _viewFind(_activeViewId);
           return v ? v.name + (_viewIsDirty() ? ' (aangepast)' : '') : '';
