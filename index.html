@@ -1826,6 +1826,7 @@ let tcToken = null;
 let tcProject = null;
 let tcRegion = 'europe';
 let currentUserEmail = null;
+let qrAllowed = false; // hub-slug 'qr-codes' — eigen module sinds v1.10, fail-closed
 
 // ============================================================
 //  Helpers
@@ -2279,7 +2280,17 @@ async function loadDashboard(){
       e.allowed = false;
     }
   }));
-  console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', '));
+  // QR-codes: eigen hub-slug (los verkoopbaar), zelfde fail-closed regels als de rest
+  try {
+    if (typeof window.atfieltHub.auth === 'function'){
+      const rq = await window.atfieltHub.auth('qr-codes');
+      qrAllowed = !!(rq && rq.allowed === true);
+    }
+  } catch (err) {
+    console.warn('[Cockpit] auth-check faalde voor qr-codes — fail-closed:', err.message);
+    qrAllowed = false;
+  }
+  console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', ') + ', qr-codes=' + (qrAllowed?'ja':'nee'));
 
   renderTiles();
   renderPlaceholders();
@@ -2542,9 +2553,8 @@ function bindTopbar(){
     btn.addEventListener('click', function(){
       const v = btn.getAttribute('data-view');
       if (v === 'dashboard') { showView('dashboard'); return; }
-      // QR-codes is functioneel onderdeel van de Documentenlijst — zelfde licentie
-      const licKey = v === 'qr-codes' ? 'documentenlijst' : v;
-      const ext = EXTENSIONS.find(function(e){ return e.key === licKey; });
+      if (v === 'qr-codes'){ if (!qrAllowed) return; showView(v); return; }
+      const ext = EXTENSIONS.find(function(e){ return e.key === v; });
       if (ext && ext.allowed === false) return;
       showView(v);
     });
@@ -2552,22 +2562,26 @@ function bindTopbar(){
   // Disabled-state spiegelen aan EXTENSIONS[].allowed (vereist: aanroep ná access-check)
   EXTENSIONS.forEach(function(e){
     if (e.allowed === false){
-      const keys = e.key === 'documentenlijst' ? [e.key, 'qr-codes'] : [e.key];
-      keys.forEach(function(k){
-        const t = document.querySelector('#cpTabs .cp-tab[data-view="'+k+'"]');
-        if (t){
-          t.classList.add('disabled');
-          t.setAttribute('aria-disabled','true');
-          t.title = 'Geen toegang — vraag aan info@atfielt.nl';
-        }
-      });
+      const t = document.querySelector('#cpTabs .cp-tab[data-view="'+e.key+'"]');
+      if (t){
+        t.classList.add('disabled');
+        t.setAttribute('aria-disabled','true');
+        t.title = 'Geen toegang — vraag aan info@atfielt.nl';
+      }
     }
   });
+  if (!qrAllowed){
+    const qt = document.querySelector('#cpTabs .cp-tab[data-view="qr-codes"]');
+    if (qt){
+      qt.classList.add('disabled');
+      qt.setAttribute('aria-disabled','true');
+      qt.title = 'Geen toegang — vraag aan info@atfielt.nl';
+    }
+  }
   // QR-open-knop op de eigen view
   const qrOpenBtn = document.getElementById('qr-open-btn');
   if (qrOpenBtn) qrOpenBtn.addEventListener('click', function(){
-    const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
-    if (ext && ext.allowed === false) return;
+    if (!qrAllowed) return;
     const st = document.getElementById('qr-view-status');
     qrOpenBtn.disabled = true;
     if (st) st.textContent = 'Documenten en mappen laden…';
@@ -10639,6 +10653,10 @@ const DL = (function(){
   function _openQrDialog(){
     const modal = document.getElementById('dl-qr-modal');
     if (!modal) return;
+    // Portal naar <body>: de modal leeft in #view-documentenlijst, en een niet-actieve
+    // view staat op display:none — position:fixed ontsnapt daar niet aan. Vanaf de
+    // QR-tab (v1.10) opende de dialoog dus onzichtbaar. Reparenten behoudt bindings.
+    if (modal.parentNode !== document.body) document.body.appendChild(modal);
     _qrPopulatePicker();
     modal.style.display = '';
     // Eerst evt. opgeslagen logo van dit project laden, zodat de eerste render 'm meeneemt.
