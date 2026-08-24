@@ -9661,13 +9661,12 @@ const DL = (function(){
   }
 
   // Kern van v1.15: bestanden versie-bewust aan een release toevoegen MET verificatie.
-  // De publieke docs geven het POST-schema niet prijs, dus empirisch robuust:
-  //   Poging A: { id: file-id, versionId: <nieuwste> } — als de API een versionId-veld kent.
-  //   Verificatie: verse GET; gepinde revision moet de nieuwste zijn.
-  //   Poging B (per gefaald doc): entry weg, POST { id: <nieuwste versionId> } —
-  //   consistent met TC-native releases waar het entry-id een versie-id is.
-  // Succes/falen komt uit de VERIFICATIE, niet uit de HTTP-status — de v1.12-teller
-  // rapporteerde "ok" op een POST die aantoonbaar niets wijzigde.
+  // Empirisch vastgesteld (live-test 24 aug 2026): de API kent geen versionId-veld
+  // in de POST-body (400), maar accepteert het VERSIE-id als item-id — consistent
+  // met TC-native releases, waar het entry-id een versie-id is. Een kale file-id
+  // pint daarentegen v1 (het file-id is het id van de eerste versie).
+  // Succes/falen komt uit een verificatie-GET, niet uit de HTTP-status — de
+  // v1.12-teller rapporteerde "ok" op een POST die aantoonbaar niets wijzigde.
   async function _releaseAddLatest(relId, docs){
     const wanted = [];
     for (const doc of docs){
@@ -9693,52 +9692,42 @@ const DL = (function(){
       return _fetchReleaseFiles(relId);
     }
 
-    // Poging A — één batch. Een 400 (onbekend veld) laat de hele batch naar B vallen.
-    let aFailed = false;
-    try {
-      await _releaseFilesCall(relId, 'POST', wanted.map(function(w){
-        const item = { id: w.doc._vid, type: 'FILE' };
-        if (w.lv && w.lv.versionId) item.versionId = w.lv.versionId;
-        return item;
-      }));
-    } catch(e){
-      aFailed = true;
-      console.warn('[DL] release-add poging A geweigerd (' + e.message + ') — door naar B');
-    }
+    // Al aanwezige entries eerst weg (idempotent — bij een verse add is er niets),
+    // anders staat het bestand er straks dubbel of blijft de oude pin staan.
     let files = await freshFiles();
-    const pendingB = [];
-    const okDocs = [];
     for (const w of wanted){
-      if (!aFailed && isPinnedLatest(entryFor(files, w), w)) okDocs.push(w);
-      else pendingB.push(w);
-    }
-
-    // Poging B — per doc: bestaande entry weg, versie-id als item-id erin.
-    let usedB = false;
-    for (const w of pendingB){
-      try {
-        const e = entryFor(files, w);
-        if (e && (e.id || e.fileId)) await _releaseFilesCall(relId, 'DELETE', [{ id: e.id || e.fileId, type: 'FILE' }]);
-        const bId = (w.lv && w.lv.versionId) ? w.lv.versionId : w.doc._vid;
-        await _releaseFilesCall(relId, 'POST', [{ id: bId, type: 'FILE' }]);
-        usedB = true;
-      } catch(e){
-        console.warn('[DL] release-add poging B mislukt voor', w.doc.bestandsnaam, '—', e.message);
+      const e = entryFor(files, w);
+      if (e && (e.id || e.fileId)){
+        try { await _releaseFilesCall(relId, 'DELETE', [{ id: e.id || e.fileId, type: 'FILE' }]); }
+        catch(err){ console.warn('[DL] bestaande release-entry verwijderen mislukt:', w.doc.bestandsnaam, err.message); }
       }
     }
 
-    // Eindverificatie (alleen nodig als er een B-ronde was)
-    if (pendingB.length) files = await freshFiles();
+    // Eén batch-POST met versie-ids; valt bij een batch-weigering terug op per-doc.
+    const items = wanted.map(function(w){
+      return { id: (w.lv && w.lv.versionId) || w.doc._vid, type: 'FILE' };
+    });
+    try {
+      await _releaseFilesCall(relId, 'POST', items);
+    } catch(e){
+      console.warn('[DL] release-add batch geweigerd (' + e.message + ') — per bestand opnieuw');
+      for (const item of items){
+        try { await _releaseFilesCall(relId, 'POST', [item]); }
+        catch(err){ console.warn('[DL] release-add item mislukt:', item.id, err.message); }
+      }
+    }
+
+    // Verificatie: wat staat er nu ECHT gepind?
+    files = await freshFiles();
     const ok = [], fout = [];
     for (const w of wanted){
       if (isPinnedLatest(entryFor(files, w), w)) ok.push(w.doc);
       else fout.push(w.doc);
     }
-    const variant = pendingB.length === 0 ? 'A' : (okDocs.length ? 'A+B' : 'B');
-    if (typeof DIAG !== 'undefined') DIAG.note('release-add variant ' + variant + ': ' + ok.length + ' ok, ' + fout.length + ' fout');
-    console.log('[DL] release-add (' + variant + '):', ok.length, 'geverifieerd ok,', fout.length, 'fout');
+    if (typeof DIAG !== 'undefined') DIAG.note('release-add: ' + ok.length + ' ok, ' + fout.length + ' fout');
+    console.log('[DL] release-add:', ok.length, 'geverifieerd ok,', fout.length, 'fout');
     _relStatusCache.delete(relId);
-    return { ok: ok, fout: fout, variant: variant };
+    return { ok: ok, fout: fout };
   }
 
   // Eén release-bestand naar de nieuwste versie. Entry ALTIJD eerst weg — bij een
