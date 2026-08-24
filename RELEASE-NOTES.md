@@ -2,6 +2,24 @@
 
 ---
 
+## Versie 1.12 — 24 augustus 2026
+
+### Releases blijven actueel: de cockpit signaleert verouderde bestanden
+
+Een release is een momentopname — maar het project werkt door. Tot nu toe zag je nergens dat een bestand in een release inmiddels een nieuwere versie heeft in het project. Vanaf deze versie bewaakt de cockpit dat voor je.
+
+**Wat is er veranderd?**
+
+- **⚠-signalering op het dashboard** — zodra de documentenlijst geladen is, verschijnt bij werkpakketten met een gekoppelde release en bij de rijen onder "Recente releases" een waarschuwing zoals **⚠ 3**: drie bestanden in die release hebben een nieuwere versie in het project.
+- **Versie-status per bestand** — open in de Documentenlijst het releases-overzicht en klap een release uit: elk bestand toont **✓ actueel** of **⚠ v3 → v5**, met een **↻-knop** om dat ene bestand bij te werken en een knop **"Alles bijwerken"** voor de hele release.
+- **Werkpakket bijwerken in één keer** — bij een werkpakket dat al aan een release gekoppeld is, doet de 📦-knop nu een volledige bijwerkronde: verouderde bestanden worden naar de nieuwste versie gebracht én bestanden die inmiddels aan het werkpakket voldoen worden toegevoegd. Je ziet vooraf precies wat er gaat gebeuren en bevestigt eerst. Bestanden verwijderen doet de cockpit nooit automatisch — wat buiten het werkpakket is gevallen wordt alleen gemeld.
+- **Verzonden releases blijven onaangetast** — releases met status "Verzonden" tonen wel de versie-status, maar krijgen geen bijwerk-knoppen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. De signalering verschijnt automatisch zodra de documentenlijst op de achtergrond geladen is.
+
+---
+
 ## Versie 1.11 — 24 augustus 2026
 
 ### Versie-QR: zet een QR op de tekening en iedereen ziet of de print nog klopt

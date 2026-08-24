@@ -820,6 +820,17 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-rel-file:last-child{border-bottom:none}
 .dl-rel-file:hover{background:var(--afl);color:var(--af2)}
 .dl-rel-file{display:flex;align-items:center;gap:8px}
+/* v1.12: versie-status per release-bestand + bijwerk-knoppen */
+.dl-rel-file-status{font-size:11px;font-weight:600;white-space:nowrap;flex-shrink:0;margin-left:auto}
+.dl-rel-file-status.ok{color:#2e7d32}
+.dl-rel-file-status.outdated{color:#b8851a}
+.dl-rel-file-update{background:transparent;border:1px solid var(--af);color:var(--af);border-radius:var(--r-sm);padding:1px 7px;cursor:pointer;font-size:12px;line-height:1.4;flex-shrink:0}
+.dl-rel-file-update:hover{background:var(--afl)}
+.dl-rel-file-update:disabled{opacity:.5;cursor:default}
+.dl-rel-update-all-row{padding:8px 10px 4px;border-bottom:1px dotted var(--hl-light)}
+.dl-rel-update-all{background:var(--af);border:none;color:#fff;border-radius:var(--r-sm);padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600}
+.dl-rel-update-all:disabled{opacity:.6;cursor:default}
+.dl-views-rel-warn,.rel-warn{color:#b8851a;font-weight:700;font-size:11px;white-space:nowrap}
 .dl-rel-file-name{font-weight:500;flex:1;min-width:0}
 .dl-rel-file-remove{background:transparent;border:1px solid transparent;color:var(--g4);padding:2px 6px;border-radius:var(--r-sm);cursor:pointer;font-size:13px;line-height:1;opacity:0;transition:all .15s}
 .dl-rel-file:hover .dl-rel-file-remove{opacity:1}
@@ -1383,7 +1394,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.11';
+const COCKPIT_VERSION = '1.12';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -2506,6 +2517,8 @@ async function warmAll(){
       });
       updateTilePrefetch(key, 'done', result || {});
       console.log('[Cockpit] prefetch klaar:', key, result);
+      // v1.12: zodra de documentenlijst er is kunnen release-badges beoordeeld worden
+      if (key === 'documentenlijst') decorateReleaseBadges();
     } catch(e){
       console.warn('[Cockpit] prefetch faalde:', key, e && e.message);
       updateTilePrefetch(key, 'error', { message: e && e.message });
@@ -2726,6 +2739,25 @@ async function renderWerkpakketten(forceReload){
       showView('documentenlijst');
     });
   });
+  decorateReleaseBadges();
+}
+
+// v1.12 — ⚠-badges op release-labels (werkpakket-rijen én de releases-widget).
+// Vergt een geladen documentenlijst; DL.releaseStatus geeft anders null terug.
+// Wordt daarom nogmaals aangeroepen zodra de DL-prefetch klaar is.
+function decorateReleaseBadges(){
+  if (typeof DL === 'undefined' || typeof DL.releaseStatus !== 'function') return;
+  document.querySelectorAll('#werkpakketten .wp-rel[data-rel-id], #releases .release-item[data-release-id]').forEach(function(el){
+    if (el.querySelector('.rel-warn')) return; // al gedecoreerd
+    const rid = el.getAttribute('data-rel-id') || el.getAttribute('data-release-id');
+    if (!rid) return;
+    DL.releaseStatus(rid).then(function(info){
+      if (!info || !info.outdated || el.querySelector('.rel-warn')) return;
+      const target = el.classList.contains('release-item') ? el.querySelector('.rel-name') : el;
+      if (!target) return;
+      target.insertAdjacentHTML('beforeend', ' <span class="rel-warn" title="' + info.outdated + ' bestand(en) in deze release hebben een nieuwere versie — werk de release bij via de Documentenlijst">⚠ ' + info.outdated + '</span>');
+    }).catch(function(){});
+  });
 }
 
 function renderReleases(releases){
@@ -2756,6 +2788,7 @@ function renderReleases(releases){
       openInTC(id ? 'releases/' + id : 'releases');
     });
   });
+  decorateReleaseBadges();
 }
 
 // Laatst geüploade bestanden — alleen FILE-types, gesorteerd op createdOn
@@ -8974,7 +9007,7 @@ const DL = (function(){
         const mag = scope === 'personal' || _isProjectAdmin;
         const wie = v.updatedBy ? 'Laatst opgeslagen door ' + v.updatedBy : '';
         const relTitle = (v.release && v.release.id)
-          ? 'Gekoppeld aan release "' + (v.release.name || '') + '" — opnieuw promoveren'
+          ? 'Release "' + (v.release.name || '') + '" bijwerken: nieuwe versies pinnen + nieuwe bestanden toevoegen'
           : 'Promoveer naar release: de bestanden die nu aan deze weergave voldoen';
         h += '<div class="dl-views-row' + (v.id === _activeViewId ? ' active' : '') + '"'
           + ' data-view-id="' + _esc(v.id) + '" data-view-scope="' + scope + '">'
@@ -9025,13 +9058,32 @@ const DL = (function(){
           if (act === 'update') _viewUpdate(v, scope);
           else if (act === 'rename') _viewRename(v, scope);
           else if (act === 'delete') _viewDelete(v, scope);
-          else if (act === 'promote') _viewPromoteToRelease(v, scope);
+          else if (act === 'promote'){
+            // v1.12: gekoppeld werkpakket → sync; ongekoppeld → eerste promotie
+            if (v.release && v.release.id) _syncReleaseFromView(v, scope);
+            else _viewPromoteToRelease(v, scope);
+          }
         });
       });
     });
 
     const saveProj = root.querySelector('#dl-views-save-project');
     if (saveProj) saveProj.style.display = _isProjectAdmin ? '' : 'none';
+
+    // v1.12: async ⚠-badge op gekoppelde releases (alleen mogelijk als de lijst geladen is)
+    if (_isLoaded){
+      _views.shared.concat(_views.personal).forEach(function(v){
+        if (!v.release || !v.release.id) return;
+        _releaseOutdatedInfo(v.release.id).then(function(info){
+          if (!info || !info.outdated) return;
+          const row = body.querySelector('.dl-views-row[data-view-id="' + v.id + '"] .dl-views-rel');
+          if (row && !row.querySelector('.dl-views-rel-warn')){
+            row.insertAdjacentHTML('beforeend', ' <span class="dl-views-rel-warn">⚠ ' + info.outdated + '</span>');
+            row.title = 'Gekoppelde release: ' + info.outdated + ' bestand(en) hebben een nieuwere versie — klik 📦 om bij te werken';
+          }
+        }).catch(function(){});
+      });
+    }
   }
 
   // Laad project-standaard kolommen vanuit hub. Toepassen pas wanneer gebruiker zelf nog geen
@@ -9180,6 +9232,138 @@ const DL = (function(){
       _releasesCache.byId.set(relId, []);
       return [];
     }
+  }
+
+  // === v1.12: versie-bewaking van releases ===
+  // Een release-bestanditem pint de versie van het moment van toevoegen. De vorm
+  // van het /releases/{id}/files-item verschilt per omgeving; twee detectiepaden:
+  //   1. item-id match (f.id === doc._vid) → vergelijk het revisie-veld indien aanwezig
+  //   2. geen id-match maar wél naam-match → de release pint een ouder item = verouderd
+  //      (zelfde ambigu-detectie als de release-ZIP name-fallback)
+  const _relStatusCache = new Map(); // relId → { outdated, total, matched }; lifetime = page-load
+
+  function _relFileStatus(f){
+    const fid = f.id || f.fileId || '';
+    let doc = fid ? _docs.find(function(d){ return d._vid === fid; }) : null;
+    let outdated = false;
+    const pinned = (f.revision != null) ? String(f.revision) : ((f.version != null) ? String(f.version) : '');
+    if (doc){
+      if (pinned && String(doc._versie || '') && pinned !== String(doc._versie)) outdated = true;
+    } else if (f.name){
+      const m = _docs.filter(function(d){ return d.bestandsnaam === f.name; });
+      if (m.length){
+        doc = m[0];
+        outdated = true; // ander item-id dan het actuele = oudere gepinde versie
+        if (m.length > 1) console.warn('[DL] release-status: naam-match ambigu voor', f.name, '(' + m.length + ' kandidaten)');
+      }
+    }
+    return { doc: doc, outdated: outdated, pinned: pinned };
+  }
+
+  async function _releaseOutdatedInfo(relId, reload){
+    if (!_isLoaded) return null; // documentenlijst nog niet geladen — geen oordeel mogelijk
+    if (!reload && _relStatusCache.has(relId)) return _relStatusCache.get(relId);
+    if (reload) _releasesCache.byId.delete(relId);
+    const files = await _fetchReleaseFiles(relId);
+    let outdated = 0, matched = 0;
+    files.forEach(function(f){
+      const st = _relFileStatus(f);
+      if (st.doc) matched++;
+      if (st.outdated) outdated++;
+    });
+    const info = { outdated: outdated, total: files.length, matched: matched };
+    _relStatusCache.set(relId, info);
+    return info;
+  }
+
+  // Gedeelde helper voor POST/DELETE op /releases/{id}/files
+  async function _releaseFilesCall(relId, method, items){
+    const r = await fetch(TC_API_BASE + '/releases/' + encodeURIComponent(relId) + '/files', {
+      method: method,
+      headers: { 'Authorization': 'Bearer ' + tcToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(items),
+    });
+    if (!r.ok){
+      const txt = await r.text().catch(function(){ return ''; });
+      throw new Error('HTTP ' + r.status + ': ' + txt.slice(0, 200));
+    }
+  }
+
+  // Eén release-bestand naar de nieuwste versie: oude gepinde item weg (alleen
+  // als het id verschilt), actuele item erin. Idempotent bij gelijk id.
+  async function _updateReleaseFile(relId, f, doc){
+    const oldId = f.id || f.fileId || '';
+    if (oldId && oldId !== doc._vid){
+      await _releaseFilesCall(relId, 'DELETE', [{ id: oldId, type: 'FILE' }]);
+    }
+    await _releaseFilesCall(relId, 'POST', [{ id: doc._vid, type: 'FILE' }]);
+  }
+
+  // Werkpakket-sync (gekoppeld model): verouderde bestanden bijwerken + bestanden
+  // toevoegen die nú aan het werkpakket-filter voldoen. Verwijdert nooit automatisch —
+  // bestanden die buiten het filter zijn gevallen worden alleen gemeld.
+  async function _syncReleaseFromView(v, scope){
+    const relId = v.release && v.release.id;
+    if (!relId) return;
+    const relName = v.release.name || 'release';
+    const rel = (_releasesCache.all || []).find(function(r){ return r.id === relId; });
+    if (rel && rel.status === 'SENT'){
+      alert('Release "' + relName + '" is al verzonden — verzonden releases kunnen niet worden bijgewerkt.');
+      return;
+    }
+    if (_activeViewId !== v.id){
+      _activeViewId = v.id;
+      _viewApply(v.state);
+      _renderViewsButton();
+      _renderViewsPicker();
+    }
+    if (!_docs.length){ alert('Documenten zijn nog aan het laden — probeer het zo opnieuw.'); return; }
+    _releasesCache.byId.delete(relId);
+    const files = await _fetchReleaseFiles(relId);
+    const inRelease = new Set();
+    const outdatedPairs = [];
+    files.forEach(function(f){
+      const st = _relFileStatus(f);
+      if (st.doc) inRelease.add(st.doc._vid);
+      if (st.outdated && st.doc) outdatedPairs.push({ f: f, doc: st.doc });
+    });
+    const wpDocs = _filt().filter(function(d){ return d._vid; });
+    const wpVids = new Set(wpDocs.map(function(d){ return d._vid; }));
+    const nieuwe = wpDocs.filter(function(d){ return !inRelease.has(d._vid); });
+    const ontbrekend = files.filter(function(f){
+      const st = _relFileStatus(f);
+      return st.doc ? !wpVids.has(st.doc._vid) : true;
+    }).length;
+    if (!outdatedPairs.length && !nieuwe.length){
+      alert('Release "' + relName + '" is al actueel.'
+        + (ontbrekend ? '\n(' + ontbrekend + ' bestand(en) in de release vallen buiten het werkpakket — die blijven staan.)' : ''));
+      return;
+    }
+    const regels = [];
+    if (outdatedPairs.length) regels.push('• ' + outdatedPairs.length + ' bestand(en) bijwerken naar de nieuwste versie');
+    if (nieuwe.length) regels.push('• ' + nieuwe.length + ' nieuw(e) bestand(en) toevoegen');
+    if (ontbrekend) regels.push('• ' + ontbrekend + ' bestand(en) vallen buiten het werkpakket — blijven ongemoeid');
+    if (!confirm('Release "' + relName + '" bijwerken vanuit werkpakket "' + v.name + '"?\n\n' + regels.join('\n'))) return;
+    let ok = 0, fout = 0;
+    for (const p of outdatedPairs){
+      try { await _updateReleaseFile(relId, p.f, p.doc); ok++; }
+      catch(e){ fout++; console.warn('[DL] release-sync bijwerken mislukt:', p.doc.bestandsnaam, e.message); }
+    }
+    if (nieuwe.length){
+      try {
+        await _releaseFilesCall(relId, 'POST', nieuwe.map(function(d){ return { id: d._vid, type: 'FILE' }; }));
+        ok += nieuwe.length;
+      } catch(e){ fout += nieuwe.length; console.warn('[DL] release-sync toevoegen mislukt:', e.message); }
+    }
+    _releasesCache.byId.delete(relId);
+    _releasesCache.all = null;
+    _relStatusCache.delete(relId);
+    console.log('[DL] release-sync klaar:', ok, 'ok,', fout, 'fout —', relName);
+    alert(fout
+      ? ok + ' verwerkt, ' + fout + ' mislukt — zie console (F12) of het diagnoserapport.'
+      : '✓ Release "' + relName + '" bijgewerkt (' + ok + ' bewerkingen).');
+    try { document.dispatchEvent(new CustomEvent('cockpit:views-changed', { detail: { scope: scope } })); } catch(_){}
+    _renderViewsPicker();
   }
 
   // Lazy-load JSZip vanaf CDN (alleen bij eerste ZIP-download)
@@ -9797,15 +9981,83 @@ const DL = (function(){
       filesEl.dataset.loaded = '1';
       return;
     }
-    filesEl.innerHTML = files.map(function(f){
+    // v1.12: versie-status per bestand + bijwerk-knoppen. Alleen als de
+    // documentenlijst geladen is; verzonden releases zijn read-only.
+    const relMeta = (_releasesCache.all || []).find(function(r){ return r.id === relId; });
+    const relSent = !!(relMeta && relMeta.status === 'SENT');
+    let outdatedIdx = [];
+    filesEl.innerHTML = files.map(function(f, i){
       const name = _esc(f.name || f.fileName || '(naamloos)');
       const fileId = _esc(f.id || f.fileId || '');
+      let stHtml = '';
+      if (_isLoaded){
+        const st = _relFileStatus(f);
+        if (st.doc && st.outdated){
+          outdatedIdx.push(i);
+          const van = st.pinned ? 'v' + st.pinned : 'oud';
+          const naar = st.doc._versie ? 'v' + st.doc._versie : 'actueel';
+          stHtml = '<span class="dl-rel-file-status outdated" title="Nieuwere versie beschikbaar in het project">⚠ ' + _esc(van + ' → ' + naar) + '</span>'
+            + (relSent ? '' : '<button type="button" class="dl-rel-file-update" data-file-idx="' + i + '" title="Bijwerken naar de nieuwste versie">↻</button>');
+        } else if (st.doc){
+          stHtml = '<span class="dl-rel-file-status ok" title="Actueel">✓</span>';
+        }
+      }
       return '<div class="dl-rel-file" data-vid="' + fileId + '">'
         + '<span class="dl-rel-file-name">' + name + '</span>'
+        + stHtml
         + '<button type="button" class="dl-rel-file-remove" title="Verwijder uit release">🗑</button>'
         + '</div>';
     }).join('');
+    if (outdatedIdx.length && !relSent){
+      filesEl.insertAdjacentHTML('afterbegin',
+        '<div class="dl-rel-update-all-row"><button type="button" class="dl-rel-update-all">↻ Alles bijwerken (' + outdatedIdx.length + ')</button></div>');
+    }
     filesEl.dataset.loaded = '1';
+
+    // Herlaad de bestandenlijst met verse data (na bijwerken)
+    function reloadExpand(){
+      _releasesCache.byId.delete(relId);
+      _relStatusCache.delete(relId);
+      filesEl.dataset.loaded = '';
+      filesEl.style.display = 'none';
+      _toggleReleaseExpand(item);
+    }
+    // Bijwerk-knop per bestand
+    filesEl.querySelectorAll('.dl-rel-file-update').forEach(function(btn){
+      btn.addEventListener('click', async function(e){
+        e.stopPropagation();
+        const f = files[parseInt(btn.getAttribute('data-file-idx'), 10)];
+        const st = f && _relFileStatus(f);
+        if (!st || !st.doc) return;
+        btn.disabled = true; btn.textContent = '⏳';
+        try {
+          await _updateReleaseFile(relId, f, st.doc);
+          console.log('[DL] release-bestand bijgewerkt:', st.doc.bestandsnaam);
+          reloadExpand();
+        } catch(err){
+          alert('Bijwerken mislukt: ' + err.message);
+          btn.disabled = false; btn.textContent = '↻';
+        }
+      });
+    });
+    // Alles bijwerken
+    const allBtn = filesEl.querySelector('.dl-rel-update-all');
+    if (allBtn) allBtn.addEventListener('click', async function(e){
+      e.stopPropagation();
+      allBtn.disabled = true;
+      let ok = 0, fout = 0;
+      for (const i of outdatedIdx){
+        const f = files[i];
+        const st = _relFileStatus(f);
+        if (!st.doc){ fout++; continue; }
+        allBtn.textContent = '⏳ ' + (ok + fout + 1) + '/' + outdatedIdx.length;
+        try { await _updateReleaseFile(relId, f, st.doc); ok++; }
+        catch(err){ fout++; console.warn('[DL] bijwerken mislukt:', f.name, err.message); }
+      }
+      console.log('[DL] release alles-bijwerken klaar:', ok, 'ok,', fout, 'fout');
+      if (fout) alert(ok + ' bijgewerkt, ' + fout + ' mislukt — zie console (F12).');
+      reloadExpand();
+    });
     // Click op file (niet op delete-knop) → sluit modal + open detail-paneel
     filesEl.querySelectorAll('.dl-rel-file').forEach(function(fileEl){
       fileEl.addEventListener('click', function(e){
@@ -12150,6 +12402,12 @@ const DL = (function(){
     },
     setPendingView: function(id){
       _pendingViewId = String(id || '');
+    },
+    // v1.12 — versie-status van een release voor dashboard-badges. null zolang de
+    // documentenlijst nog niet geladen is (dan is er geen vergelijk mogelijk).
+    releaseStatus: function(relId){
+      if (!_isLoaded || !relId) return Promise.resolve(null);
+      return _releaseOutdatedInfo(String(relId));
     },
     invalidateCache: function(){
       // Aangeroepen door cockpit na cockpit:upload-done event. Wist localStorage
