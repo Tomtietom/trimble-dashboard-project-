@@ -2,6 +2,43 @@
 
 ---
 
+## Versie 1.11 — 24 augustus 2026
+
+### Versie-QR: zet een QR op de tekening en iedereen ziet of de print nog klopt
+
+Verouderde prints op de bouwplaats zijn een klassieke foutbron: de tekening aan de muur is revisie 3, terwijl in Trimble Connect al revisie 5 staat. Vanaf deze versie genereer je per document een **Versie-QR** die je óp de print zet. Wie hem scant — uitvoerder, onderaannemer, wie dan ook — ziet direct op zijn telefoon of die print nog de actuele versie is. **Zonder Trimble-account.**
+
+**Hoe werkt het?**
+
+- Selecteer in de **Documentenlijst** de documenten en kies **🏷️ Versie-QR** in de selectiebalk. Per document wordt vastgelegd welke versie er op dat moment actueel is; de QR verwijst naar een controle-pagina van At Fielt.
+- Wie de QR scant ziet één van drie uitkomsten: **groen** (print is actueel), **rood** (verouderd — met de actuele revisie en wijzigingsdatum erbij) of **oranje** (controle tijdelijk niet mogelijk; de geprinte gegevens worden dan wel getoond).
+- Exporteer de codes als **ZIP** (losse PNG's per document, met koppeltabel) of als **printbaar PDF-vel**, met documentnummer, revisie en datum als bijschrift onder elke code. Je bedrijfslogo in het midden van de QR gaat automatisch mee.
+- Ook te vinden via de tab **QR-codes**, naast de bestaande QR-codes voor kopersmappen.
+
+**Twee controle-modi, in te stellen per project (alleen projectbeheerders):**
+
+- **Alleen versie-status** (standaard) — de scanner ziet uitsluitend óf de print actueel is; het bestand zelf blijft volledig afgeschermd. Hiervoor nodigt de projectbeheerder eenmalig het At Fielt controle-account uit als projectlid (leesrechten volstaan) — de generator legt dit stap voor stap uit en controleert het vooraf. QR's die je eerder printte gaan vanzelf werken zodra het account lid is; opnieuw printen is niet nodig.
+- **Status + bestand bekijken** — de scanpagina toont ook het document zelf. Let op: de documenten worden daarmee blijvend openbaar toegankelijk voor iedereen met de QR. Deze modus staat daarom nooit stilzwijgend aan: alleen een projectbeheerder kan hem activeren, na een expliciete bevestiging waarin de consequenties volledig zijn uitgelegd.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. Wil je de versie-controle live hebben, nodig dan het At Fielt controle-account uit in je project — de generator toont het adres en de stappen.
+
+### Vernieuwd dashboard: werkpakketten in plaats van een tweede menu
+
+Het dashboard toonde de modules twee keer (tabs bovenin én grote tegels eronder) en de kolom "Open taken" bleef altijd leeg. Die ruimte gaat nu naar waar je daadwerkelijk aan werkt.
+
+**Wat is er veranderd?**
+
+- **Werkpakketten op het dashboard** — de weergaves die je in de Documentenlijst klaarzet (kolommen, filters, map, sortering onder één naam) staan nu direct op het dashboard: eerst de gedeelde project-weergaves, daaronder je persoonlijke. Eén klik en de Documentenlijst opent met dat werkpakket actief — ook als je de lijst die sessie nog niet had geopend.
+- **Werkpakket → release** — bij elke klaargezette weergave zit nu een 📦-knop: alle bestanden die op dat moment aan het werkpakket voldoen gaan in één keer naar een nieuwe of bestaande Trimble Connect-release. Het werkpakket onthoudt de koppeling en toont de release als label; klikken opent de release in Trimble Connect. (Volgende versie: automatisch signaleren wanneer bestanden in de release een nieuwere versie hebben.)
+- **Compacte module-tegels met licentie-status** — de grote tegels zijn een slanke statusrij geworden (met live tellers en laad-voortgang). Modules waarvoor je geen licentie hebt tonen dat nu expliciet met een slotje en "Geen licentie". De tabs bovenin zijn de primaire navigatie; tab- en tegelnamen zijn overal gelijkgetrokken.
+- **Instellingen werken nu echt door** — "Aantal recente uploads" en "Default tijdperiode" (tandwiel-menu) worden voortaan toegepast op de dashboard-lijsten, direct bij het opslaan. De niet-functionele todo-instelling is verwijderd.
+
+**Wat moet je doen?**
+Niets extra's — sluit Trimble Connect één keer volledig en open opnieuw. Nog geen werkpakketten in beeld? Sla in de Documentenlijst een weergave op via **Weergaves → Opslaan als**, en hij verschijnt op het dashboard.
+
+---
+
 ## Versie 1.10 — 24 augustus 2026
 
 ### Rechten Viewer laat overgenomen leesrechten weer zien

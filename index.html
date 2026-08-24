@@ -168,21 +168,21 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
    Tiles — extension-card pattern
    ========================================= */
 .tiles{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-  gap:var(--s4);
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));
+  gap:var(--s3);
 }
 .tile{
   background:#fff;border:1px solid rgba(0,0,0,.06);
-  border-radius:var(--r-lg);padding:var(--s5);
+  border-radius:var(--r-lg);padding:var(--s3) var(--s4);
   cursor:pointer;transition:transform .2s, box-shadow .2s, border-color .2s;
-  display:flex;flex-direction:column;gap:var(--s3);
+  display:flex;flex-direction:row;align-items:center;gap:var(--s3);
   text-align:left;font-family:'Poppins',sans-serif;
   box-shadow:0 4px 20px rgba(34,34,34,.04);
   width:100%;
 }
 .tile:hover{
-  transform:translateY(-4px);
-  box-shadow:0 12px 40px rgba(0,0,0,.08);
+  transform:translateY(-2px);
+  box-shadow:0 8px 28px rgba(0,0,0,.08);
   border-color:var(--afl);
 }
 .tile:focus-visible{outline:2px solid var(--af);outline-offset:2px}
@@ -193,34 +193,20 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   transform:none;box-shadow:0 4px 20px rgba(34,34,34,.04);
   border-color:rgba(0,0,0,.06);
 }
-.tile.disabled .tile-cta{color:var(--g4)}
-.tile-badge{
-  display:inline-block;padding:2px 8px;border-radius:var(--r-pill);
-  font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;
-  background:var(--g2);color:var(--g4);margin-left:auto;
-}
 .tile-icon{
-  width:44px;height:44px;border-radius:var(--r-md);
+  width:32px;height:32px;border-radius:var(--r-md);
   background:var(--afl);color:var(--af);
   display:flex;align-items:center;justify-content:center;
   flex-shrink:0;
 }
-.tile-icon svg{width:22px;height:22px}
+.tile-icon svg{width:16px;height:16px}
+.tile-body{display:flex;flex-direction:column;min-width:0;gap:2px}
 .tile-title{
   font-family:'Montserrat',sans-serif;font-weight:700;
-  font-size:var(--fs-xl);letter-spacing:-.02em;color:var(--dk);
+  font-size:var(--fs-md);letter-spacing:-.02em;color:var(--dk);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.tile-desc{
-  font-size:var(--fs-md);color:var(--g5);line-height:1.6;
-  flex-grow:1;
-}
-.tile-foot{
-  display:flex;align-items:center;justify-content:space-between;
-  gap:var(--s3);padding-top:var(--s3);
-  border-top:1px solid var(--hl-light);
-  font-size:var(--fs-sm);
-}
-.tile-stat{color:var(--g4);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.tile-stat{font-size:var(--fs-sm);color:var(--g4);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .tile-stat.tile-loading{color:var(--af);font-weight:600}
 .tile-stat.tile-loading::before{
   content:'';display:inline-block;width:12px;height:12px;flex-shrink:0;
@@ -233,7 +219,6 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .tile{position:relative;overflow:hidden;transition:transform .2s, box-shadow .2s, border-color .2s, opacity .25s}
 .tile.tile-loading{border-color:var(--afl)}
 .tile.tile-loading .tile-title,
-.tile.tile-loading .tile-desc,
 .tile.tile-loading .tile-icon{opacity:.45;transition:opacity .25s}
 .tile.tile-loading::after{
   content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
@@ -244,7 +229,6 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   0%{transform:translateX(-100%)}
   100%{transform:translateX(100%)}
 }
-.tile-cta{color:var(--af);font-weight:600;white-space:nowrap}
 
 /* =========================================
    Activity
@@ -293,7 +277,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .ftr a:hover{text-decoration:underline}
 
 /* =========================================
-   Project-context: 2-koloms grid (todos, releases, recent files, favorites)
+   Project-context: 2-koloms grid (werkpakketten, releases, recent files, favorites)
    ========================================= */
 .ctx-grid{
   display:grid;grid-template-columns:repeat(2, minmax(0,1fr));
@@ -304,36 +288,17 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   .ctx-grid{grid-template-columns:1fr}
 }
 
-/* To-do list items */
-.todos{
-  background:#fff;border:1px solid var(--hl-light);
-  border-radius:var(--r-md);overflow:hidden;
-  box-shadow:0 2px 8px rgba(0,0,0,.03);
+/* Werkpakketten: groepskoppen (gedeeld / persoonlijk) binnen de .activity-kaart */
+.wp-group{
+  padding:var(--s2) var(--s4);
+  font-size:var(--fs-sm);font-weight:600;color:var(--g4);
+  text-transform:uppercase;letter-spacing:.5px;
+  background:var(--gr);border-bottom:1px solid var(--hl-light);
 }
-.todo-item{
-  padding:var(--s3) var(--s4);
-  border-bottom:1px solid var(--hl-light);
-  display:flex;align-items:flex-start;gap:var(--s3);
-  font-size:var(--fs-md);
-}
-.todo-item:last-child{border-bottom:none}
-.todo-item .todo-status{
-  width:24px;height:24px;border-radius:var(--r-sm);
-  background:var(--gr);color:var(--g4);
-  display:flex;align-items:center;justify-content:center;flex-shrink:0;
-  font-size:11px;font-weight:600;
-  margin-top:1px;
-}
-.todo-item .todo-status.high{background:#fef0f0;color:#b91c1c}
-.todo-item .todo-status.due{background:#fff7e6;color:#b8851a}
-.todo-item .todo-content{flex-grow:1;min-width:0}
-.todo-item .todo-title{
-  color:var(--dk);font-weight:500;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
-.todo-item .todo-meta{
-  color:var(--g4);font-size:var(--fs-sm);margin-top:2px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+.activity-item .wp-rel{
+  padding:2px 8px;border-radius:var(--r-pill);
+  background:var(--afl);color:var(--af);
+  font-size:11px;font-weight:600;flex-shrink:0;
 }
 
 /* Releases list */
@@ -683,6 +648,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-views-row.active{background:var(--afl);box-shadow:inset 3px 0 0 var(--af)}
 .dl-views-row.active .dl-views-name{font-weight:600;color:var(--af2)}
 .dl-views-name{flex:1;font-size:14px;color:var(--dk);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl-views-rel{font-size:11px;font-weight:600;color:var(--af);background:var(--afl);border-radius:var(--r-pill);padding:1px 7px;margin-left:6px;white-space:nowrap}
 .dl-views-acts{display:flex;gap:2px;opacity:0;transition:opacity .1s}
 .dl-views-row:hover .dl-views-acts,.dl-views-row.active .dl-views-acts{opacity:1}
 .dl-views-act{background:transparent;border:none;padding:2px 4px;cursor:pointer;font-size:12px;color:var(--g4);border-radius:3px;line-height:1}
@@ -826,6 +792,13 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-qr-logo-row{display:flex;align-items:center;gap:10px;margin-top:4px}
 .dl-qr-logo-file{font-size:12px;flex:1}
 .dl-qr-logo-preview{width:36px;height:36px;object-fit:contain;border:1px solid var(--hl-light);border-radius:4px;background:#fff;padding:2px}
+/* Versie-QR (F3) — banners in de dl-qrv-modal */
+.dl-qrv-banner{padding:10px 12px;border-radius:var(--r-sm);font-size:13px;line-height:1.5;margin-bottom:var(--s3)}
+.dl-qrv-banner-warn{background:#fff3cd;border:1px solid #e8d9a0;border-left:3px solid #d4821a;color:#7a5c12}
+.dl-qrv-banner-ok{background:#d4edda;border:1px solid #c3e6cb;border-left:3px solid #28a745;color:#155724}
+.dl-qrv-mode-block{border:1px solid var(--hl-light);border-radius:var(--r-sm);padding:12px;margin-bottom:var(--s3);font-size:13px}
+.dl-qrv-mode-block label{display:flex;gap:8px;align-items:flex-start;cursor:pointer;margin-top:6px}
+.dl-qrv-mode-block input[type=radio]{margin-top:3px}
 .dl-share-success-msg{padding:12px 14px;background:#d4edda;border:1px solid #c3e6cb;border-left:3px solid #28a745;border-radius:var(--r-sm);color:#155724;font-size:14px;margin-bottom:var(--s3)}
 .dl-share-links{display:flex;flex-direction:column;gap:6px}
 .dl-share-link-item{padding:8px 10px;background:var(--gr);border:1px solid var(--hl-light);border-radius:var(--r-sm);font-size:13px}
@@ -1261,15 +1234,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   </header>
 
   <main class="wrap">
-    <!-- Persistente top-bar: dashboard-first nav binnen cockpit -->
-    <nav class="cp-tabs" id="cpTabs" role="tablist" aria-label="Cockpit navigatie">
-      <button class="cp-tab active" type="button" role="tab" data-view="dashboard" aria-selected="true">Dashboard</button>
-      <button class="cp-tab" type="button" role="tab" data-view="documentenlijst" aria-selected="false">Documentenlijst</button>
-      <button class="cp-tab" type="button" role="tab" data-view="rechten-viewer" aria-selected="false">Rechten</button>
-      <button class="cp-tab" type="button" role="tab" data-view="project-upload" aria-selected="false">Upload</button>
-      <button class="cp-tab" type="button" role="tab" data-view="qr-codes" aria-selected="false">QR-codes</button>
-      <button class="cp-tab" type="button" role="tab" data-view="project-dashboard" aria-selected="false">Project Dashboard</button>
-    </nav>
+    <!-- Persistente top-bar: dashboard-first nav binnen cockpit.
+         Gevuld door renderTabs() uit EXTENSIONS — één bron voor tabs én tegels. -->
+    <nav class="cp-tabs" id="cpTabs" role="tablist" aria-label="Cockpit navigatie"></nav>
 
     <!-- View: Dashboard (default) -->
     <div class="view active" id="view-dashboard">
@@ -1289,8 +1256,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
       </section>
 
       <section class="sec">
-        <div class="overline">Ga aan de slag</div>
-        <div class="sec-head"><h2>Kies een <em>extensie</em></h2></div>
+        <div class="overline">Extensies</div>
         <div class="tiles" id="tiles"></div>
       </section>
 
@@ -1305,9 +1271,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
         </div>
 
         <div class="ctx-col">
-          <div class="overline">To-do's</div>
-          <div class="sec-head"><h2>Open <em>taken</em></h2></div>
-          <div class="todos" id="todos">
+          <div class="overline">Werkpakketten</div>
+          <div class="sec-head"><h2>Klaargezette <em>weergaves</em></h2></div>
+          <div class="activity" id="werkpakketten">
             <div class="activity-empty">Bezig met laden…</div>
           </div>
         </div>
@@ -1366,6 +1332,27 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
         <button type="button" id="qr-open-btn" class="qr-view-btn">📱 QR-codes genereren</button>
         <div id="qr-view-status" style="margin-top:var(--s3);font-size:var(--fs-sm);color:var(--g4)"></div>
       </section>
+
+      <!-- Versie-QR (roadmap F3): QR op de print zelf → publieke controle-pagina -->
+      <section class="sec">
+        <div class="overline">Versiecontrole</div>
+        <div class="sec-head"><h2>Versie-QR voor <em>tekeningen</em></h2></div>
+        <p style="max-width:640px;color:var(--g5);margin:0 0 var(--s4);line-height:1.7">
+          Genereer per document een QR-code om óp de print te zetten. Wie hem scant ziet direct —
+          <strong>zonder Trimble-account</strong> — of die print nog de actuele versie is:
+          "print is revisie 3, actueel is revisie 5 — verouderd".
+        </p>
+        <p style="max-width:640px;color:var(--g4);font-size:var(--fs-sm);margin:0 0 var(--s4)">
+          Standaard toont de controle-pagina alléén de versie-status (het bestand zelf blijft afgeschermd);
+          daarvoor moet een projectbeheerder eenmalig het At Fielt controle-account als projectlid uitnodigen.
+          Een beheerder kan er per project voor kiezen om via de QR ook het bestand zelf te tonen — dat maakt
+          de documenten openbaar toegankelijk en wordt vóór activering uitgebreid uitgelegd.
+        </p>
+        <button type="button" id="qrv-view-goto" class="qr-view-btn">🏷️ Versie-QR maken</button>
+        <div style="margin-top:var(--s3);font-size:var(--fs-sm);color:var(--g4)">
+          Je gaat naar de Documentenlijst — selecteer daar de documenten en kies <strong>🏷️ Versie-QR</strong> in de selectiebalk.
+        </div>
+      </section>
     </div>
 
     <!-- View: Project Dashboard (placeholder, content komt in fase B) -->
@@ -1396,7 +1383,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.10';
+const COCKPIT_VERSION = '1.11';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -1775,20 +1762,15 @@ const ICON_QR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 const ICON_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
 
 // ============================================================
-//  De 4 bestaande extensies — doorstart-targets
+//  De 5 modules — één bron voor tabs (renderTabs) én tegels (renderTiles).
+//  Volgorde = tab-/tegelvolgorde. `tab` is het korte navigatielabel;
+//  `title` het volledige. PREFETCH_ORDER staat hier los van.
 // ============================================================
 const EXTENSIONS = [
   {
-    key: 'project-dashboard',
-    title: 'Project Dashboard',
-    icon: ICON_DASHBOARD,
-    iconUrl: 'https://tomtietom.github.io/trimble-project-dashboard/icon.png',
-    desc: 'Overzicht van al je Trimble Connect projecten met rollen, leden en activiteit.',
-    url: 'https://tomtietom.github.io/trimble-project-dashboard/',
-  },
-  {
     key: 'documentenlijst',
     title: 'Documentenlijst Viewer',
+    tab: 'Documentenlijst',
     icon: ICON_DOCS,
     iconUrl: 'https://tomtietom.github.io/tc-viewer/icon.png',
     desc: 'Documentenlijst met metadata, filters, versies en exporteerbare overzichten.',
@@ -1797,6 +1779,7 @@ const EXTENSIONS = [
   {
     key: 'rechten-viewer',
     title: 'Rechten Viewer',
+    tab: 'Rechten',
     icon: ICON_LOCK,
     iconUrl: 'https://tomtietom.github.io/trimble-rechten-viewer/icon.png',
     desc: 'Visueel overzicht van maprechten, groepen en gebruikers per project.',
@@ -1805,6 +1788,7 @@ const EXTENSIONS = [
   {
     key: 'project-upload',
     title: 'Projectinformatie toevoegen',
+    tab: 'Upload',
     icon: ICON_UPLOAD,
     iconUrl: 'https://tomtietom.github.io/trimble-project-upload/icon.png',
     desc: 'Begeleide upload-wizard: documenten met metadata op de juiste plek.',
@@ -1815,8 +1799,18 @@ const EXTENSIONS = [
     // Geen url/iconUrl: bestond nooit als losse extensie; generator leeft in DL.
     key: 'qr-codes',
     title: 'QR-codes',
+    tab: 'QR-codes',
     icon: ICON_QR,
     desc: 'QR-codes per submap voor kopersmappen — met bedrijfslogo, als ZIP, PDF of losse afbeeldingen.',
+  },
+  {
+    key: 'project-dashboard',
+    title: 'Project Dashboard',
+    tab: 'Project Dashboard',
+    icon: ICON_DASHBOARD,
+    iconUrl: 'https://tomtietom.github.io/trimble-project-dashboard/icon.png',
+    desc: 'Overzicht van al je Trimble Connect projecten met rollen, leden en activiteit.',
+    url: 'https://tomtietom.github.io/trimble-project-dashboard/',
   },
 ];
 
@@ -2290,6 +2284,7 @@ async function loadDashboard(){
   }));
   console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', '));
 
+  renderTabs();
   renderTiles();
   updateTileStat('qr-codes', 'direct klaar'); // geen prefetch — generator laadt bij openen
   renderPlaceholders();
@@ -2300,15 +2295,6 @@ async function loadDashboard(){
 
   // Refresh-knop, tab-focus auto-refresh, en upload-event listeners
   _initDashboardRefresh();
-
-  // Toggle todos-section zichtbaarheid op basis van gebruikersvoorkeur (configCommand setting)
-  if (typeof getSetting === 'function') {
-    const todosEl = document.getElementById('todos');
-    const todosCol = todosEl ? todosEl.closest('.ctx-col') : null;
-    if (todosCol) {
-      todosCol.style.display = (getSetting('showTodos') === false) ? 'none' : '';
-    }
-  }
 
   // Sequentiële prefetch in vaste volgorde (PU → DL → RV → PD), met live
   // tile-counter. Scheduled na idle zodat dashboard-render eerst klaar is.
@@ -2329,14 +2315,13 @@ async function _loadProjectContext(){
   const projData = await tcFetchSafe('/projects/'+pid, null);
   const rootId = projData && projData.rootId;
 
-  // Parallel: users, groups, root-items, alle-projecten-van-user, releases, todos, shares
-  const [users, groups, rootItems, allProjects, releases, todos, shares] = await Promise.all([
+  // Parallel: users, groups, root-items, alle-projecten-van-user, releases, shares
+  const [users, groups, rootItems, allProjects, releases, shares] = await Promise.all([
     tcFetchSafe('/projects/'+pid+'/users', []),
     tcFetchSafe('/groups?projectId='+pid, []),
     rootId ? tcFetchFolderItems(rootId).catch(function(e){ console.warn('[Cockpit] root items fout:', e.message); return []; }) : Promise.resolve([]),
     tcFetchRange('/projects', 500).catch(function(e){ console.warn('[Cockpit] projects fetch fout:', e.message); return []; }),
     tcFetchSafe('/releases?projectId='+pid+'&pageSize=10', []),
-    fetchIssuesForProject(pid),
     tcFetchSafe('/shares?projectId='+pid+'&pageSize=20', []),
   ]);
 
@@ -2382,7 +2367,7 @@ async function _loadProjectContext(){
 
   renderActivity(rootList);
   renderUploads(rootList);
-  renderTodos(todos);
+  renderWerkpakketten(true).catch(function(e){ console.warn('[Cockpit] werkpakketten:', e.message); });
   renderReleases(releases);
   renderShares(shares);
   renderFavorites();
@@ -2435,6 +2420,13 @@ function _initDashboardRefresh(){
     if (typeof DL !== 'undefined' && typeof DL.invalidateCache === 'function') DL.invalidateCache();
     refreshDashboard('upload-done');
   });
+
+  // 4. Weergave opgeslagen/gewijzigd in DL: werkpakketten-sectie live bijwerken.
+  //    Geen hub-reload nodig — DL._views is op dat moment al de actuele stand.
+  document.addEventListener('cockpit:views-changed', function(){
+    console.log('[Cockpit] cockpit:views-changed — werkpakketten verversen');
+    renderWerkpakketten(false).catch(function(e){ console.warn('[Cockpit] werkpakketten:', e.message); });
+  });
 }
 
 // ============================================================
@@ -2453,6 +2445,8 @@ const PREFETCH_LABEL = {
 
 // State-based tile-stat rendering. info = { current, total, phase, count }
 function updateTilePrefetch(key, state, info){
+  const extDef = EXTENSIONS.find(function(e){ return e.key === key; });
+  if (extDef && extDef.allowed === false) return; // "Geen licentie" niet overschrijven
   const el = document.querySelector('[data-stat="'+key+'"]');
   if (!el) return;
   const tile = el.closest('.tile');
@@ -2519,22 +2513,21 @@ async function warmAll(){
   }
 }
 
+// Compacte statusrij (v1.11): tabs zijn de primaire navigatie, de tegel toont
+// alleen icoon + titel + live stat. Zonder licentie: slotje + "Geen licentie".
 function renderTiles(){
   const wrap = $('tiles');
   wrap.innerHTML = EXTENSIONS.map(function(e){
     const disabled = e.allowed === false;
     const cls = 'tile' + (disabled ? ' disabled' : '');
-    const cta = disabled ? 'Geen toegang' : 'Openen →';
-    const titleAttr = disabled ? 'Je hebt nog geen toegang tot deze extensie. Vraag aan: info@atfielt.nl' : 'Open '+e.title;
+    const titleAttr = disabled ? 'Geen licentie voor deze module — neem contact op met At Fielt (info@atfielt.nl)' : 'Open '+e.title;
     return '<button class="'+cls+'" type="button" data-key="'+escapeHtml(e.key)+'" aria-label="'+escapeHtml(e.title)+'"'
       + (disabled ? ' aria-disabled="true"' : '')
       + ' title="'+escapeHtml(titleAttr)+'">'
-      + '<div class="tile-icon">'+e.icon+'</div>'
-      + '<div class="tile-title">'+escapeHtml(e.title)+'</div>'
-      + '<div class="tile-desc">'+escapeHtml(e.desc)+'</div>'
-      + '<div class="tile-foot">'
-        + '<span class="tile-stat" data-stat="'+escapeHtml(e.key)+'">–</span>'
-        + '<span class="tile-cta">'+escapeHtml(cta)+'</span>'
+      + '<div class="tile-icon">'+(disabled ? ICON_LOCK : e.icon)+'</div>'
+      + '<div class="tile-body">'
+        + '<div class="tile-title">'+escapeHtml(e.tab || e.title)+'</div>'
+        + '<span class="tile-stat" data-stat="'+escapeHtml(e.key)+'">'+(disabled ? 'Geen licentie' : '–')+'</span>'
       + '</div>'
       + '</button>';
   }).join('');
@@ -2544,6 +2537,17 @@ function renderTiles(){
       openExtension(btn.getAttribute('data-key'));
     });
   });
+}
+
+// Tab-balk uit EXTENSIONS — zelfde bron als de tegels, dus labels lopen nooit
+// meer uiteen. Aanroepen vóór bindTopbar() (die hangt de click-handlers aan).
+function renderTabs(){
+  const nav = document.getElementById('cpTabs');
+  if (!nav) return;
+  nav.innerHTML = '<button class="cp-tab active" type="button" role="tab" data-view="dashboard" aria-selected="true">Dashboard</button>'
+    + EXTENSIONS.map(function(e){
+        return '<button class="cp-tab" type="button" role="tab" data-view="'+escapeHtml(e.key)+'" aria-selected="false">'+escapeHtml(e.tab || e.title)+'</button>';
+      }).join('');
 }
 
 // Top-bar tabs: zelfde gedrag als tegels, maar altijd zichtbaar voor snelle switch
@@ -2581,9 +2585,18 @@ function bindTopbar(){
       if (st) st.textContent = '';
     });
   });
+  // Versie-QR-knop op de QR-view: route naar de Documentenlijst (daar leeft de selectie)
+  const qrvGotoBtn = document.getElementById('qrv-view-goto');
+  if (qrvGotoBtn) qrvGotoBtn.addEventListener('click', function(){
+    const qext = EXTENSIONS.find(function(e){ return e.key === 'qr-codes'; });
+    if (qext && qext.allowed === false) return;
+    showView('documentenlijst');
+  });
 }
 
 function updateTileStat(key, text){
+  const ext = EXTENSIONS.find(function(e){ return e.key === key; });
+  if (ext && ext.allowed === false) return; // "Geen licentie" niet overschrijven
   const el = document.querySelector('[data-stat="'+key+'"]');
   if (el) el.textContent = text;
 }
@@ -2596,14 +2609,30 @@ function openInTC(path){
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+// Helper: aantal widget-rijen uit de instellingen (default 5 bij rare waarden)
+function getRecentCount(){
+  const n = parseInt(getSetting('recentCount'), 10);
+  return (n > 0) ? n : 5;
+}
+
 function renderActivity(rootList){
   const el = $('activity');
-  const items = Array.isArray(rootList) ? rootList.slice() : [];
+  let items = Array.isArray(rootList) ? rootList.slice() : [];
+  // Periode-instelling ("Default tijdperiode voor activity"): alleen items van de
+  // laatste N dagen tonen. 0/NaN = geen filter.
+  const periodDays = parseInt(getSetting('period'), 10);
+  if (periodDays > 0){
+    const cutoff = Date.now() - periodDays * 86400000;
+    items = items.filter(function(it){
+      const d = new Date(it.modifiedOn || it.updatedOn || 0).getTime();
+      return d >= cutoff;
+    });
+  }
   items.sort(function(a,b){ return new Date(b.modifiedOn||b.updatedOn||0) - new Date(a.modifiedOn||a.updatedOn||0); });
-  const top = items.slice(0, 5);
+  const top = items.slice(0, getRecentCount());
 
   if (top.length === 0){
-    el.innerHTML = '<div class="activity-empty">Geen recente activiteit gevonden</div>';
+    el.innerHTML = '<div class="activity-empty">Geen activiteit in de laatste ' + (periodDays > 0 ? periodDays : 30) + ' dagen</div>';
     return;
   }
   const favs = loadFavorites();
@@ -2644,67 +2673,59 @@ function renderActivity(rootList){
 }
 
 // ============================================================
-//  Project-context: To-do's, Releases, Uploads, Shares, Favorieten
+//  Project-context: Werkpakketten, Releases, Uploads, Shares, Favorieten
 // ============================================================
 
-// Issues ophalen via Trimble's Issue Management API (BCF-compatible, master-host, TRN context).
-// Spec: https://api.swaggerhub.com/apis/Trimble-Connect/IssueMgmt/v0
-// Server: https://app.connect.trimble.com/v1 — region-agnostic, TRN bevat regio.
-const ISSUE_API_BASE = 'https://app.connect.trimble.com/v1';
-function _tcRegionToTrn(region){
-  const r = String(region || '').toLowerCase();
-  if (r.includes('america') || r.includes('north')) return 'us';
-  if (r.includes('asia') || r.includes('ap')) return 'ap';
-  return 'eu';
-}
-async function fetchIssuesForProject(pid){
-  // BCF / Topics / Issue Management API: alle drie request-formaten die we probeerden
-  // (minimal, fields-explode, fields-csv) gaven consequent 400 "Please provide a valid value
-  // for contextId". Trimble's Topics API docs zijn niet (meer) publiek beschikbaar op
-  // developer.trimble.com — pogingen zonder docs = gokwerk + console-noise zonder waarde.
-  //
-  // Dashboard-tegel toont al "Te-do's nog niet gekoppeld in deze omgeving" wanneer we null
-  // teruggeven, dus functioneel verandert er niks. Heractiveer deze functie zodra de Topics
-  // API spec gevonden of via TC's eigen frontend gereverse-engineerd is.
-  return null;
-}
-
-function renderTodos(todos){
-  const el = $('todos');
-  const list = Array.isArray(todos) ? todos : (todos && Array.isArray(todos.items) ? todos.items : null);
-  if (!list){
-    // 404 of geen data: TC's todos-API niet beschikbaar in deze omgeving
-    el.innerHTML = '<div class="activity-empty">Te-do\'s nog niet gekoppeld in deze omgeving.</div>';
+// Werkpakketten = klaargezette DL-weergaves op het dashboard. Data komt via
+// DL.listViews() (gedeeld via hub + persoonlijk uit localStorage); klik zet een
+// pending view en opent de Documentenlijst met die weergave direct actief.
+async function renderWerkpakketten(forceReload){
+  const el = document.getElementById('werkpakketten');
+  if (!el) return;
+  const dlExt = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });
+  if (typeof DL === 'undefined' || typeof DL.listViews !== 'function' || (dlExt && dlExt.allowed === false)){
+    el.innerHTML = '<div class="activity-empty">Werkpakketten vereisen toegang tot de Documentenlijst.</div>';
     return;
   }
-  // Filter open todos en sorteer op deadline (oudste eerst)
-  const open = list.filter(function(t){ return !t.status || /open|new|in_progress|active/i.test(t.status); });
-  open.sort(function(a,b){
-    const da = new Date(a.dueDate || a.deadline || '2999-12-31');
-    const db = new Date(b.dueDate || b.deadline || '2999-12-31');
-    return da - db;
+  let v;
+  try { v = await DL.listViews({ reload: !!forceReload }); }
+  catch(e){
+    console.warn('[Cockpit] werkpakketten laden mislukt:', e.message);
+    el.innerHTML = '<div class="activity-empty">Werkpakketten laden mislukt.</div>';
+    return;
+  }
+  if (!v.shared.length && !v.personal.length){
+    el.innerHTML = '<div class="activity-empty">Nog geen werkpakketten — sla in de Documentenlijst een weergave op via <strong>Weergaves</strong>.</div>';
+    return;
+  }
+  function groep(label, list){
+    if (!list.length) return '';
+    return '<div class="wp-group">' + escapeHtml(label) + '</div>' + list.map(function(w){
+      const meta = w.updatedAt ? formatDate(new Date(w.updatedAt).toISOString()) : '';
+      const rel = (w.release && w.release.id)
+        ? '<span class="rel-tag wp-rel" data-rel-id="' + escapeHtml(w.release.id) + '" title="Open release &quot;' + escapeHtml(w.release.name || '') + '&quot; in Trimble Connect">' + escapeHtml(String(w.release.name || 'release').substring(0, 14)) + '</span>'
+        : '';
+      return '<div class="activity-item clickable" data-wp-id="' + escapeHtml(w.id) + '" title="Open in Documentenlijst">'
+        + '<span class="ac-ico">▤</span>'
+        + '<span class="name" title="' + escapeHtml(w.name) + '">' + escapeHtml(w.name) + '</span>'
+        + rel
+        + '<span class="meta">' + escapeHtml(meta) + '</span>'
+        + '<span class="ext-link">→</span>'
+        + '</div>';
+    }).join('');
+  }
+  el.innerHTML = groep('Gedeeld in dit project', v.shared) + groep('Alleen voor jou', v.personal);
+  el.querySelectorAll('[data-wp-id]').forEach(function(row){
+    row.addEventListener('click', function(e){
+      const relTag = e.target.closest('.wp-rel');
+      if (relTag){
+        openInTC('releases/' + relTag.getAttribute('data-rel-id'));
+        return;
+      }
+      DL.setPendingView(row.getAttribute('data-wp-id'));
+      showView('documentenlijst');
+    });
   });
-  const top = open.slice(0, 5);
-  if (top.length === 0){
-    el.innerHTML = '<div class="activity-empty">Geen open te-do\'s — top!</div>';
-    return;
-  }
-  el.innerHTML = top.map(function(t){
-    const title = t.title || t.name || t.subject || 'Onbekend';
-    const due = t.dueDate || t.deadline;
-    const overdue = due && new Date(due) < new Date();
-    const statusCls = overdue ? 'high' : (due ? 'due' : '');
-    const dueStr = due ? (overdue ? 'Verlopen' : formatDate(due)) : '';
-    const assignee = t.assignedTo?.firstName ? (t.assignedTo.firstName + ' ' + (t.assignedTo.lastName || '')).trim() : (t.assignee || '');
-    const meta = [dueStr, assignee].filter(Boolean).join(' · ');
-    return '<div class="todo-item">'
-      + '<span class="todo-status '+statusCls+'">!</span>'
-      + '<div class="todo-content">'
-        + '<div class="todo-title">'+escapeHtml(title)+'</div>'
-        + (meta ? '<div class="todo-meta">'+escapeHtml(meta)+'</div>' : '')
-      + '</div>'
-      + '</div>';
-  }).join('');
 }
 
 function renderReleases(releases){
@@ -2716,7 +2737,7 @@ function renderReleases(releases){
   }
   // Sorteer op datum DESC
   list.sort(function(a,b){ return new Date(b.modifiedOn||b.createdOn||0) - new Date(a.modifiedOn||a.createdOn||0); });
-  const top = list.slice(0, 5);
+  const top = list.slice(0, getRecentCount());
   el.innerHTML = top.map(function(r){
     const name = r.name || r.title || 'Onbekend';
     const tag = r.version || r.code || 'rel';
@@ -2742,7 +2763,7 @@ function renderUploads(rootList){
   const el = $('uploads');
   const items = (Array.isArray(rootList) ? rootList : []).filter(function(it){ return it.type === 'FILE'; });
   items.sort(function(a,b){ return new Date(b.createdOn||b.modifiedOn||0) - new Date(a.createdOn||a.modifiedOn||0); });
-  const top = items.slice(0, 5);
+  const top = items.slice(0, getRecentCount());
   if (top.length === 0){
     el.innerHTML = '<div class="activity-empty">Nog geen uploads in dit project.</div>';
     return;
@@ -2785,7 +2806,7 @@ function renderShares(shares){
   });
   // Sorteer op createdOn DESC
   open.sort(function(a,b){ return new Date(b.createdOn||0) - new Date(a.createdOn||0); });
-  const top = open.slice(0, 5);
+  const top = open.slice(0, getRecentCount());
   if (top.length === 0){
     el.innerHTML = '<div class="activity-empty">Alleen verlopen shares — geen openstaande.</div>';
     return;
@@ -6403,6 +6424,9 @@ const DL = (function(){
   // Benoemde weergaves (v1.7). Twee scopes; zie _viewSnapshot voor wat erin zit.
   let _views = { shared: [], personal: [] };
   let _activeViewId = '';
+  // v1.11: dashboard-werkpakket klikt → setPendingView(id) → showView('documentenlijst');
+  // activate() consumeert de pending id zodra de views er zijn.
+  let _pendingViewId = '';
   // Auto-refresh + updates-banner
   let _autoRefreshTimer = null;
   let _isCheckingUpdates = false;
@@ -8360,6 +8384,9 @@ const DL = (function(){
       bar.style.display = '';
       if (counter) counter.textContent = n + ' geselecteerd';
     }
+    // Versie-QR-knop alleen tonen bij licentie op de qr-codes-module
+    const qrvBtn = document.getElementById('dl-qrv-btn');
+    if (qrvBtn) qrvBtn.style.display = _qrvAllowed() ? '' : 'none';
     _updateBulkEditButton();
   }
 
@@ -8721,6 +8748,28 @@ const DL = (function(){
     return _viewCanon(_viewSnapshot()) !== _viewCanon(v.state);
   }
 
+  // Pas een via het dashboard aangevraagde weergave toe. Blijft staan zolang de
+  // view (nog) niet gevonden is — de shared-load kan onderweg zijn; die roept
+  // dit aan het einde nogmaals aan. viewsLoaded=true betekent: load is klaar,
+  // dus niet-gevonden = echt weg → pending opruimen i.p.v. laten hangen.
+  function _consumePendingView(viewsLoaded){
+    if (!_pendingViewId) return;
+    const v = _viewFind(_pendingViewId);
+    if (!v){
+      if (viewsLoaded){
+        console.warn('[DL] werkpakket niet gevonden:', _pendingViewId);
+        _pendingViewId = '';
+      }
+      return;
+    }
+    _pendingViewId = '';
+    _activeViewId = v.id;
+    _viewApply(v.state);
+    _renderViewsButton();
+    _renderViewsPicker();
+    console.log('[DL] klaargezette weergave toegepast:', v.name);
+  }
+
   // ---------- opslag ----------
 
   function _viewsLoadPersonal(){
@@ -8765,7 +8814,17 @@ const DL = (function(){
       console.log('[DL] gedeelde weergaves geladen:', _views.shared.length);
       _renderViewsButton();
       _renderViewsPicker();
+      _consumePendingView(true); // race-vangnet: pending gezet terwijl deze fetch liep
     } catch(e){ console.warn('[DL] gedeelde weergaves laden mislukt:', e.message); }
+  }
+
+  // Eén load voor dashboard (listViews) én injectHtml — dedupet de hub-fetch.
+  let _viewsLoadPromise = null;
+  function _ensureViewsLoaded(reload){
+    if (_viewsLoadPromise && !reload) return _viewsLoadPromise;
+    _viewsLoadPersonal(); // sync + goedkoop, mag altijd opnieuw
+    _viewsLoadPromise = _viewsLoadShared().catch(function(){ /* logt zelf */ });
+    return _viewsLoadPromise;
   }
 
   async function _viewsSaveShared(){
@@ -8802,6 +8861,8 @@ const DL = (function(){
       alert('Opslaan mislukt — de browser blokkeert lokale opslag binnen Trimble Connect.\n\nKlik onderaan op Diagnose voor details.');
       throw new Error('localStorage geblokkeerd');
     }
+    // Dashboard-werkpakketten live bijwerken (save-as/update/rename/delete/release-koppeling)
+    try { document.dispatchEvent(new CustomEvent('cockpit:views-changed', { detail: { scope: scope } })); } catch(_){}
   }
 
   // ---------- acties ----------
@@ -8912,11 +8973,17 @@ const DL = (function(){
       list.forEach(function(v){
         const mag = scope === 'personal' || _isProjectAdmin;
         const wie = v.updatedBy ? 'Laatst opgeslagen door ' + v.updatedBy : '';
+        const relTitle = (v.release && v.release.id)
+          ? 'Gekoppeld aan release "' + (v.release.name || '') + '" — opnieuw promoveren'
+          : 'Promoveer naar release: de bestanden die nu aan deze weergave voldoen';
         h += '<div class="dl-views-row' + (v.id === _activeViewId ? ' active' : '') + '"'
           + ' data-view-id="' + _esc(v.id) + '" data-view-scope="' + scope + '">'
-          + '<span class="dl-views-name" title="' + _esc(wie) + '">' + _esc(v.name) + '</span>'
+          + '<span class="dl-views-name" title="' + _esc(wie) + '">' + _esc(v.name)
+          + ((v.release && v.release.id) ? ' <span class="dl-views-rel" title="Gekoppelde release">📦 ' + _esc(v.release.name || 'release') + '</span>' : '')
+          + '</span>'
           + (mag
               ? '<span class="dl-views-acts">'
+                + '<button type="button" class="dl-views-act" data-view-act="promote" title="' + _esc(relTitle) + '">📦</button>'
                 + '<button type="button" class="dl-views-act" data-view-act="update" title="Bijwerken met de huidige instellingen">↻</button>'
                 + '<button type="button" class="dl-views-act" data-view-act="rename" title="Hernoemen">✎</button>'
                 + '<button type="button" class="dl-views-act" data-view-act="delete" title="Verwijderen">🗑</button>'
@@ -8958,6 +9025,7 @@ const DL = (function(){
           if (act === 'update') _viewUpdate(v, scope);
           else if (act === 'rename') _viewRename(v, scope);
           else if (act === 'delete') _viewDelete(v, scope);
+          else if (act === 'promote') _viewPromoteToRelease(v, scope);
         });
       });
     });
@@ -9767,11 +9835,40 @@ const DL = (function(){
   }
 
   // === Add-to-release dialog ===
-  async function _openAddToReleaseDialog(){
+  // Context van de huidige dialog-sessie. Zonder opts: losse selectie (_selectedVids).
+  // Met opts.view (v1.11 promotie): docs = werkpakket-filterresultaat, en na succes
+  // wordt de release aan het view-object gekoppeld.
+  let _addrelCtx = null;
+
+  // v1.11: promoveer een klaargezette weergave naar een TC-release. De doc-set is
+  // wat het filter van de weergave nú oplevert — daarom eerst toepassen.
+  function _viewPromoteToRelease(v, scope){
+    if (_activeViewId !== v.id){
+      _activeViewId = v.id;
+      _viewApply(v.state);
+      _renderViewsButton();
+      _renderViewsPicker();
+    }
+    if (!_docs.length){ alert('Documenten zijn nog aan het laden — probeer het zo opnieuw.'); return; }
+    const docs = _filt().filter(function(d){ return d._vid; });
+    if (!docs.length){ alert('Dit werkpakket bevat geen bestanden — het filter levert nu niets op.'); return; }
+    // Picker sluiten; de modal komt ervoor in de plaats
+    const root = getRoot();
+    const pick = root && root.querySelector('#dl-views-picker');
+    const pbtn = root && root.querySelector('#dl-views-btn');
+    if (pick) pick.style.display = 'none';
+    if (pbtn) pbtn.classList.remove('active');
+    _openAddToReleaseDialog({ docs: docs, view: v, scope: scope });
+  }
+
+  async function _openAddToReleaseDialog(opts){
     const modal = document.getElementById('dl-addrel-modal');
     if (!modal) return;
-    const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+    const selDocs = (opts && opts.docs)
+      ? opts.docs
+      : _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
     if (!selDocs.length){ alert('Selecteer eerst bestanden om toe te voegen.'); return; }
+    _addrelCtx = { docs: selDocs, view: (opts && opts.view) || null, scope: (opts && opts.scope) || '' };
     // Reset
     const form = document.getElementById('dl-addrel-form');
     const success = document.getElementById('dl-addrel-success');
@@ -9817,6 +9914,7 @@ const DL = (function(){
   function _closeAddToReleaseDialog(){
     const modal = document.getElementById('dl-addrel-modal');
     if (modal) modal.style.display = 'none';
+    _addrelCtx = null;
   }
 
   function _toggleAddRelNewFields(){
@@ -9835,7 +9933,9 @@ const DL = (function(){
     if (!sel || !submitBtn) return;
     const val = sel.value;
     if (!val){ alert('Kies een release of maak een nieuwe aan.'); return; }
-    const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+    const selDocs = (_addrelCtx && _addrelCtx.docs)
+      ? _addrelCtx.docs
+      : _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
     if (!selDocs.length){ alert('Geen bestanden geselecteerd.'); return; }
     submitBtn.disabled = true;
     submitBtn.textContent = '⏳ Bezig…';
@@ -9882,6 +9982,19 @@ const DL = (function(){
       // Cache invalideren zodat releases-modal verse data toont
       _releasesCache.all = null;
       _releasesCache.byId.delete(relId);
+      // v1.11 promotie: koppel de release aan het werkpakket (gekoppeld model —
+      // v1.12 bouwt hierop de versie-bewaking). Mislukt de koppeling (bijv. hub
+      // 403), dan bestaat de release wél al; alleen melden, niet terugdraaien.
+      if (_addrelCtx && _addrelCtx.view){
+        const pv = _viewFind(_addrelCtx.view.id);
+        if (pv){
+          pv.release = { id: relId, name: relName, promotedAt: Date.now(), promotedBy: currentUserEmail || '' };
+          try { await _viewPersist(_addrelCtx.scope || 'personal'); }
+          catch(e){ console.warn('[DL] release-koppeling opslaan mislukt:', e.message); }
+          _renderViewsPicker();
+          console.log('[DL] werkpakket "' + pv.name + '" gekoppeld aan release "' + relName + '"');
+        }
+      }
       // Toon succes
       const form = document.getElementById('dl-addrel-form');
       const success = document.getElementById('dl-addrel-success');
@@ -10659,6 +10772,392 @@ const DL = (function(){
     if (modal) modal.style.display = 'none';
   }
 
+  // === Versie-QR (roadmap F3) — QR óp de print, publieke controle-pagina ===
+  // De hub registreert per document een code + de versie op genereer-moment;
+  // /q/{code} toont de scanner (zonder TC-account) of de print nog actueel is.
+  // Twee modes per project (hub-config 'version_check'):
+  //   'status' (default) — live check via At Fielt service-account; scanner
+  //                        ziet alleen de statustekst, nooit het bestand.
+  //   'share'            — per document een PUBLIC share; scanpagina krijgt
+  //                        een bekijk-knop. Documenten worden daarmee blijvend
+  //                        openbaar — daarom admin-only met typ-bevestiging.
+  const QRV_HUB_BASE = 'https://atfielt-extension-hub.tom-da0.workers.dev';
+  const QRV_SERVICE_EMAIL = 'connect-service@atfielt.nl';
+  let _qrvMode = 'status';
+  let _qrvModeLoaded = false;
+  let _qrvItems = [];            // [{d, code, url, revision, versionId}]
+  let _qrvServiceMember = null;  // null = nog niet gecheckt
+  let _qrvBusy = false;
+
+  function _qrvAllowed(){
+    try {
+      const q = (typeof EXTENSIONS !== 'undefined') && EXTENSIONS.find(function(e){ return e.key === 'qr-codes'; });
+      return !!(q && q.allowed === true);
+    } catch(_){ return false; }
+  }
+  function _qrvSelDocs(){
+    return _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+  }
+
+  function _qrvOpenDialog(){
+    const modal = document.getElementById('dl-qrv-modal');
+    if (!modal) return;
+    // Portal naar <body> — zelfde reden als _openQrDialog: een modal in een
+    // niet-actieve view (display:none) blijft anders onzichtbaar.
+    if (modal.parentNode !== document.body) document.body.appendChild(modal);
+    _qrvItems = [];
+    const grid = document.getElementById('dl-qrv-grid');
+    if (grid) grid.innerHTML = '';
+    const st = document.getElementById('dl-qrv-status');
+    if (st) st.textContent = '';
+    ['dl-qrv-zip', 'dl-qrv-pdf'].forEach(function(id){
+      const b = document.getElementById(id); if (b) b.disabled = true;
+    });
+    const genBtn = document.getElementById('dl-qrv-generate');
+    if (genBtn) genBtn.disabled = false;
+    const sel = _qrvSelDocs();
+    const filesEl = document.getElementById('dl-qrv-files');
+    if (filesEl){
+      const names = sel.slice(0, 6).map(function(d){ return _esc(d.document_nummer || d.bestandsnaam); }).join(', ');
+      filesEl.innerHTML = '<strong>' + sel.length + ' document' + (sel.length === 1 ? '' : 'en') + ':</strong> ' +
+        names + (sel.length > 6 ? ' … (+' + (sel.length - 6) + ')' : '');
+    }
+    modal.style.display = '';
+    _qrvRenderModeBlock();
+    _qrvLoadConfig().then(_qrvRenderModeBlock).catch(function(e){
+      console.warn('[DL] qrv-config laden mislukt:', e.message);
+      _qrvModeLoaded = true; _qrvRenderModeBlock();
+    });
+    _qrvPreflight();
+    // Zelfde project-logo als de map-QR's (gedeelde cache)
+    _qrRestoreLogo().catch(function(){});
+    _qrLog('qrv-open', sel.length);
+  }
+  function _qrvCloseDialog(){
+    const modal = document.getElementById('dl-qrv-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  // Hub-config: mode lezen (alle gebruikers) / schrijven (alleen admins, met
+  // server-side checkTcProjectAdmin als échte poortwachter).
+  async function _qrvLoadConfig(){
+    const session = _getHubSessionTokenDL();
+    if (!session || !tcProject || !tcProject.id){ _qrvModeLoaded = true; return; }
+    const url = QRV_HUB_BASE + '/api/extension-config?slug=qr-codes&project=' +
+      encodeURIComponent(tcProject.id) + '&key=version_check';
+    const r = await fetch(url, { headers: { 'X-Session': session, 'Accept': 'application/json' } });
+    if (r.ok){
+      const d = await r.json();
+      _qrvMode = (d && d.found && d.value && d.value.mode === 'share') ? 'share' : 'status';
+    }
+    _qrvModeLoaded = true;
+  }
+  async function _qrvSaveMode(mode){
+    const session = _getHubSessionTokenDL();
+    if (!session) throw new Error('Geen hub-sessie — herlaad de cockpit.');
+    const r = await fetch(QRV_HUB_BASE + '/api/extension-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Session': session, 'Accept': 'application/json' },
+      body: JSON.stringify({ slug: 'qr-codes', project: tcProject.id, key: 'version_check', value: { mode: mode }, tcToken: tcToken }),
+    });
+    if (r.status === 403) throw new Error('Alleen projectbeheerders kunnen de controle-modus wijzigen.');
+    if (!r.ok){
+      const d = await r.json().catch(function(){ return {}; });
+      throw new Error((d && d.error) || ('hub gaf ' + r.status));
+    }
+    _qrvMode = mode;
+  }
+
+  function _qrvRenderModeBlock(){
+    const el = document.getElementById('dl-qrv-mode');
+    if (!el) return;
+    if (!_qrvModeLoaded){ el.innerHTML = '<div class="dl-qrv-mode-block">Controle-modus laden…</div>'; return; }
+    const statusTekst = '🔒 <strong>Alleen versie-status</strong> — de scanner ziet uitsluitend of de print actueel is; het bestand zelf blijft afgeschermd.';
+    const shareTekst = '⚠ <strong>Status + bestand bekijken</strong> — de scanpagina toont ook het document. De documenten zijn daarmee openbaar toegankelijk voor iedereen met de QR.';
+    let inner;
+    if (_isProjectAdmin){
+      inner = '<div><strong>Controle-modus voor dit project</strong> (projectbeheerder):</div>' +
+        '<label><input type="radio" name="dl-qrv-mode-radio" value="status"' + (_qrvMode === 'status' ? ' checked' : '') + '><span>' + statusTekst + '</span></label>' +
+        '<label><input type="radio" name="dl-qrv-mode-radio" value="share"' + (_qrvMode === 'share' ? ' checked' : '') + '><span>' + shareTekst + '</span></label>' +
+        '<button type="button" id="dl-qrv-mode-save" class="dl-cols-btn" style="margin-top:8px">Modus opslaan</button>';
+    } else {
+      inner = '<div><strong>Controle-modus:</strong> ' + (_qrvMode === 'share' ? shareTekst : statusTekst) + '</div>' +
+        '<div style="color:var(--g5);margin-top:4px">Ingesteld door de projectbeheerder.</div>';
+    }
+    el.innerHTML = '<div class="dl-qrv-mode-block">' + inner + '</div>';
+    // Niet-wegklikbare waarschuwing zolang share-mode actief is
+    if (_qrvMode === 'share'){
+      el.innerHTML += '<div class="dl-qrv-banner dl-qrv-banner-warn"><strong>Openbare toegang actief.</strong> ' +
+        'Elk document waarvoor je een versie-QR maakt wordt blijvend openbaar toegankelijk — iedereen met de QR of de link ' +
+        'kan het bestand én alle toekomstige versies bekijken, zonder login. Maprechten gelden niet voor deze links.</div>';
+    }
+    const saveBtn = document.getElementById('dl-qrv-mode-save');
+    if (saveBtn) saveBtn.addEventListener('click', function(){
+      const sel = document.querySelector('input[name="dl-qrv-mode-radio"]:checked');
+      const mode = sel && sel.value === 'share' ? 'share' : 'status';
+      if (mode === 'share' && _qrvMode !== 'share'){
+        // Bewuste drempel: informatielek door een achteloze klik is dodelijk
+        // voor het vertrouwen in de extensies. Typ-bevestiging verplicht.
+        const t = prompt(
+          'LET OP — openbare toegang activeren?\n\n' +
+          'Elk document waarvoor je hierna een versie-QR maakt wordt BLIJVEND OPENBAAR toegankelijk. ' +
+          'Iedereen die de QR (of de link erachter) in handen krijgt kan het bestand én alle toekomstige versies bekijken, zonder login. ' +
+          'Maprechten van Trimble Connect gelden niet voor deze links.\n\n' +
+          'Dit is niet ongedaan te maken voor al geprinte QR’s, behalve door de deel-link in Trimble Connect in te trekken.\n\n' +
+          'Typ OPENBAAR om te bevestigen:');
+        if (t !== 'OPENBAAR') return;
+      }
+      saveBtn.disabled = true; saveBtn.textContent = 'Opslaan…';
+      _qrvSaveMode(mode).then(function(){
+        _qrvRenderModeBlock(); _qrvPreflight();
+      }).catch(function(e){
+        alert('Opslaan mislukt: ' + e.message);
+        saveBtn.disabled = false; saveBtn.textContent = 'Modus opslaan';
+      });
+    });
+  }
+
+  // Pre-flight: is het At Fielt controle-account al projectlid? Zo niet, dan
+  // kan de scanpagina in status-mode (nog) geen live check doen. Genereren mag
+  // gewoon — de check gaat vanzelf werken zodra het account is uitgenodigd,
+  // opnieuw printen is niet nodig. Zelfde Range-paginatie als _checkProjectAdmin.
+  async function _qrvPreflight(){
+    const el = document.getElementById('dl-qrv-preflight');
+    if (!el || !tcProject || !tcProject.id) return;
+    if (_qrvServiceMember === null){
+      try {
+        let found = false;
+        let start = 0; const pageSize = 100; let safety = 0;
+        while (safety++ < 30){
+          const headers = { 'Authorization': 'Bearer ' + tcToken, 'Accept': 'application/json', 'Range': 'items=' + start + '-' + (start + pageSize - 1) };
+          const r = await fetch(TC_API_BASE + '/projects/' + encodeURIComponent(tcProject.id) + '/users', { headers: headers });
+          if (!r.ok) break;
+          const users = await r.json();
+          if (!Array.isArray(users) || !users.length) break;
+          if (users.some(function(u){ return (u.email || '').toLowerCase() === QRV_SERVICE_EMAIL; })){ found = true; break; }
+          if (users.length < pageSize) break;
+          start += pageSize;
+        }
+        _qrvServiceMember = found;
+      } catch(e){
+        console.warn('[DL] qrv-preflight mislukt:', e.message);
+        return; // onbekend laten — geen banner op basis van een fetch-fout
+      }
+    }
+    if (_qrvServiceMember === true){
+      el.innerHTML = '<div class="dl-qrv-banner dl-qrv-banner-ok">✓ Het At Fielt controle-account is projectlid — de live versiecontrole werkt.</div>';
+    } else if (_qrvServiceMember === false && _qrvMode === 'status'){
+      el.innerHTML = '<div class="dl-qrv-banner dl-qrv-banner-warn"><strong>Voorwaarde voor live controle:</strong> ' +
+        'het At Fielt controle-account (<code>' + QRV_SERVICE_EMAIL + '</code>) is nog geen lid van dit project. ' +
+        'Vraag een projectbeheerder het account uit te nodigen — <em>leesrechten volstaan</em>. ' +
+        'Je kunt nu al QR’s genereren en printen: zodra het account lid is werkt de controle direct, opnieuw printen is niet nodig. ' +
+        'Tot die tijd toont de scanpagina alleen de geprinte gegevens met de melding dat live controle nog niet mogelijk is.</div>';
+    } else {
+      el.innerHTML = '';
+    }
+  }
+
+  // Genereren: per document nieuwste versie ophalen (+ evt. PUBLIC share),
+  // daarna één batch-registratie bij de hub → codes → QR-grid.
+  async function _qrvGenerate(){
+    if (_qrvBusy) return;
+    const sel = _qrvSelDocs();
+    if (!sel.length){ alert('Geen bestanden geselecteerd.'); return; }
+    const st = document.getElementById('dl-qrv-status');
+    const genBtn = document.getElementById('dl-qrv-generate');
+    const session = _getHubSessionTokenDL();
+    if (!session){ alert('Geen hub-sessie — herlaad de cockpit.'); return; }
+    _qrvBusy = true;
+    if (genBtn){ genBtn.disabled = true; genBtn.textContent = '⏳ Genereren…'; }
+    const failed = [];
+    const docsPayload = [];
+    const byFileId = {};
+    try {
+      for (let i = 0; i < sel.length; i++){
+        const d = sel[i];
+        if (st) st.textContent = 'Versies ophalen… (' + (i + 1) + '/' + sel.length + ')';
+        const versions = await _fetchVersions(d._vid);
+        if (!versions || !versions.length){ failed.push(d.bestandsnaam + ' (versies onbekend)'); continue; }
+        const newest = versions[0]; // nieuwste eerst, zelfde aanname als detailpaneel
+        const revision = (newest.revision != null && newest.revision !== '') ? String(newest.revision) : String(versions.length);
+        let stoken = '';
+        if (_qrvMode === 'share'){
+          if (st) st.textContent = 'Deel-link maken… (' + (i + 1) + '/' + sel.length + ')';
+          try {
+            const r = await fetch(TC_API_BASE + '/shares', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + tcToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+              body: JSON.stringify({
+                mode: 'PUBLIC', projectId: tcProject.id, permission: 'VIEW',
+                message: 'Versie-QR — automatische deel-link voor publieke versiecontrole (At Fielt)',
+                // GEEN expiryDate: een geprinte QR leeft jaren
+                objects: [{ id: d._vid, type: 'FILE' }],
+              }),
+            });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const result = await r.json();
+            // Single-object share → objects[0] is per definitie het juiste object
+            const so = result && result.objects && result.objects[0];
+            stoken = so && so.url ? String(so.url).replace(/^\/s\//, '') : '';
+            if (!stoken) throw new Error('geen token in respons');
+          } catch(e){
+            failed.push(d.bestandsnaam + ' (deel-link mislukt: ' + e.message + ')');
+            continue;
+          }
+        }
+        const item = { d: d, revision: revision, versionId: newest.versionId || '' };
+        byFileId[d._vid] = item;
+        docsPayload.push({
+          fileId: d._vid,
+          fileName: d.bestandsnaam || '',
+          docNumber: d.document_nummer || '',
+          title: d.titel || '',
+          versionId: newest.versionId || '',
+          revision: revision,
+          stoken: stoken,
+        });
+      }
+
+      if (!docsPayload.length) throw new Error('geen enkel document kon worden voorbereid');
+
+      if (st) st.textContent = 'Registreren bij de hub…';
+      const rr = await fetch(QRV_HUB_BASE + '/api/qr-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Session': session, 'Accept': 'application/json' },
+        body: JSON.stringify({ project: tcProject.id, region: tcRegionShort(), docs: docsPayload }),
+      });
+      if (!rr.ok){
+        const dd = await rr.json().catch(function(){ return {}; });
+        throw new Error((dd && dd.error) || ('hub gaf ' + rr.status));
+      }
+      const reg = await rr.json();
+      _qrvItems = (reg.codes || []).map(function(c){
+        const it = byFileId[c.fileId];
+        return it ? { d: it.d, revision: it.revision, versionId: it.versionId, code: c.code, url: c.url } : null;
+      }).filter(Boolean);
+
+      await _qrvRenderGrid();
+      ['dl-qrv-zip', 'dl-qrv-pdf'].forEach(function(id){
+        const b = document.getElementById(id); if (b) b.disabled = !_qrvItems.length;
+      });
+      if (st){
+        st.textContent = _qrvItems.length + ' QR-code' + (_qrvItems.length === 1 ? '' : 's') + ' gegenereerd.' +
+          (failed.length ? ' Mislukt: ' + failed.join('; ') : '');
+      }
+      _qrLog('qrv-generate', _qrvItems.length);
+    } catch(e){
+      console.error('[DL] versie-QR genereren mislukt:', e);
+      if (st) st.textContent = 'Genereren mislukt: ' + e.message;
+    }
+    _qrvBusy = false;
+    if (genBtn){ genBtn.disabled = false; genBtn.textContent = 'QR-codes genereren'; }
+  }
+
+  function _qrvCaptionLines(it){
+    const label = it.d.document_nummer || it.d.bestandsnaam || '';
+    const sub = 'rev ' + it.revision + ' · ' + new Date().toLocaleDateString('nl-NL');
+    return [String(label), sub];
+  }
+
+  async function _qrvRenderGrid(){
+    const grid = document.getElementById('dl-qrv-grid');
+    if (!grid) return;
+    if (!_qrvItems.length){ grid.innerHTML = ''; return; }
+    grid.innerHTML = '<div class="dl-qr-loading">QR-codes genereren…</div>';
+    let QR;
+    try { QR = await _ensureQRCode(); }
+    catch(e){ grid.innerHTML = '<div class="dl-qr-empty">QR-library kon niet geladen worden — controleer de internetverbinding.</div>'; return; }
+    let out = '';
+    for (const it of _qrvItems){
+      let dataUrl = '';
+      try { dataUrl = await _qrDataUrl(QR, it.url, 240); }
+      catch(e){ console.warn('[DL] versie-QR mislukt:', it.d.bestandsnaam, e.message); }
+      const lines = _qrvCaptionLines(it);
+      out += '<div class="dl-qr-card">' +
+        (dataUrl ? '<img class="dl-qr-img" src="' + dataUrl + '" alt="Versie-QR ' + _esc(lines[0]) + '">' : '<div class="dl-qr-img dl-qr-img-fail">QR mislukt</div>') +
+        '<div class="dl-qr-name">' + _esc(lines[0]) + '</div>' +
+        '<div class="dl-qr-url" style="color:var(--g5)">' + _esc(lines[1]) + '</div>' +
+      '</div>';
+    }
+    grid.innerHTML = out;
+  }
+
+  // Exports: bewust parallelle functies naast _exportQrZip/_exportQrPdf — die
+  // zijn hardgecodeerd op de map-items ({pad,naam,url}); de helpers eronder
+  // (_ensureJSZip/_ensureJsPDF/_ensureQRCode/_qrDataUrl/_qrSafeName/
+  // _qrProjectSlug/_qrDownloadBlob) worden wél hergebruikt.
+  async function _qrvExportZip(btn){
+    if (!_qrvItems.length) return;
+    let JSZip, QR;
+    try { JSZip = await _ensureJSZip(); } catch(e){ alert('Kan ZIP-library niet laden — controleer de internetverbinding.'); return; }
+    try { QR = await _ensureQRCode(); } catch(e){ alert('Kan QR-library niet laden — controleer de internetverbinding.'); return; }
+    const orig = btn ? btn.textContent : '';
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ ZIP maken…'; }
+    const zip = new JSZip();
+    const used = {};
+    const csv = ['Bestand;Documentnummer;Revisie;Controle-URL'];
+    for (const it of _qrvItems){
+      let dataUrl = '';
+      try { dataUrl = await _qrDataUrl(QR, it.url, 600); } catch(_){ continue; }  // hi-res voor print
+      const base64 = (dataUrl.split(',')[1]) || '';
+      if (!base64) continue;
+      let name = _qrSafeName(it.d.document_nummer || it.d.bestandsnaam);
+      if (used[name]){ used[name]++; name = name + ' (' + used[name] + ')'; } else { used[name] = 1; }
+      zip.file(name + '.png', base64, { base64: true });
+      csv.push('"' + String(it.d.bestandsnaam || '').replace(/"/g, '""') + '";"' + String(it.d.document_nummer || '').replace(/"/g, '""') + '";"' + it.revision + '";"' + it.url + '"');
+    }
+    zip.file('_koppeltabel.csv', '﻿' + csv.join('\r\n'));
+    try {
+      const content = await zip.generateAsync({ type: 'blob' });
+      _qrDownloadBlob(content, 'versie-qr_' + _qrProjectSlug() + '.zip');
+    } catch(e){ alert('ZIP aanmaken mislukt: ' + e.message); }
+    if (btn){ btn.disabled = false; btn.textContent = orig; }
+    _qrLog('qrv-export-zip', _qrvItems.length);
+  }
+
+  async function _qrvExportPdf(btn){
+    if (!_qrvItems.length) return;
+    let jsPDF, QR;
+    try { jsPDF = await _ensureJsPDF(); } catch(e){ alert('Kan PDF-library niet laden — controleer de internetverbinding.'); return; }
+    try { QR = await _ensureQRCode(); } catch(e){ alert('Kan QR-library niet laden.'); return; }
+    const orig = btn ? btn.textContent : '';
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ PDF maken…'; }
+    try {
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageW = 210, pageH = 297, margin = 14, cols = 3, gap = 6;
+      const cellW = (pageW - margin * 2 - gap * (cols - 1)) / cols;
+      const qrSize = cellW - 6;
+      const cellH = qrSize + 18;  // QR + tweeregelig bijschrift (docnr + rev/datum)
+      const title = 'Versie-QR — ' + ((tcProject && tcProject.name) || 'project');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(34);
+      let y = margin;
+      doc.text(title, margin, y); y += 6;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(120);
+      doc.text(_qrvItems.length + ' documenten — scan toont of de print nog de actuele versie is (geen Trimble-account nodig)', margin, y);
+      doc.setTextColor(34); y += 8;
+      let col = 0;
+      for (const it of _qrvItems){
+        if (col === 0 && (y + cellH > pageH - margin)){ doc.addPage(); y = margin; }
+        const x = margin + col * (cellW + gap);
+        let dataUrl = '';
+        try { dataUrl = await _qrDataUrl(QR, it.url, 600); } catch(_){}
+        if (dataUrl){ try { doc.addImage(dataUrl, 'PNG', x, y, qrSize, qrSize); } catch(_){} }
+        const lines = _qrvCaptionLines(it);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+        const label = doc.splitTextToSize(lines[0], cellW);
+        doc.text(label, x + qrSize / 2, y + qrSize + 4, { align: 'center' });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
+        doc.text(lines[1], x + qrSize / 2, y + qrSize + 4 + label.length * 4, { align: 'center' });
+        doc.setTextColor(34);
+        col++;
+        if (col >= cols){ col = 0; y += cellH; }
+      }
+      doc.save('versie-qr_' + _qrProjectSlug() + '.pdf');
+    } catch(e){ alert('PDF aanmaken mislukt: ' + e.message); }
+    if (btn){ btn.disabled = false; btn.textContent = orig; }
+    _qrLog('qrv-export-pdf', _qrvItems.length);
+  }
+
   function injectHtml(){
     if (_isInjected) return;
     const root = getRoot();
@@ -10667,8 +11166,7 @@ const DL = (function(){
     _loadColsConfig();
     // Async: hub project-defaults + admin-check (UI past zich aan zodra binnen)
     _loadProjectColConfig().catch(function(e){ console.warn('[DL] project-config laden mislukt:', e.message); });
-    _viewsLoadPersonal();
-    _viewsLoadShared().catch(function(e){ console.warn('[DL] gedeelde weergaves laden mislukt:', e.message); });
+    _ensureViewsLoaded(); // gededuped met een eventuele dashboard-load (listViews)
     _checkProjectAdmin().catch(function(e){ console.warn('[DL] admin-check mislukt:', e.message); });
     // Initiële render: gebruik _getActiveCols() zodat we direct de juiste kolom-set
     // tonen. Bij verandering van _hasMetaSchema later updateert _renderTableHeader().
@@ -10735,6 +11233,7 @@ const DL = (function(){
           '<button type="button" id="dl-bulk-edit-btn" class="dl-selection-btn dl-selection-btn-primary">✏️ Bulk wijzigen</button>' +
           '<button type="button" id="dl-add-release-btn" class="dl-selection-btn dl-selection-btn-primary">📦 Naar release</button>' +
           '<button type="button" id="dl-zip-btn" class="dl-selection-btn dl-selection-btn-primary" title="Download de geselecteerde bestanden als ZIP, met mappenstructuur en metadata-CSV">💾 Download ZIP</button>' +
+          '<button type="button" id="dl-qrv-btn" class="dl-selection-btn dl-selection-btn-primary" style="display:none" title="Genereer per document een QR-code voor op de print — scannen toont of de print nog de actuele versie is (zonder Trimble-account)">🏷️ Versie-QR</button>' +
           '<button type="button" id="dl-selection-clear" class="dl-selection-btn">Selectie wissen</button>' +
         '</div>' +
         '<div id="dl-filter-bar" class="dl-filter-bar" style="display:none"></div>' +
@@ -10939,6 +11438,31 @@ const DL = (function(){
               '<button type="button" id="dl-qr-csv" class="dl-share-btn dl-share-btn-secondary" title="Koppeltabel mapnaam → URL">⬇ CSV</button>' +
               '<button type="button" id="dl-qr-pdf" class="dl-share-btn dl-share-btn-secondary" title="Printbaar overzichtsvel met alle QR-codes">🖨 PDF</button>' +
               '<button type="button" id="dl-qr-zip" class="dl-share-btn dl-share-btn-primary" title="ZIP met losse QR-PNG\'s per map">⬇ ZIP (PNG\'s)</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        // Versie-QR modal (F3; hidden default — getoond door _qrvOpenDialog)
+        '<div id="dl-qrv-modal" class="dl-share-modal" style="display:none">' +
+          '<div class="dl-share-backdrop" id="dl-qrv-backdrop"></div>' +
+          '<div class="dl-share-panel dl-qr-panel" role="dialog" aria-label="Versie-QR genereren">' +
+            '<div class="dl-share-head">' +
+              '<h3 class="dl-share-title">Versie-QR voor documenten</h3>' +
+              '<button type="button" id="dl-qrv-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
+            '</div>' +
+            '<div class="dl-share-body">' +
+              '<p class="dl-qr-intro">Print de QR-code óp het document. Wie hem scant ziet direct — <strong>zonder Trimble-account</strong> — of die print nog de actuele versie is. De QR verwijst naar een controle-pagina van At Fielt; per code wordt vastgelegd welke versie er op de print staat.</p>' +
+              '<div id="dl-qrv-files" style="font-size:13px;color:var(--g6);margin-bottom:var(--s3)"></div>' +
+              '<div id="dl-qrv-mode"></div>' +
+              '<div id="dl-qrv-preflight"></div>' +
+              '<div id="dl-qrv-status" style="font-size:13px;color:var(--g5);min-height:18px"></div>' +
+              '<div id="dl-qrv-grid" class="dl-qr-grid"></div>' +
+            '</div>' +
+            '<div class="dl-share-foot">' +
+              '<span class="dl-qr-tb-spacer"></span>' +
+              '<button type="button" id="dl-qrv-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
+              '<button type="button" id="dl-qrv-pdf" class="dl-share-btn dl-share-btn-secondary" disabled title="Printbaar vel met alle versie-QR\'s + bijschrift">🖨 PDF</button>' +
+              '<button type="button" id="dl-qrv-zip" class="dl-share-btn dl-share-btn-secondary" disabled title="ZIP met losse QR-PNG\'s + koppeltabel">⬇ ZIP (PNG\'s)</button>' +
+              '<button type="button" id="dl-qrv-generate" class="dl-share-btn dl-share-btn-primary">QR-codes genereren</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -11243,6 +11767,21 @@ const DL = (function(){
     if (qrPdf) qrPdf.addEventListener('click', function(){ _exportQrPdf(qrPdf); });
     const qrCsv = root.querySelector('#dl-qr-csv');
     if (qrCsv) qrCsv.addEventListener('click', _exportQrCsv);
+    // Versie-QR dialog (F3)
+    const qrvBtn = root.querySelector('#dl-qrv-btn');
+    if (qrvBtn) qrvBtn.addEventListener('click', _qrvOpenDialog);
+    const qrvClose = root.querySelector('#dl-qrv-close');
+    if (qrvClose) qrvClose.addEventListener('click', _qrvCloseDialog);
+    const qrvCancel = root.querySelector('#dl-qrv-cancel');
+    if (qrvCancel) qrvCancel.addEventListener('click', _qrvCloseDialog);
+    const qrvBackdrop = root.querySelector('#dl-qrv-backdrop');
+    if (qrvBackdrop) qrvBackdrop.addEventListener('click', _qrvCloseDialog);
+    const qrvGen = root.querySelector('#dl-qrv-generate');
+    if (qrvGen) qrvGen.addEventListener('click', _qrvGenerate);
+    const qrvZip = root.querySelector('#dl-qrv-zip');
+    if (qrvZip) qrvZip.addEventListener('click', function(){ _qrvExportZip(qrvZip); });
+    const qrvPdf = root.querySelector('#dl-qrv-pdf');
+    if (qrvPdf) qrvPdf.addEventListener('click', function(){ _qrvExportPdf(qrvPdf); });
     // Add-to-release dialog
     const zipBtn = root.querySelector('#dl-zip-btn');
     if (zipBtn) zipBtn.addEventListener('click', function(){ _downloadSelectionZip(zipBtn); });
@@ -11571,7 +12110,7 @@ const DL = (function(){
           return v ? v.name + (_viewIsDirty() ? ' (aangepast)' : '') : '';
         })(),
         weergavesOpgeslagen: _views.shared.length + ' gedeeld / ' + _views.personal.length + ' persoonlijk',
-        weergave: _viewMode + (_selectedFolder ? ' @ ' + _selectedFolder : ''),
+        weergaveModus: _viewMode + (_selectedFolder ? ' @ ' + _selectedFolder : ''),
         bestandstypeChips: _filterExts && _filterExts.size ? Array.from(_filterExts) : [],
         sortering: _sortK + ' ' + _sortD,
         cacheSleutel: (function(){ try { return _cacheKey(); } catch(_){ return '?'; } })(),
@@ -11588,8 +12127,29 @@ const DL = (function(){
         return;
       }
       injectHtml();
+      // v1.11: werkpakket vanaf het dashboard — pas de klaargezette weergave toe.
+      // Vóór de load-branch: bij eerste activatie rendert _loadDocs mét die state,
+      // bij een al-geladen lijst rendert _viewApply zelf direct.
+      _consumePendingView();
       if (!_isLoaded && !_isLoading) _loadDocs();
       else if (_isLoaded) _renderTable();
+    },
+    // v1.11 — dashboard-werkpakketten. Kopieën zonder state: het dashboard heeft
+    // alleen id/naam/meta/release nodig; de state-blob blijft privé in DL.
+    listViews: function(opts){
+      return _ensureViewsLoaded(opts && opts.reload).then(function(){
+        function strip(v){
+          return {
+            id: v.id, name: v.name,
+            updatedBy: v.updatedBy || '', updatedAt: v.updatedAt || 0,
+            release: (v.release && v.release.id) ? { id: v.release.id, name: v.release.name || '' } : null,
+          };
+        }
+        return { shared: _views.shared.map(strip), personal: _views.personal.map(strip) };
+      });
+    },
+    setPendingView: function(id){
+      _pendingViewId = String(id || '');
     },
     invalidateCache: function(){
       // Aangeroepen door cockpit na cockpit:upload-done event. Wist localStorage
@@ -12524,8 +13084,7 @@ const RV = (function(){
 const SETTINGS_PREFIX = 'atfielt_dash_';
 const SETTINGS_DEFAULTS = {
   period: '30',          // '7' | '30' | '90' (dagen)
-  recentCount: '10',     // '5' | '10' | '20'
-  showTodos: true        // todo's prominent tonen
+  recentCount: '10'      // '5' | '10' | '20'
 };
 function getSetting(key){
   // Fail-soft: in sommige browserconfiguraties (third-party cookies geblokkeerd)
@@ -12546,7 +13105,6 @@ function setSetting(key, value){
 function openSettingsModal(){
   document.getElementById('setting-period').value = getSetting('period');
   document.getElementById('setting-recent-count').value = getSetting('recentCount');
-  document.getElementById('setting-show-todos').checked = getSetting('showTodos') === true;
   document.getElementById('settingsOverlay').classList.add('vis');
 }
 function closeSettingsModal(){
@@ -12555,13 +13113,13 @@ function closeSettingsModal(){
 function saveSettingsModal(){
   setSetting('period', document.getElementById('setting-period').value);
   setSetting('recentCount', document.getElementById('setting-recent-count').value);
-  setSetting('showTodos', document.getElementById('setting-show-todos').checked);
   closeSettingsModal();
   console.log('[Settings] Opgeslagen:', {
     period: getSetting('period'),
-    recentCount: getSetting('recentCount'),
-    showTodos: getSetting('showTodos')
+    recentCount: getSetting('recentCount')
   });
+  // Direct toepassen — period/recentCount werken door in de dashboard-widgets
+  refreshDashboard('settings');
 }
 
 // ============================================================
@@ -12630,11 +13188,6 @@ document.addEventListener('DOMContentLoaded', function(){
       <option value="10">10</option>
       <option value="20">20</option>
     </select>
-
-    <label class="checkbox-row">
-      <input type="checkbox" id="setting-show-todos">
-      <span>Todo's prominent tonen</span>
-    </label>
 
     <div class="actions">
       <button class="btn-secondary" type="button" onclick="closeSettingsModal();window.cockpitDiag.open()" style="margin-right:auto">Diagnose…</button>
