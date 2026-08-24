@@ -1414,7 +1414,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.14';
+const COCKPIT_VERSION = '1.15';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -2752,7 +2752,7 @@ async function renderWerkpakketten(forceReload){
     row.addEventListener('click', function(e){
       const relTag = e.target.closest('.wp-rel');
       if (relTag){
-        openInTC('releases/' + relTag.getAttribute('data-rel-id'));
+        openInTC('data/release/' + relTag.getAttribute('data-rel-id'));
         return;
       }
       DL.setPendingView(row.getAttribute('data-wp-id'));
@@ -2805,7 +2805,7 @@ function renderReleases(releases){
   el.querySelectorAll('.release-item.clickable').forEach(function(row){
     row.addEventListener('click', function(){
       const id = row.getAttribute('data-release-id');
-      openInTC(id ? 'releases/' + id : 'releases');
+      openInTC(id ? 'data/release/' + id : 'data/release');
     });
   });
   decorateReleaseBadges();
@@ -2881,7 +2881,7 @@ function renderShares(shares){
     row.addEventListener('click', function(){
       const link = row.getAttribute('data-share-link');
       if (link) window.open(link, '_blank', 'noopener,noreferrer');
-      else openInTC('shares');
+      else openInTC('activity');
     });
   });
 }
@@ -6669,7 +6669,7 @@ const DL = (function(){
   // dan alleen-folder, want de folder-tree is zichtbaar links.
   function _tcFileDetailUrl(doc){
     if (!doc || !doc._vid || !tcProject || !tcProject.id) return '';
-    return 'https://web.connect.trimble.com/projects/' + encodeURIComponent(tcProject.id) + '/files/' + encodeURIComponent(doc._vid);
+    return 'https://web.connect.trimble.com/projects/' + encodeURIComponent(tcProject.id) + '/data/file/' + encodeURIComponent(doc._vid);
   }
   function _getActiveCols(){
     let visible = ALL_COLS.filter(function(c){ return _visibleColKeys.has(c.k); });
@@ -9589,18 +9589,24 @@ const DL = (function(){
 
   function _relFileStatus(f){
     const fid = f.id || f.fileId || '';
-    let doc = fid ? _docs.find(function(d){ return d._vid === fid; }) : null;
-    let outdated = false;
     const pinned = (f.revision != null) ? String(f.revision) : ((f.version != null) ? String(f.version) : '');
-    if (doc){
-      if (pinned && String(doc._versie || '') && pinned !== String(doc._versie)) outdated = true;
-    } else if (f.name){
+    let doc = fid ? _docs.find(function(d){ return d._vid === fid; }) : null;
+    const matchedById = !!doc;
+    if (!doc && f.name){
       const m = _docs.filter(function(d){ return d.bestandsnaam === f.name; });
       if (m.length){
         doc = m[0];
-        outdated = true; // ander item-id dan het actuele = oudere gepinde versie
         if (m.length > 1) console.warn('[DL] release-status: naam-match ambigu voor', f.name, '(' + m.length + ' kandidaten)');
       }
+    }
+    // v1.15: oordeel primair op revisie-vergelijking. Sinds we versie-specifiek
+    // pinnen kan het entry-id een versie-id zijn dat afwijkt van doc._vid — dat is
+    // dan juist CORRECT, dus id-mismatch mag niet langer automatisch "verouderd"
+    // betekenen. Alleen zonder revisieveld valt de oude heuristiek terug.
+    let outdated = false;
+    if (doc){
+      if (pinned && String(doc._versie || '')) outdated = pinned !== String(doc._versie);
+      else if (!matchedById) outdated = true; // geen revisie-info → oude heuristiek
     }
     return { doc: doc, outdated: outdated, pinned: pinned };
   }
@@ -9634,14 +9640,118 @@ const DL = (function(){
     }
   }
 
-  // Eén release-bestand naar de nieuwste versie: oude gepinde item weg (alleen
-  // als het id verschilt), actuele item erin. Idempotent bij gelijk id.
+  // Nieuwste versie van een doc: hoogste revision uit /files/{id}/versions.
+  // BEWUST op max(revision) en niet op array-positie — de mei-21-les: nooit op de
+  // volgorde van een versions-array vertrouwen. null bij falen → caller degradeert.
+  async function _latestVersion(doc){
+    try {
+      const arr = await _fetchVersions(doc._vid);
+      if (!Array.isArray(arr) || !arr.length) return null;
+      let best = null;
+      for (const v of arr){
+        const rev = Number(v.revision != null ? v.revision : v.version);
+        if (!isFinite(rev)) continue;
+        if (!best || rev > best.revision) best = { versionId: v.versionId || v.id || '', revision: rev };
+      }
+      return best;
+    } catch(e){
+      console.warn('[DL] versies ophalen mislukt voor', doc.bestandsnaam, '—', e.message);
+      return null;
+    }
+  }
+
+  // Kern van v1.15: bestanden versie-bewust aan een release toevoegen MET verificatie.
+  // De publieke docs geven het POST-schema niet prijs, dus empirisch robuust:
+  //   Poging A: { id: file-id, versionId: <nieuwste> } — als de API een versionId-veld kent.
+  //   Verificatie: verse GET; gepinde revision moet de nieuwste zijn.
+  //   Poging B (per gefaald doc): entry weg, POST { id: <nieuwste versionId> } —
+  //   consistent met TC-native releases waar het entry-id een versie-id is.
+  // Succes/falen komt uit de VERIFICATIE, niet uit de HTTP-status — de v1.12-teller
+  // rapporteerde "ok" op een POST die aantoonbaar niets wijzigde.
+  async function _releaseAddLatest(relId, docs){
+    const wanted = [];
+    for (const doc of docs){
+      wanted.push({ doc: doc, lv: await _latestVersion(doc) });
+    }
+    function entryFor(files, w){
+      const ids = {};
+      ids[w.doc._vid] = 1;
+      if (w.lv && w.lv.versionId) ids[w.lv.versionId] = 1;
+      let e = files.find(function(f){ return ids[f.id || f.fileId || '']; });
+      if (!e) e = files.find(function(f){ return f.name === w.doc.bestandsnaam; });
+      return e || null;
+    }
+    function isPinnedLatest(e, w){
+      if (!e) return false;
+      if (!w.lv) return true; // versies onbekend — entry-bestaan is het beste oordeel
+      const pinned = (e.revision != null) ? String(e.revision) : ((e.version != null) ? String(e.version) : '');
+      if (!pinned) return true; // geen revisieveld in de respons — niet te beoordelen
+      return pinned === String(w.lv.revision);
+    }
+    async function freshFiles(){
+      _releasesCache.byId.delete(relId);
+      return _fetchReleaseFiles(relId);
+    }
+
+    // Poging A — één batch. Een 400 (onbekend veld) laat de hele batch naar B vallen.
+    let aFailed = false;
+    try {
+      await _releaseFilesCall(relId, 'POST', wanted.map(function(w){
+        const item = { id: w.doc._vid, type: 'FILE' };
+        if (w.lv && w.lv.versionId) item.versionId = w.lv.versionId;
+        return item;
+      }));
+    } catch(e){
+      aFailed = true;
+      console.warn('[DL] release-add poging A geweigerd (' + e.message + ') — door naar B');
+    }
+    let files = await freshFiles();
+    const pendingB = [];
+    const okDocs = [];
+    for (const w of wanted){
+      if (!aFailed && isPinnedLatest(entryFor(files, w), w)) okDocs.push(w);
+      else pendingB.push(w);
+    }
+
+    // Poging B — per doc: bestaande entry weg, versie-id als item-id erin.
+    let usedB = false;
+    for (const w of pendingB){
+      try {
+        const e = entryFor(files, w);
+        if (e && (e.id || e.fileId)) await _releaseFilesCall(relId, 'DELETE', [{ id: e.id || e.fileId, type: 'FILE' }]);
+        const bId = (w.lv && w.lv.versionId) ? w.lv.versionId : w.doc._vid;
+        await _releaseFilesCall(relId, 'POST', [{ id: bId, type: 'FILE' }]);
+        usedB = true;
+      } catch(e){
+        console.warn('[DL] release-add poging B mislukt voor', w.doc.bestandsnaam, '—', e.message);
+      }
+    }
+
+    // Eindverificatie (alleen nodig als er een B-ronde was)
+    if (pendingB.length) files = await freshFiles();
+    const ok = [], fout = [];
+    for (const w of wanted){
+      if (isPinnedLatest(entryFor(files, w), w)) ok.push(w.doc);
+      else fout.push(w.doc);
+    }
+    const variant = pendingB.length === 0 ? 'A' : (okDocs.length ? 'A+B' : 'B');
+    if (typeof DIAG !== 'undefined') DIAG.note('release-add variant ' + variant + ': ' + ok.length + ' ok, ' + fout.length + ' fout');
+    console.log('[DL] release-add (' + variant + '):', ok.length, 'geverifieerd ok,', fout.length, 'fout');
+    _relStatusCache.delete(relId);
+    return { ok: ok, fout: fout, variant: variant };
+  }
+
+  // Eén release-bestand naar de nieuwste versie. Entry ALTIJD eerst weg — bij een
+  // gelijk id was de oude POST een server-no-op die de gepinde versie liet staan
+  // (v1.12-bug: "13 ok" zonder dat er iets veranderde). Gooit bij geverifieerd falen.
   async function _updateReleaseFile(relId, f, doc){
     const oldId = f.id || f.fileId || '';
-    if (oldId && oldId !== doc._vid){
-      await _releaseFilesCall(relId, 'DELETE', [{ id: oldId, type: 'FILE' }]);
+    if (oldId){
+      try { await _releaseFilesCall(relId, 'DELETE', [{ id: oldId, type: 'FILE' }]); }
+      catch(e){ console.warn('[DL] oude release-entry verwijderen mislukt:', e.message); }
     }
-    await _releaseFilesCall(relId, 'POST', [{ id: doc._vid, type: 'FILE' }]);
+    const res = await _releaseAddLatest(relId, [doc]);
+    if (res.fout.length) throw new Error('bijwerken kon niet worden geverifieerd voor ' + doc.bestandsnaam);
   }
 
   // Werkpakket-sync (gekoppeld model): verouderde bestanden bijwerken + bestanden
@@ -9690,15 +9800,21 @@ const DL = (function(){
     if (ontbrekend) regels.push('• ' + ontbrekend + ' bestand(en) vallen buiten het werkpakket — blijven ongemoeid');
     if (!confirm('Release "' + relName + '" bijwerken vanuit werkpakket "' + v.name + '"?\n\n' + regels.join('\n'))) return;
     let ok = 0, fout = 0;
+    // Bijwerken: oude entries weg, daarna samen met de nieuwe bestanden in één
+    // versie-bewuste, geverifieerde add (v1.15).
+    const bijTeWerken = [];
     for (const p of outdatedPairs){
-      try { await _updateReleaseFile(relId, p.f, p.doc); ok++; }
-      catch(e){ fout++; console.warn('[DL] release-sync bijwerken mislukt:', p.doc.bestandsnaam, e.message); }
-    }
-    if (nieuwe.length){
       try {
-        await _releaseFilesCall(relId, 'POST', nieuwe.map(function(d){ return { id: d._vid, type: 'FILE' }; }));
-        ok += nieuwe.length;
-      } catch(e){ fout += nieuwe.length; console.warn('[DL] release-sync toevoegen mislukt:', e.message); }
+        const oldId = p.f.id || p.f.fileId || '';
+        if (oldId) await _releaseFilesCall(relId, 'DELETE', [{ id: oldId, type: 'FILE' }]);
+        bijTeWerken.push(p.doc);
+      } catch(e){ fout++; console.warn('[DL] release-sync oude entry verwijderen mislukt:', p.doc.bestandsnaam, e.message); }
+    }
+    const toeTeVoegen = bijTeWerken.concat(nieuwe);
+    if (toeTeVoegen.length){
+      const res = await _releaseAddLatest(relId, toeTeVoegen);
+      ok += res.ok.length;
+      fout += res.fout.length;
     }
     _releasesCache.byId.delete(relId);
     _releasesCache.all = null;
@@ -10385,21 +10501,33 @@ const DL = (function(){
         }
       });
     });
-    // Alles bijwerken
+    // Alles bijwerken — batch: eerst alle oude entries weg, dan één versie-bewuste
+    // add met één eindverificatie (v1.15; de per-bestand-lus deed 2 calls per file
+    // en rapporteerde "ok" zonder te controleren).
     const allBtn = filesEl.querySelector('.dl-rel-update-all');
     if (allBtn) allBtn.addEventListener('click', async function(e){
       e.stopPropagation();
       allBtn.disabled = true;
-      let ok = 0, fout = 0;
+      allBtn.textContent = '⏳ bijwerken…';
+      const docs = [];
+      let fout = 0;
       for (const i of outdatedIdx){
         const f = files[i];
         const st = _relFileStatus(f);
         if (!st.doc){ fout++; continue; }
-        allBtn.textContent = '⏳ ' + (ok + fout + 1) + '/' + outdatedIdx.length;
-        try { await _updateReleaseFile(relId, f, st.doc); ok++; }
-        catch(err){ fout++; console.warn('[DL] bijwerken mislukt:', f.name, err.message); }
+        try {
+          const oldId = f.id || f.fileId || '';
+          if (oldId) await _releaseFilesCall(relId, 'DELETE', [{ id: oldId, type: 'FILE' }]);
+          docs.push(st.doc);
+        } catch(err){ fout++; console.warn('[DL] oude entry verwijderen mislukt:', f.name, err.message); }
       }
-      console.log('[DL] release alles-bijwerken klaar:', ok, 'ok,', fout, 'fout');
+      let ok = 0;
+      if (docs.length){
+        const res = await _releaseAddLatest(relId, docs);
+        ok = res.ok.length;
+        fout += res.fout.length;
+      }
+      console.log('[DL] release alles-bijwerken klaar (geverifieerd):', ok, 'ok,', fout, 'fout');
       if (fout) alert(ok + ' bijgewerkt, ' + fout + ' mislukt — zie console (F12).');
       reloadExpand();
     });
@@ -10564,18 +10692,16 @@ const DL = (function(){
         const existing = (_releasesCache.all || []).find(function(r){ return r.id === val; });
         relName = existing ? existing.name : 'release';
       }
-      // Voeg bestanden toe
-      const fileItems = selDocs.map(function(doc){ return { id: doc._vid, type: 'FILE' }; });
-      const addResp = await fetch(TC_API_BASE + '/releases/' + encodeURIComponent(relId) + '/files', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + tcToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(fileItems),
-      });
-      if (!addResp.ok){
-        const txt = await addResp.text().catch(function(){ return ''; });
-        throw new Error('Toevoegen mislukt: HTTP ' + addResp.status + ': ' + txt.slice(0, 200));
+      // Voeg bestanden toe — versie-bewust en geverifieerd (v1.15; de kale
+      // {id}-POST pinde aantoonbaar v1 in plaats van de nieuwste versie)
+      const addRes = await _releaseAddLatest(relId, selDocs);
+      if (addRes.fout.length && !addRes.ok.length){
+        throw new Error('Toevoegen kon voor geen enkel bestand worden geverifieerd — zie console (F12).');
       }
-      console.log('[DL]', selDocs.length, 'bestanden toegevoegd aan release', relName);
+      if (addRes.fout.length){
+        alert(addRes.ok.length + ' bestand(en) toegevoegd; ' + addRes.fout.length + ' kon niet worden geverifieerd — zie console (F12).');
+      }
+      console.log('[DL]', addRes.ok.length, 'bestanden toegevoegd aan release', relName);
       // Cache invalideren zodat releases-modal verse data toont
       _releasesCache.all = null;
       _releasesCache.byId.delete(relId);

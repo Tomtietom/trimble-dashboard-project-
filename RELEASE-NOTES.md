@@ -2,6 +2,24 @@
 
 ---
 
+## Versie 1.15 — 24 augustus 2026
+
+### Releases pinnen nu écht de nieuwste versie
+
+Twee gebreken in de versie-bewaking van releases, allebei gemeld uit de praktijk en allebei opgelost.
+
+**Wat is er veranderd?**
+
+- **Toevoegen aan een release pakt de nieuwste versie** — bij *Naar release* werd tot nu toe stilzwijgend de éérste versie van elk bestand vastgelegd. Een verse release kon daardoor direct ⚠-badges tonen (*v1 → v3*). Nu wordt per bestand de nieuwste versie opgezocht en vastgelegd.
+- **Bijwerken werkt, en de melding is eerlijk** — de ↻-knop en *Alles bijwerken* meldden succes zonder dat er iets veranderde. Voortaan wordt ná elke bijwerk-actie bij Trimble Connect gecontroleerd of de release werkelijk op de nieuwste versie staat; pas dan telt een bestand als gelukt. Mislukt er iets, dan zie je dat.
+- **De ⚠-badge oordeelt op versienummer** — niet langer op interne kenmerken die na een correcte update ten onrechte alarm konden slaan.
+- **Links naar Trimble Connect gerepareerd** — Trimble heeft de adressen van de webclient gewijzigd. Release-links openen nu de nieuwe releases-pagina, en de *Open shares*-koppeling gaat naar de Activiteit-pagina, waar Trimble het beheer van deel-links tegenwoordig heeft ondergebracht. Ook de bestandslink in het detailpaneel volgt het nieuwe adres.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. Bestaande releases met een ⚠-badge werk je daarna in één keer bij met *Alles bijwerken* — nu echt.
+
+---
+
 ## Versie 1.14 — 24 augustus 2026
 
 ### Uploader neemt metadata van vorige versie automatisch over
