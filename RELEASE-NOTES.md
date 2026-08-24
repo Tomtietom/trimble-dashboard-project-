@@ -14,6 +14,11 @@ De Rechten Viewer onderschatte wat gebruikers werkelijk zagen. Wie in de project
 - **Effect in de weergaves** — bij *Groepen* en *Gebruikers* verschijnt op mappen die hun rechten van het project erven voortaan een **leesrecht-label** (in plaats van *Geen toegang*), met *(rechten van parent overgenomen)* in de tooltip. Bij *Mappen* telt de doorgevoerde overerving mee in de kleuren en de dashboard-tellers.
 - **Uitzonderingen blijven werken** — een map waar iemand expliciet is uitgesloten (*Geen toegang*) blijft uitgesloten. Een map waar de overerving in Trimble Connect zelf is uitgezet, blijft ook uitgesloten van deze doorwerking.
 
+### En verder in de Documentenlijst
+
+- **Filter op recent gewijzigd** — nieuwe keuzelijst in de filterbalk: *vandaag*, *laatste 7 dagen* of *laatste 30 dagen*. Zo zie je in één klik wat er nieuw is binnengekomen. De keuze gaat mee in je opgeslagen weergaves — *"UO Aannemer, laatste week"* wordt daarmee één klik.
+- **QR-codes hebben een eigen tab** — de knoppenbalk van de documentenlijst werd vol. QR-codes voor kopersmappen zit nu als eigen tab in de navigatiebalk bovenin; de generator zelf is onveranderd.
+
 **Wat moet je doen?**
 Sluit Trimble Connect één keer volledig en open opnieuw.
 
@@ -35,8 +40,6 @@ Direct vervolg op versie 1.8, na een nieuwe testronde dezelfde dag.
 - **Hele map in één keer selecteren** — bij groepering op map (of een ander veld) heeft elke groepskop nu een eigen selectievakje. Eén klik selecteert alle bestanden in die groep.
 - **Bulk wijzigen vereist nu de bewerkmodus** — dezelfde beveiliging als bij het bewerken van losse cellen: de knop is pas actief nadat je 🔒 Bewerken hebt aangezet.
 - **Knoppen beter uit elkaar te houden** — *Deel-links maken* (🔗) en *Download ZIP* (💾) hadden bijna identieke pictogrammen; nu zie je in één oogopslag welke wat doet.
-- **Filter op recent gewijzigd** — nieuwe keuzelijst in de filterbalk: *vandaag*, *laatste 7 dagen* of *laatste 30 dagen*. Zo zie je in één klik wat er nieuw is binnengekomen. De keuze gaat mee in je opgeslagen weergaves — *"UO Aannemer, laatste week"* wordt daarmee één klik.
-- **QR-codes hebben een eigen tab** — de knoppenbalk van de documentenlijst werd vol. QR-codes voor kopersmappen zit nu als eigen tab in de navigatiebalk bovenin; de generator zelf is onveranderd.
 
 **Wat moet je doen?**
 Sluit Trimble Connect één keer volledig en open opnieuw.
