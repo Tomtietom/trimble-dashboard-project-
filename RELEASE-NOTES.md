@@ -2,6 +2,44 @@
 
 ---
 
+## Versie 1.14 — 24 augustus 2026
+
+### Uploader neemt metadata van vorige versie automatisch over
+
+Bij een nieuwe versie van een bestaand document moest je tot nu toe alle verplichte velden opnieuw invullen — Titel, Bedrijf, Discipline, Bouwdeel, enzovoort — terwijl er meestal alleen een nieuwe documentdatum tegen aan hoefde. Marco (VW) meldde dat en had gelijk: dat is werk voor niks en foutgevoelig (één typo in *Bedrijf* breekt de filters in de Documentenlijst).
+
+**Wat is er veranderd?**
+
+- **Direct herkend bij drop** — sleep je een bestand in de uploader waarvan de naam al bestaat in de gekozen map, dan haalt de cockpit binnen een halve seconde de metadata van de vorige versie op en vult die in. Je ziet in de header een groene *"↩ 8 overgenomen"*-chip en boven de metadata-velden een banner *"8 velden overgenomen uit /Pad/naar/Vorige-map — datum ontbreekt nog"*.
+- **Datum-velden worden bewust overgeslagen** — documentdatum en aanmaakdatum blijven leeg, want die zijn per definitie anders bij een nieuwe versie. De rest wordt overgenomen.
+- **Vergrendelde velden blijven vergrendeld** — als de projectbeheerder een veld op een vaste waarde heeft gezet (bijv. status *"Voor uitvoering"*), overschrijft de overname dat nooit.
+- **↶ Ongedaan maken** — vergist de cockpit zich, of wil je echt vanuit nul beginnen? Er staat 30 seconden lang een *↶ Ongedaan maken*-link in de banner die alle velden terugzet naar wat de gewone suggestie-logica had gedaan.
+- **Ook in andere mappen zoeken** — vindt de cockpit in de gekozen map niets? Dan verschijnt een link *"🔍 Ook in andere mappen zoeken"* die het hele project doorzoekt op dezelfde bestandsnaam.
+- **Werkt bij bulk-drops** — sleep 10 bestanden tegelijk, dan draaien 6 lookups parallel; per bestand verschijnt de chip zodra dat bestand klaar is.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
+## Versie 1.13 — 24 augustus 2026
+
+### Print-set: de Versie-QR komt nu vanzelf óp de tekening
+
+De Versie-QR uit versie 1.11 leverde losse QR-afbeeldingen — die moest je zelf nog op de print plakken of in het onderschrift zetten. Dat handwerk is verdwenen: de nieuwe knop **📄 Print-set (QR in PDF)** stempelt de QR direct in je PDF-tekeningen.
+
+**Hoe werkt het?**
+
+- Genereer je Versie-QR's zoals je gewend bent (selectie → 🏷️ Versie-QR → QR-codes genereren) en kies daarna **Print-set**. Je downloadt een ZIP met je tekeningen als print-klare PDF's, mét de QR er al in — direct naar de printer.
+- **De QR-stempel is instelbaar**: hoek (standaard rechtsonder, bij het titelblok), formaat (15/20/25 mm) en of hij op alleen de eerste of op alle pagina's komt. Je keuze wordt per project onthouden. De stempel krijgt een wit vlak met rand en het bijschrift *"Versiecheck · rev X"*, zodat hij ook op drukke tekeningen scanbaar blijft.
+- **Het origineel in Trimble Connect blijft onaangeroerd** — er wordt geen nieuwe versie aangemaakt; de gestempelde PDF is puur je print-exemplaar.
+- Bestanden die geen PDF zijn (of een beveiligde PDF) krijgen automatisch hun losse QR-afbeelding in dezelfde ZIP, met een koppeltabel die aangeeft wat wél en niet gestempeld kon worden. Het stickervel (voorheen "PDF") en de losse PNG's blijven bestaan als alternatief.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.12 — 24 augustus 2026
 
 ### Releases blijven actueel: de cockpit signaleert verouderde bestanden

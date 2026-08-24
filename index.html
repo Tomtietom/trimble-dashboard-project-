@@ -446,6 +446,24 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .queue-req-status.ok{background:var(--okbg);color:var(--ok)}
 .queue-req-status.miss{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
 .queue-req-status.opt{color:var(--g4);font-weight:500;background:transparent}
+/* v1.13 — "vorige versie" chip in header + banner boven meta-row */
+.queue-inherit-chip{font-size:var(--fs-sm);font-weight:600;padding:2px 10px;border-radius:var(--r-pill);white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.queue-inherit-chip.is-applied{background:var(--afl);color:var(--af);border:1px solid var(--af)}
+.queue-inherit-chip.is-checking{background:var(--gr);color:var(--g5);font-weight:500}
+.queue-inherit-chip .qic-spin{display:inline-block;width:10px;height:10px;border:1.5px solid var(--g3);border-top-color:var(--af);border-radius:50%;animation:qic-spin 0.7s linear infinite}
+@keyframes qic-spin{to{transform:rotate(360deg)}}
+.pu-inherit-banner{display:flex;align-items:center;gap:10px;padding:8px var(--s3);margin:var(--s2) 0 var(--s3);border-radius:var(--r-sm);font-size:var(--fs-sm);line-height:1.4}
+.pu-inherit-banner.is-applied{background:var(--afl);border-left:3px solid var(--af);color:var(--dk)}
+.pu-inherit-banner.is-notfound{background:var(--gr);border-left:3px solid var(--g3);color:var(--g6)}
+.pu-inherit-banner .pu-inherit-icon{font-size:16px;font-weight:700;color:var(--af);flex-shrink:0;line-height:1}
+.pu-inherit-banner.is-notfound .pu-inherit-icon{color:var(--g4)}
+.pu-inherit-banner .pu-inherit-msg{flex:1;min-width:0}
+.pu-inherit-banner .pu-inherit-msg em{font-style:normal;color:var(--af);font-weight:500}
+.pu-inherit-banner .pu-inherit-hit-note{color:var(--g5);font-size:var(--fs-xs);font-style:italic}
+.pu-inherit-banner .pu-inherit-undo-btn,.pu-inherit-banner .pu-inherit-project-link{background:#fff;border:1px solid var(--hl);color:var(--g6);padding:3px 12px;border-radius:var(--r-pill);cursor:pointer;font-size:var(--fs-sm);font-family:'Poppins',sans-serif;font-weight:500;transition:all .15s;white-space:nowrap;flex-shrink:0}
+.pu-inherit-banner .pu-inherit-undo-btn:hover,.pu-inherit-banner .pu-inherit-project-link:hover{border-color:var(--af);color:var(--af);background:#fff}
+.pu-inherit-banner .pu-inherit-dismiss{background:none;border:0;color:var(--g4);cursor:pointer;font-size:18px;line-height:1;padding:0 4px;flex-shrink:0;border-radius:var(--r-sm)}
+.pu-inherit-banner .pu-inherit-dismiss:hover{background:rgba(0,0,0,.06);color:var(--dk)}
 .queue-remove{background:none;border:none;color:var(--g4);cursor:pointer;font-size:20px;line-height:1;padding:0 var(--s1)}
 .queue-remove:hover{color:var(--warn)}
 .queue-body{margin-top:var(--s3)}
@@ -1351,7 +1369,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
         <p style="max-width:640px;color:var(--g5);margin:0 0 var(--s4);line-height:1.7">
           Genereer per document een QR-code om óp de print te zetten. Wie hem scant ziet direct —
           <strong>zonder Trimble-account</strong> — of die print nog de actuele versie is:
-          "print is revisie 3, actueel is revisie 5 — verouderd".
+          "print is revisie 3, actueel is revisie 5 — verouderd". Voor PDF-tekeningen stempelt de
+          <strong>Print-set</strong> de QR automatisch in de tekening (hoek en formaat instelbaar);
+          je download dan print-klare PDF's terwijl het origineel in Trimble Connect onaangeroerd blijft.
         </p>
         <p style="max-width:640px;color:var(--g4);font-size:var(--fs-sm);margin:0 0 var(--s4)">
           Standaard toont de controle-pagina alléén de versie-status (het bestand zelf blijft afgeschermd);
@@ -1394,7 +1414,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.12';
+const COCKPIT_VERSION = '1.14';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -3792,6 +3812,236 @@ const PU = (function(){
     return all;
   }
 
+  // ============================================================
+  //  v1.13 — Metadata overnemen uit vorige versie (Marco/VW-verzoek)
+  //  Wanneer een gedropt bestand exact bestaat in de gekozen map,
+  //  laden we de PSet-props van de vorige versie en vullen die op
+  //  item.metadata — behalve locked, date-velden en placeholder "--".
+  //  User krijgt undo-link 30s zichtbaar en fallback-link voor project-scope.
+  // ============================================================
+
+  // Sorteer PSet /versions-items op v desc; pak highest. TC's endpoint retourneert
+  // ascending, items[0] is de oudste. Idem als DL-versie regel 6633.
+  function _puPickLatestItem(items){
+    if (!Array.isArray(items) || !items.length) return null;
+    const sorted = items.slice().sort(function(a,b){
+      const va = (a && a.v != null) ? Number(a.v) : -Infinity;
+      const vb = (b && b.v != null) ? Number(b.v) : -Infinity;
+      return vb - va;
+    });
+    return sorted[0];
+  }
+
+  // Session-cache voor folder-inhoud (5 min TTL). Voorkomt herhaalde folder-listings
+  // wanneer meerdere files in dezelfde map worden gedropt.
+  const _PU_FOLDER_INDEX_TTL_MS = 5 * 60 * 1000;
+  const _puFolderIndexCache = new Map();
+
+  async function _puIndexFolderFiles(folderId){
+    if (!folderId) return { byName: new Map() };
+    const cached = _puFolderIndexCache.get(folderId);
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (cached && (now - cached.ts) < _PU_FOLDER_INDEX_TTL_MS) return cached;
+    const items = await _puFetchFolderItemsAll(folderId);
+    const byName = new Map();
+    for (const it of items){
+      if (!it || (it.type || '').toUpperCase() === 'FOLDER') continue;
+      const name = (it.name || '').toLowerCase();
+      if (!name) continue;
+      if (!byName.has(name)) byName.set(name, []);
+      byName.get(name).push({ id: it.id, name: it.name, folderId: folderId });
+    }
+    const entry = { ts: now, byName: byName };
+    _puFolderIndexCache.set(folderId, entry);
+    return entry;
+  }
+
+  // Zoek een file met matching naam. opts.scope: 'folder' (default) of 'project'.
+  // Folder: alleen item.folderId doorzoeken. Project: alle _writableFolders parallel
+  // (concurrency 6). Returns {fileId, folderId, folderPath} of null.
+  async function _puFindExistingByName(item, opts){
+    if (!item || !item.file || !item.file.name) return null;
+    const scope = (opts && opts.scope) || 'folder';
+    const nameLc = item.file.name.toLowerCase();
+    if (scope === 'folder'){
+      if (!item.folderId) return null;
+      const idx = await _puIndexFolderFiles(item.folderId);
+      const hits = idx.byName.get(nameLc);
+      if (!hits || !hits.length) return null;
+      const folder = _writableFolders.find(function(f){ return f.id === hits[0].folderId; });
+      return { fileId: hits[0].id, folderId: hits[0].folderId, folderPath: folder ? folder.path : '' };
+    }
+    // Project-scope: fan-out over alle writable folders (excl. de al gecheckte target-folder).
+    // Concurrency 6 zoals DL _deepScanMetadata regel 7034.
+    const CONCURRENCY = 6;
+    const skipId = item.folderId || null;
+    const folders = _writableFolders.filter(function(f){ return f.id !== skipId; });
+    const hits = [];
+    let idx = 0;
+    async function worker(){
+      while (idx < folders.length){
+        const my = idx++;
+        const f = folders[my];
+        try {
+          const entry = await _puIndexFolderFiles(f.id);
+          const found = entry.byName.get(nameLc);
+          if (found && found.length){
+            for (const h of found) hits.push({ fileId: h.id, folderId: f.id, folderPath: f.path });
+          }
+        } catch(_){}
+      }
+    }
+    const workers = [];
+    for (let i = 0; i < Math.min(CONCURRENCY, folders.length); i++) workers.push(worker());
+    await Promise.all(workers);
+    return hits;
+  }
+
+  // Haal de meest recente PSet-props van een TC-file. Returns {uuid: string}.
+  // Filtert "--" placeholder en falsy waarden. Retourneert leeg object als er geen
+  // PSet-instance is (bestand nog nooit metadata gehad) — geen fout.
+  async function _puFetchLatestPropsForFile(fileId){
+    if (!fileId) return {};
+    const libId = 'tcproject:prod:' + tcProject.id;
+    const link = 'frn:tcfile:' + fileId;
+    const path = '/psets/' + encodeURIComponent(link) + '/' + encodeURIComponent(libId) + '/tcfiles/versions';
+    let r;
+    try {
+      r = await _puFetchPSet(path);
+    } catch(e){
+      const msg = String(e && e.message || '');
+      // 404 = geen PSet-instance = bestand had nog geen metadata; geen error
+      if (/(?:^|\D)404(?:\D|$)/.test(msg)) return {};
+      throw e;
+    }
+    const items = r && Array.isArray(r.items) ? r.items : [];
+    const inst = _puPickLatestItem(items);
+    if (!inst || !inst.props) return {};
+    const out = {};
+    for (const uuid in inst.props){
+      const v = inst.props[uuid];
+      if (v && v !== '--') out[uuid] = String(v).trim();
+    }
+    return out;
+  }
+
+  // Plak overgeërfde metadata op item.metadata. Respecteert locked-velden altijd,
+  // slaat datum-velden over bij preserveDates, en overschrijft user-input tenzij
+  // onlyEmpty=true. Slaat snapshot op in item._inherit.snapshot voor undo.
+  // Returns aantal daadwerkelijk gezette velden.
+  function _puApplyInheritedMetadata(item, props, opts){
+    if (!item || !props) return 0;
+    opts = opts || {};
+    const preserveDates = opts.preserveDates !== false;   // default: skip dates
+    const onlyEmpty = !!opts.onlyEmpty;
+    // Snapshot: alleen als er nog geen snapshot is (behoud van oorspronkelijke
+    // metadata-state; opeenvolgende applies zetten niet steeds nieuwe snapshot).
+    if (!item._inherit) item._inherit = { state:'unchecked', appliedCount:0, sourceFolder:null, snapshot:null };
+    if (!item._inherit.snapshot){
+      item._inherit.snapshot = {
+        metadata: Object.assign({}, item.metadata || {}),
+        metadataAuto: Object.assign({}, item.metadataAuto || {}),
+      };
+    }
+    const activeUuids = new Set(_getActiveFields().map(function(f){ return f.uuid; }));
+    let count = 0;
+    for (const uuid in props){
+      if (!activeUuids.has(uuid)) continue;
+      if (item.metadataLocked && item.metadataLocked[uuid]) continue;
+      const info = _getFieldInfo(uuid);
+      if (preserveDates && info && info.type === 'date') continue;
+      if (onlyEmpty && item.metadata[uuid]) continue;
+      const val = props[uuid];
+      if (!val) continue;
+      if (item.metadata[uuid] === val) continue;
+      item.metadata[uuid] = val;
+      if (item.metadataAuto) item.metadataAuto[uuid] = true;
+      count++;
+    }
+    return count;
+  }
+
+  function _puUndoInherit(item){
+    if (!item || !item._inherit || !item._inherit.snapshot) return;
+    const snap = item._inherit.snapshot;
+    item.metadata = Object.assign({}, snap.metadata);
+    item.metadataAuto = Object.assign({}, snap.metadataAuto);
+    item._inherit.state = 'undone';
+    item._inherit.appliedCount = 0;
+    item._inherit.snapshot = null;
+  }
+
+  // Orchestrator: bij drop → folder-scope match → props ophalen → apply.
+  // Fire-and-forget vanuit addFiles. Fouten worden gelogged maar breken niet
+  // de upload-flow (metadata-suggesties uit filename-patterns blijven wat ze zijn).
+  async function _puAutoInheritOnDrop(item){
+    if (!item || item.status !== 'pending') return;
+    if (!item._inherit) item._inherit = { state:'unchecked', appliedCount:0, sourceFolder:null, snapshot:null };
+    if (!item.folderId){ item._inherit.state = 'no-folder'; return; }
+    item._inherit.state = 'checking';
+    if (typeof renderQueue === 'function') renderQueue();
+    try {
+      const match = await _puFindExistingByName(item, { scope: 'folder' });
+      if (!match){ item._inherit.state = 'not-found'; if (typeof renderQueue === 'function') renderQueue(); return; }
+      const props = await _puFetchLatestPropsForFile(match.fileId);
+      const count = _puApplyInheritedMetadata(item, props, { preserveDates: true, onlyEmpty: false });
+      item._inherit.state = count > 0 ? 'applied' : 'empty';
+      item._inherit.appliedCount = count;
+      item._inherit.sourceFolder = match.folderPath || '';
+      item._inherit.sourceFileId = match.fileId;
+      // 30s auto-dismiss timer voor de undo-link
+      if (item._inherit.dismissTimer) clearTimeout(item._inherit.dismissTimer);
+      if (count > 0){
+        item._inherit.dismissTimer = setTimeout(function(){
+          if (item._inherit && item._inherit.state === 'applied'){
+            item._inherit.state = 'dismissed';
+            if (typeof renderQueue === 'function') renderQueue();
+          }
+        }, 30000);
+      }
+    } catch(e){
+      console.warn('[PU] auto-inherit mislukt voor', item.file && item.file.name, ':', e && e.message);
+      item._inherit.state = 'error';
+      item._inherit.error = e && e.message;
+    }
+    if (typeof renderQueue === 'function') renderQueue();
+  }
+
+  // Project-scope fallback vanuit banner-link. Meerdere hits → dropdown (voor v1
+  // pakken we most-recent = laatste in _writableFolders volgorde; v2 kan uitgebreid).
+  async function _puInheritFromProject(item){
+    if (!item || item.status !== 'pending') return;
+    item._inherit.state = 'checking-project';
+    renderQueue();
+    try {
+      const hits = await _puFindExistingByName(item, { scope: 'project' });
+      if (!hits || !hits.length){ item._inherit.state = 'not-found-project'; renderQueue(); return; }
+      // v1: pak eerste hit (nog niet met dropdown). Bij VW meestal maar 1 match.
+      const pick = hits[0];
+      const props = await _puFetchLatestPropsForFile(pick.fileId);
+      const count = _puApplyInheritedMetadata(item, props, { preserveDates: true, onlyEmpty: false });
+      item._inherit.state = count > 0 ? 'applied' : 'empty';
+      item._inherit.appliedCount = count;
+      item._inherit.sourceFolder = pick.folderPath || '';
+      item._inherit.sourceFileId = pick.fileId;
+      item._inherit.projectHitCount = hits.length;
+      if (item._inherit.dismissTimer) clearTimeout(item._inherit.dismissTimer);
+      if (count > 0){
+        item._inherit.dismissTimer = setTimeout(function(){
+          if (item._inherit && item._inherit.state === 'applied'){
+            item._inherit.state = 'dismissed';
+            renderQueue();
+          }
+        }, 30000);
+      }
+    } catch(e){
+      console.warn('[PU] project-inherit mislukt:', e && e.message);
+      item._inherit.state = 'error';
+      item._inherit.error = e && e.message;
+    }
+    renderQueue();
+  }
+
   // Folder tree → schrijfbare mappen. onProgress(info) wordt na elke BFS-batch
   // aangeroepen met { current: <huidige folder-count> } (total niet bekend tot einde).
   async function loadFolders(onProgress){
@@ -5449,6 +5699,9 @@ const PU = (function(){
         metadataAuto: (function(){ const o={}; for (const f of _getActiveFields()) o[f.uuid] = false; return o; })(),
         metadataLocked: (function(){ const o={}; for (const f of _getAllFields()) o[f.uuid] = false; return o; })(),
         folderPatternMatched: false,
+        // v1.13: state voor metadata-overname uit vorige versie.
+        // state: unchecked | checking | applied | empty | not-found | not-found-project | dismissed | undone | error | no-folder
+        _inherit: { state: 'unchecked', appliedCount: 0, sourceFolder: null, sourceFileId: null, snapshot: null, dismissTimer: null },
       };
       // Suggestie-keten:
       //  1) metadata uit bestandsnaam (regex op naam)
@@ -5464,6 +5717,10 @@ const PU = (function(){
       // Fallback: als suggestie geen folder vindt en folderId nog null, kies projectroot
       if (!item.folderId && _writableFolders[0]) item.folderId = _writableFolders[0].id;
       _queue.push(item);
+      // v1.13: fire-and-forget de "vorige versie"-lookup. Renderen gebeurt eerst
+      // met state=unchecked (nog geen chip); zodra _puAutoInheritOnDrop status
+      // wijzigt (checking → applied/not-found) roept die zelf renderQueue.
+      _puAutoInheritOnDrop(item);
     }
     // Bij batch: zorg dat álle pending items collapsed staan zodat de bulk-bar
     // domineert. Reeds handmatig geopende items blijven anders eenzaam open.
@@ -5534,6 +5791,20 @@ const PU = (function(){
           reqStatus = '<span class="queue-req-status ok" title="Alle verplichte velden ingevuld">✓ compleet</span>';
         }
       }
+      // v1.13: chip voor "vorige versie"-status. Zichtbaar bij checking en applied
+      // (verdwijnt bij dismissed/undone/not-found/error). Bij collapsed items nog steeds
+      // zichtbaar in header zodat user weet dat er metadata overgenomen is.
+      let inheritChip = '';
+      if (isPending && item._inherit){
+        const st = item._inherit.state;
+        if (st === 'checking'){
+          inheritChip = '<span class="queue-inherit-chip is-checking" title="Kijken of vorige versie bestaat…"><span class="qic-spin"></span> vorige versie…</span>';
+        } else if (st === 'checking-project'){
+          inheritChip = '<span class="queue-inherit-chip is-checking" title="Zoeken in hele project…"><span class="qic-spin"></span> project…</span>';
+        } else if (st === 'applied' && item._inherit.appliedCount > 0){
+          inheritChip = '<span class="queue-inherit-chip is-applied" title="' + item._inherit.appliedCount + ' velden overgenomen uit vorige versie">↩ ' + item._inherit.appliedCount + ' overgenomen</span>';
+        }
+      }
       // Chevron: ▸ dicht / ▾ open (isomorph klein element)
       const toggleBtn = isPending
         ? '<button class="queue-toggle' + (collapsed ? '' : ' is-open') + '" type="button" data-toggle="' + item.id + '" title="' + (collapsed ? 'Klap uit' : 'Klap in') + '" aria-label="' + (collapsed ? 'Klap uit' : 'Klap in') + '">▸</button>'
@@ -5542,11 +5813,55 @@ const PU = (function(){
         + (collapsed ? ' is-collapsed' : '')
         + (isPending && _hasMissingRequired(item) ? ' has-missing-required' : '');
 
+      // v1.13: banner boven meta-row. Toont: (a) applied-melding met undo, of
+      // (b) not-found-melding met project-brede-zoek-link, of (c) error.
+      let inheritBanner = '';
+      if (isPending && !collapsed && item._inherit){
+        const st = item._inherit.state;
+        if (st === 'applied' && item._inherit.appliedCount > 0){
+          const src = item._inherit.sourceFolder && item._inherit.sourceFolder !== '(projectroot)'
+            ? ' uit <em>' + escapeHtml(item._inherit.sourceFolder) + '</em>'
+            : '';
+          const projHit = item._inherit.projectHitCount && item._inherit.projectHitCount > 1
+            ? ' <span class="pu-inherit-hit-note">(' + item._inherit.projectHitCount + ' matches gevonden — meest recente gekozen)</span>'
+            : '';
+          inheritBanner = ''
+            + '<div class="pu-inherit-banner is-applied">'
+              + '<span class="pu-inherit-icon">↩</span>'
+              + '<span class="pu-inherit-msg"><strong>' + item._inherit.appliedCount + ' velden overgenomen</strong>' + src + ' — datum ontbreekt nog' + projHit + '</span>'
+              + '<button class="pu-inherit-undo-btn" type="button" data-inherit-undo="' + item.id + '" title="Herstel naar oorspronkelijke waarden">↶ Ongedaan maken</button>'
+              + '<button class="pu-inherit-dismiss" type="button" data-inherit-dismiss="' + item.id + '" title="Melding sluiten">×</button>'
+            + '</div>';
+        } else if (st === 'not-found'){
+          inheritBanner = ''
+            + '<div class="pu-inherit-banner is-notfound">'
+              + '<span class="pu-inherit-icon">·</span>'
+              + '<span class="pu-inherit-msg">Geen vorige versie in deze map gevonden.</span>'
+              + '<button class="pu-inherit-project-link" type="button" data-inherit-project-search="' + item.id + '" title="Zoek in alle mappen van het project">🔍 Ook in andere mappen zoeken</button>'
+              + '<button class="pu-inherit-dismiss" type="button" data-inherit-dismiss="' + item.id + '" title="Melding sluiten">×</button>'
+            + '</div>';
+        } else if (st === 'not-found-project'){
+          inheritBanner = ''
+            + '<div class="pu-inherit-banner is-notfound">'
+              + '<span class="pu-inherit-icon">·</span>'
+              + '<span class="pu-inherit-msg">Geen vorige versie in het hele project gevonden — nieuwe file.</span>'
+              + '<button class="pu-inherit-dismiss" type="button" data-inherit-dismiss="' + item.id + '" title="Melding sluiten">×</button>'
+            + '</div>';
+        } else if (st === 'empty'){
+          inheritBanner = ''
+            + '<div class="pu-inherit-banner is-notfound">'
+              + '<span class="pu-inherit-icon">·</span>'
+              + '<span class="pu-inherit-msg">Vorige versie gevonden maar had geen metadata om over te nemen.</span>'
+              + '<button class="pu-inherit-dismiss" type="button" data-inherit-dismiss="' + item.id + '" title="Melding sluiten">×</button>'
+            + '</div>';
+        }
+      }
       const bodyHtml = collapsed ? '' : (''
         + '<div class="queue-body">'
           + '<label>Beschrijving</label>'
           + '<textarea data-field="description" data-id="' + item.id + '" ' + disabled + ' placeholder="Optioneel…">' + escapeHtml(item.description) + '</textarea>'
           + '<div class="pu-desc-hint">Wordt als 1e opmerking bij het bestand opgeslagen in Trimble Connect. Ook gebruikt om regels te matchen op woorden die niet in de bestandsnaam staan.</div>'
+          + inheritBanner
           + metaRow
           + '<label>Map</label>'
           + folderPicker
@@ -5560,6 +5875,7 @@ const PU = (function(){
           + '<div class="queue-head">'
             + toggleBtn
             + '<div class="queue-name" title="' + escapeHtml(item.file.name) + '"' + (isPending ? ' data-toggle-name="' + item.id + '"' : '') + '>' + escapeHtml(item.file.name) + '</div>'
+            + inheritChip
             + reqStatus
             + '<div class="queue-size">' + _formatBytes(item.file.size) + '</div>'
             + (isPending ? '<button class="queue-remove" type="button" data-remove="' + item.id + '" title="Verwijderen">×</button>' : '')
@@ -5584,6 +5900,35 @@ const PU = (function(){
       btn.addEventListener('click', function(){
         const id = Number(btn.getAttribute('data-remove'));
         _queue = _queue.filter(function(i){ return i.id !== id; });
+        renderQueue();
+      });
+    });
+    // v1.13: inherit-banner handlers (undo, project-search, dismiss)
+    qEl.querySelectorAll('[data-inherit-undo]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        const id = Number(btn.getAttribute('data-inherit-undo'));
+        const item = _queue.find(function(i){ return i.id === id; });
+        if (!item) return;
+        if (item._inherit && item._inherit.dismissTimer){ clearTimeout(item._inherit.dismissTimer); item._inherit.dismissTimer = null; }
+        _puUndoInherit(item);
+        renderQueue();
+      });
+    });
+    qEl.querySelectorAll('[data-inherit-project-search]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        const id = Number(btn.getAttribute('data-inherit-project-search'));
+        const item = _queue.find(function(i){ return i.id === id; });
+        if (!item) return;
+        _puInheritFromProject(item);
+      });
+    });
+    qEl.querySelectorAll('[data-inherit-dismiss]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        const id = Number(btn.getAttribute('data-inherit-dismiss'));
+        const item = _queue.find(function(i){ return i.id === id; });
+        if (!item || !item._inherit) return;
+        if (item._inherit.dismissTimer){ clearTimeout(item._inherit.dismissTimer); item._inherit.dismissTimer = null; }
+        item._inherit.state = 'dismissed';
         renderQueue();
       });
     });
@@ -10715,6 +11060,21 @@ const DL = (function(){
     }
     throw lastErr || new Error('PDF-library kon niet geladen worden');
   }
+  // pdf-lib: bestaande PDF's inlezen en bewerken (jsPDF kan alleen nieuwe maken).
+  // Gebruikt door de Versie-QR print-set om de QR ín de tekening te stempelen.
+  async function _ensurePdfLib(){
+    if (window.PDFLib) return window.PDFLib;
+    const urls = [
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js',
+      'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js',
+    ];
+    let lastErr;
+    for (const u of urls){
+      try { await _loadScriptOnce(u); if (window.PDFLib) return window.PDFLib; }
+      catch(e){ lastErr = e; }
+    }
+    throw lastErr || new Error('pdf-lib kon niet geladen worden');
+  }
   // QR maakt een PNG-dataURL via een eigen canvas. errorCorrectionLevel 'H' + witte
   // quiet-zone (padding) voor betrouwbaar scannen. Level 'H' tolereert ~30% afgedekte
   // modules; het logo-vlak is 24% van de breedte (~6% van het oppervlak) — ruim binnen marge.
@@ -11062,7 +11422,7 @@ const DL = (function(){
     if (grid) grid.innerHTML = '';
     const st = document.getElementById('dl-qrv-status');
     if (st) st.textContent = '';
-    ['dl-qrv-zip', 'dl-qrv-pdf'].forEach(function(id){
+    ['dl-qrv-zip', 'dl-qrv-pdf', 'dl-qrv-stamp'].forEach(function(id){
       const b = document.getElementById(id); if (b) b.disabled = true;
     });
     const genBtn = document.getElementById('dl-qrv-generate');
@@ -11081,6 +11441,7 @@ const DL = (function(){
       _qrvModeLoaded = true; _qrvRenderModeBlock();
     });
     _qrvPreflight();
+    _qrvStampInitUi();
     // Zelfde project-logo als de map-QR's (gedeelde cache)
     _qrRestoreLogo().catch(function(){});
     _qrLog('qrv-open', sel.length);
@@ -11289,7 +11650,7 @@ const DL = (function(){
       }).filter(Boolean);
 
       await _qrvRenderGrid();
-      ['dl-qrv-zip', 'dl-qrv-pdf'].forEach(function(id){
+      ['dl-qrv-zip', 'dl-qrv-pdf', 'dl-qrv-stamp'].forEach(function(id){
         const b = document.getElementById(id); if (b) b.disabled = !_qrvItems.length;
       });
       if (st){
@@ -11408,6 +11769,163 @@ const DL = (function(){
     } catch(e){ alert('PDF aanmaken mislukt: ' + e.message); }
     if (btn){ btn.disabled = false; btn.textContent = orig; }
     _qrLog('qrv-export-pdf', _qrvItems.length);
+  }
+
+  // === Print-set: QR ín de PDF stempelen (pdf-lib) ===
+  // Antwoord op "hoe krijg ik de QR op het document": per PDF wordt de tekening
+  // gedownload, de QR in de gekozen hoek gestempeld en alles als ZIP aangeboden.
+  // Het origineel in TC blijft onaangeroerd (Tom's keuze: print-set eerst;
+  // terugzetten-in-TC als nieuwe versie is een latere vervolgstap).
+  function _qrvIsPdf(d){ return _getExt(d && d.bestandsnaam) === 'pdf'; }
+  function _qrvStampKey(){ return 'dl-qrstamp-' + (tcProject && tcProject.id || 'unknown'); }
+  function _qrvStampGet(){
+    try {
+      const raw = localStorage.getItem(_qrvStampKey());
+      if (raw){
+        const o = JSON.parse(raw);
+        return {
+          pos: ['rb', 'ro', 'lb', 'lo'].indexOf(o.pos) >= 0 ? o.pos : 'rb',
+          size: ['s', 'm', 'l'].indexOf(o.size) >= 0 ? o.size : 'm',
+          all: !!o.all,
+        };
+      }
+    } catch(_){}
+    return { pos: 'rb', size: 'm', all: false };
+  }
+  function _qrvStampSet(cfg){
+    try { localStorage.setItem(_qrvStampKey(), JSON.stringify(cfg)); } catch(_){}
+  }
+  // UI ⇄ voorkeur: bij openen vullen, bij wijzigen direct bewaren
+  function _qrvStampInitUi(){
+    const cfg = _qrvStampGet();
+    const pos = document.getElementById('dl-qrv-stamp-pos');
+    const size = document.getElementById('dl-qrv-stamp-size');
+    const all = document.getElementById('dl-qrv-stamp-all');
+    if (pos) pos.value = cfg.pos;
+    if (size) size.value = cfg.size;
+    if (all) all.checked = cfg.all;
+  }
+  function _qrvStampReadUi(){
+    const pos = document.getElementById('dl-qrv-stamp-pos');
+    const size = document.getElementById('dl-qrv-stamp-size');
+    const all = document.getElementById('dl-qrv-stamp-all');
+    const cfg = {
+      pos: pos && pos.value || 'rb',
+      size: size && size.value || 'm',
+      all: !!(all && all.checked),
+    };
+    _qrvStampSet(cfg);
+    return cfg;
+  }
+
+  async function _qrvExportStamped(btn){
+    if (!_qrvItems.length) return;
+    let PDFLibNS, QR, JSZip;
+    try { PDFLibNS = await _ensurePdfLib(); } catch(e){ alert('Kan pdf-lib niet laden — controleer de internetverbinding.'); return; }
+    try { QR = await _ensureQRCode(); } catch(e){ alert('Kan QR-library niet laden — controleer de internetverbinding.'); return; }
+    try { JSZip = await _ensureJSZip(); } catch(e){ alert('Kan ZIP-library niet laden — controleer de internetverbinding.'); return; }
+    const cfg = _qrvStampReadUi();
+    const MM = 2.83465; // punten per mm
+    const sizeMm = cfg.size === 's' ? 15 : (cfg.size === 'l' ? 25 : 20);
+    const st = document.getElementById('dl-qrv-status');
+    const orig = btn ? btn.textContent : '';
+    if (btn){ btn.disabled = true; }
+    const zip = new JSZip();
+    const used = {};
+    const csv = ['Bestand;Documentnummer;Revisie;Gestempeld;Controle-URL'];
+    let stamped = 0, fallbackPng = 0, totalBytes = 0, sizeWarned = false, aborted = false;
+    for (let i = 0; i < _qrvItems.length; i++){
+      const it = _qrvItems[i];
+      if (btn) btn.textContent = '⏳ ' + (i + 1) + '/' + _qrvItems.length;
+      let qrPng = '';
+      try { qrPng = await _qrDataUrl(QR, it.url, 600); } catch(_){}
+      if (!qrPng){ csv.push(_qrvCsvRow(it, 'nee')); continue; }
+      let ok = false;
+      if (_qrvIsPdf(it.d)){
+        try {
+          // Eerst de download-URL van de GEREGISTREERDE versie proberen — dan
+          // klopt de stempel gegarandeerd met wat de QR beweert. Werkt de
+          // versionId-vorm niet (onbewezen endpoint-variant), dan de actuele
+          // versie via het bewezen fileId-pad; de race met een tussentijdse
+          // upload is seconden en dus theoretisch.
+          let dlUrl = null;
+          if (it.versionId){
+            try {
+              const res = await tcFetch('/files/fs/' + encodeURIComponent(it.versionId) + '/downloadurl');
+              const b = res && res._partial ? res._data : res;
+              dlUrl = b && b.url;
+            } catch(_){}
+          }
+          if (!dlUrl){
+            console.warn('[DL] print-set: versie-specifieke download niet beschikbaar, actuele versie gebruikt:', it.d.bestandsnaam);
+            dlUrl = await _getFileDownloadUrl(it.d._vid);
+          }
+          if (!dlUrl) throw new Error('geen download-URL');
+          const resp = await fetch(dlUrl);
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const buf = await resp.arrayBuffer();
+          totalBytes += buf.byteLength;
+          if (!sizeWarned && totalBytes > 150 * 1024 * 1024){
+            sizeWarned = true;
+            if (!confirm('De print-set is al groter dan 150 MB en er volgen nog ' + (_qrvItems.length - i) + ' bestanden.\n\nDoorgaan kan de browser traag maken. Doorgaan?')){
+              aborted = true;
+              break;
+            }
+          }
+          const pdfDoc = await PDFLibNS.PDFDocument.load(buf); // gooit op versleutelde PDF → PNG-fallback
+          const png = await pdfDoc.embedPng(qrPng);
+          const font = await pdfDoc.embedFont(PDFLibNS.StandardFonts.Helvetica);
+          const pages = cfg.all ? pdfDoc.getPages() : [pdfDoc.getPage(0)];
+          const q = sizeMm * MM, pad = 2 * MM, edge = 5 * MM, capH = 3.2 * MM;
+          const boxW = q + pad * 2, boxH = q + pad * 2 + capH;
+          for (const page of pages){
+            const W = page.getWidth(), H = page.getHeight();
+            const x = (cfg.pos === 'lb' || cfg.pos === 'lo') ? edge : W - edge - boxW;
+            const y = (cfg.pos === 'ro' || cfg.pos === 'lo') ? H - edge - boxH : edge;
+            page.drawRectangle({ x: x, y: y, width: boxW, height: boxH, color: PDFLibNS.rgb(1, 1, 1), borderColor: PDFLibNS.rgb(0.6, 0.6, 0.6), borderWidth: 0.5 });
+            page.drawImage(png, { x: x + pad, y: y + pad + capH, width: q, height: q });
+            const cap = 'Versiecheck · rev ' + it.revision;
+            const fs = 6;
+            const tw = font.widthOfTextAtSize(cap, fs);
+            page.drawText(cap, { x: x + boxW / 2 - tw / 2, y: y + pad * 0.6, size: fs, font: font, color: PDFLibNS.rgb(0.25, 0.25, 0.25) });
+          }
+          const out = await pdfDoc.save();
+          let name = it.d.bestandsnaam || (_qrSafeName(it.d.document_nummer || 'document') + '.pdf');
+          if (used[name]){ used[name]++; name = name.replace(/\.pdf$/i, '') + ' (' + used[name] + ').pdf'; } else { used[name] = 1; }
+          zip.file(name, out);
+          stamped++; ok = true;
+        } catch(e){
+          console.warn('[DL] print-set: stempelen mislukt voor', it.d.bestandsnaam, '—', e.message);
+        }
+      }
+      if (!ok){
+        // Geen PDF of stempelen niet mogelijk → losse QR-PNG als sticker-fallback
+        const base64 = (qrPng.split(',')[1]) || '';
+        if (base64){
+          let name = _qrSafeName(it.d.document_nummer || it.d.bestandsnaam);
+          if (used[name]){ used[name]++; name = name + ' (' + used[name] + ')'; } else { used[name] = 1; }
+          zip.file(name + '.png', base64, { base64: true });
+          fallbackPng++;
+        }
+      }
+      csv.push(_qrvCsvRow(it, ok ? 'ja' : 'nee'));
+    }
+    zip.file('_koppeltabel.csv', '﻿' + csv.join('\r\n'));
+    try {
+      const content = await zip.generateAsync({ type: 'blob' });
+      _qrDownloadBlob(content, 'versie-qr-printset_' + _qrProjectSlug() + '.zip');
+    } catch(e){ alert('ZIP aanmaken mislukt: ' + e.message); }
+    if (st){
+      st.textContent = 'Print-set: ' + stamped + ' gestempelde PDF' + (stamped === 1 ? '' : '’s') +
+        (fallbackPng ? ', ' + fallbackPng + ' als losse QR-PNG (geen PDF of stempelen niet mogelijk)' : '') +
+        (aborted ? ' — afgebroken op verzoek, ZIP bevat wat al klaar was.' : '.');
+    }
+    if (btn){ btn.disabled = false; btn.textContent = orig; }
+    _qrLog('qrv-export-printset', _qrvItems.length);
+  }
+  function _qrvCsvRow(it, gestempeld){
+    const q = function(s){ return '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"'; };
+    return [q(it.d.bestandsnaam), q(it.d.document_nummer), q(it.revision), q(gestempeld), q(it.url)].join(';');
   }
 
   function injectHtml(){
@@ -11702,18 +12220,35 @@ const DL = (function(){
               '<button type="button" id="dl-qrv-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
             '</div>' +
             '<div class="dl-share-body">' +
-              '<p class="dl-qr-intro">Print de QR-code óp het document. Wie hem scant ziet direct — <strong>zonder Trimble-account</strong> — of die print nog de actuele versie is. De QR verwijst naar een controle-pagina van At Fielt; per code wordt vastgelegd welke versie er op de print staat.</p>' +
+              '<p class="dl-qr-intro">Print de QR-code óp het document. Wie hem scant ziet direct — <strong>zonder Trimble-account</strong> — of die print nog de actuele versie is. Voor PDF\'s stempelt de <strong>Print-set</strong> de QR automatisch in de tekening (het origineel in Trimble Connect blijft onaangeroerd); voor andere bestanden gebruik je het stickervel of de losse PNG\'s.</p>' +
               '<div id="dl-qrv-files" style="font-size:13px;color:var(--g6);margin-bottom:var(--s3)"></div>' +
               '<div id="dl-qrv-mode"></div>' +
               '<div id="dl-qrv-preflight"></div>' +
+              '<div class="dl-share-label">Print-set — waar komt de QR-stempel in de PDF?' +
+                '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">' +
+                  '<select id="dl-qrv-stamp-pos" class="dl-share-input" style="width:auto">' +
+                    '<option value="rb">Rechtsonder (titelblok)</option>' +
+                    '<option value="ro">Rechtsboven</option>' +
+                    '<option value="lb">Linksonder</option>' +
+                    '<option value="lo">Linksboven</option>' +
+                  '</select>' +
+                  '<select id="dl-qrv-stamp-size" class="dl-share-input" style="width:auto">' +
+                    '<option value="s">Klein (15 mm)</option>' +
+                    '<option value="m">Normaal (20 mm)</option>' +
+                    '<option value="l">Groot (25 mm)</option>' +
+                  '</select>' +
+                  '<label style="display:flex;gap:6px;align-items:center;font-weight:normal;cursor:pointer"><input type="checkbox" id="dl-qrv-stamp-all"> alle pagina\'s</label>' +
+                '</div>' +
+              '</div>' +
               '<div id="dl-qrv-status" style="font-size:13px;color:var(--g5);min-height:18px"></div>' +
               '<div id="dl-qrv-grid" class="dl-qr-grid"></div>' +
             '</div>' +
             '<div class="dl-share-foot">' +
               '<span class="dl-qr-tb-spacer"></span>' +
               '<button type="button" id="dl-qrv-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
-              '<button type="button" id="dl-qrv-pdf" class="dl-share-btn dl-share-btn-secondary" disabled title="Printbaar vel met alle versie-QR\'s + bijschrift">🖨 PDF</button>' +
+              '<button type="button" id="dl-qrv-pdf" class="dl-share-btn dl-share-btn-secondary" disabled title="Stickervel: printbaar A4 met alle versie-QR\'s + bijschrift, om uit te knippen">🖨 Stickervel</button>' +
               '<button type="button" id="dl-qrv-zip" class="dl-share-btn dl-share-btn-secondary" disabled title="ZIP met losse QR-PNG\'s + koppeltabel">⬇ ZIP (PNG\'s)</button>' +
+              '<button type="button" id="dl-qrv-stamp" class="dl-share-btn dl-share-btn-secondary" disabled title="Download de PDF\'s mét de QR er al in gestempeld — direct printen">📄 Print-set (QR in PDF)</button>' +
               '<button type="button" id="dl-qrv-generate" class="dl-share-btn dl-share-btn-primary">QR-codes genereren</button>' +
             '</div>' +
           '</div>' +
@@ -12034,6 +12569,13 @@ const DL = (function(){
     if (qrvZip) qrvZip.addEventListener('click', function(){ _qrvExportZip(qrvZip); });
     const qrvPdf = root.querySelector('#dl-qrv-pdf');
     if (qrvPdf) qrvPdf.addEventListener('click', function(){ _qrvExportPdf(qrvPdf); });
+    const qrvStamp = root.querySelector('#dl-qrv-stamp');
+    if (qrvStamp) qrvStamp.addEventListener('click', function(){ _qrvExportStamped(qrvStamp); });
+    // Stempel-voorkeur direct bewaren bij wijzigen
+    ['dl-qrv-stamp-pos', 'dl-qrv-stamp-size', 'dl-qrv-stamp-all'].forEach(function(id){
+      const el = root.querySelector('#' + id);
+      if (el) el.addEventListener('change', _qrvStampReadUi);
+    });
     // Add-to-release dialog
     const zipBtn = root.querySelector('#dl-zip-btn');
     if (zipBtn) zipBtn.addEventListener('click', function(){ _downloadSelectionZip(zipBtn); });
