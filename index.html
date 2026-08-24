@@ -9326,6 +9326,52 @@ const DL = (function(){
     });
   }
 
+  // Metadata-lijst voor in een ZIP als echte .xlsx i.p.v. CSV (klantvraag aug 2026).
+  // Huisstijl-header (At Fielt-oranje, wit-bold) — kan nu dankzij de ExcelJS-motorwissel
+  // van v1.6; dit is meteen de basis-opmaak waar het klant-sjabloon straks op verder bouwt.
+  // rows: [{ naam, revisie, versie, map, url }] — url optioneel (klikbare bestandsnaam).
+  async function _buildMetaXlsxBuffer(rows, sheetTitle){
+    const ExcelJS = await _ensureExcelJS();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(sheetTitle || 'Documentenlijst');
+    const headers = ['Bestandsnaam', 'Revisie', 'Versie', 'Map'];
+    headers.forEach(function(h, c){
+      const cell = ws.getCell(1, c + 1);
+      cell.value = h;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4821A' } };
+      cell.alignment = { vertical: 'middle' };
+    });
+    rows.forEach(function(r, i){
+      const rowI = i + 2;
+      const nameCell = ws.getCell(rowI, 1);
+      if (r.url){
+        // Zelfde HYPERLINK-formule-aanpak als de grote Excel-export (blauw + klikbaar)
+        const safeUrl = String(r.url).replace(/"/g, '""');
+        const safeTxt = String(r.naam || '').replace(/"/g, '""');
+        nameCell.value = { formula: 'HYPERLINK("' + safeUrl + '","' + safeTxt + '")', result: r.naam || '' };
+        nameCell.font = { color: { argb: 'FF0563C1' }, underline: true };
+      } else {
+        nameCell.value = r.naam || '';
+      }
+      ws.getCell(rowI, 2).value = r.revisie || '';
+      ws.getCell(rowI, 3).value = r.versie == null ? '' : String(r.versie);
+      ws.getCell(rowI, 4).value = r.map || '';
+    });
+    // Kolombreedtes op inhoud (max 60), koprij bevroren, filterknoppen aan
+    headers.forEach(function(h, c){
+      let w = h.length + 2;
+      rows.forEach(function(r){
+        const v = [r.naam, r.revisie, r.versie, r.map][c];
+        if (v != null) w = Math.max(w, Math.min(60, String(v).length + 2));
+      });
+      ws.getColumn(c + 1).width = w;
+    });
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: rows.length + 1, column: headers.length } };
+    return wb.xlsx.writeBuffer();
+  }
+
   // Download de geselecteerde rijen als ZIP (klantvraag: "waar is de zip-knop?" —
   // die bestond alleen per release). Zelfde keuze-dialoog en mappenstructuur als de
   // release-ZIP; geen name-fallback nodig want de selectie kent zijn docs al.
@@ -9360,17 +9406,23 @@ const DL = (function(){
       }
       if (btn) btn.textContent = '⏳ ' + (ok + fout) + '/' + docs.length;
     }
-    // Metadata-CSV meeleveren, zelfde vorm als de release-ZIP
-    const csvRows = [['Bestandsnaam', 'Revisie', 'Versie', 'Map'].join(';')];
-    docs.forEach(function(d){
-      csvRows.push([
-        '"' + (d.bestandsnaam || '').replace(/"/g, '""') + '"',
-        '"' + (d.revisie || '') + '"',
-        '"' + (d._versie || '') + '"',
-        '"' + (d.file_location || '').replace(/"/g, '""') + '"',
-      ].join(';'));
+    // Metadata-lijst als Excel meeleveren; CSV alleen als fallback wanneer de
+    // Excel-library niet wil laden (offline CDN) — dan mist de klant niet alles.
+    const metaRows = docs.map(function(d){
+      return { naam: d.bestandsnaam || '', revisie: d.revisie || '', versie: d._versie || '',
+               map: d.file_location || '', url: _tcFileUrl(d) };
     });
-    zip.file('_documentenlijst_selectie.csv', '\ufeff' + csvRows.join('\n'));
+    try {
+      const xbuf = await _buildMetaXlsxBuffer(metaRows, 'Selectie');
+      zip.file('_documentenlijst_selectie.xlsx', xbuf);
+    } catch(e){
+      console.warn('[DL] xlsx-lijst mislukt, CSV-fallback:', e.message);
+      const csvRows = [['Bestandsnaam', 'Revisie', 'Versie', 'Map'].join(';')];
+      metaRows.forEach(function(r){
+        csvRows.push(['"' + r.naam.replace(/"/g, '""') + '"', '"' + r.revisie + '"', '"' + r.versie + '"', '"' + r.map.replace(/"/g, '""') + '"'].join(';'));
+      });
+      zip.file('_documentenlijst_selectie.csv', '\ufeff' + csvRows.join('\n'));
+    }
     if (btn) btn.textContent = '⏳ ZIP maken…';
     try {
       const content = await zip.generateAsync({ type: 'blob' });
@@ -9462,9 +9514,8 @@ const DL = (function(){
       }
       if (btn) btn.textContent = '⏳ ' + (ok + fout) + '/' + files.length;
     }
-    // CSV met metadata toevoegen
-    const csvRows = [['Bestandsnaam', 'Revisie', 'Versie', 'Map'].join(';')];
-    files.forEach(function(f){
+    // Metadata-lijst als Excel toevoegen (CSV alleen als fallback, zie selectie-ZIP)
+    const metaRows = files.map(function(f){
       // Sprint 1 backlog: name-fallback met ambigu-detectie (idem)
       let doc = _docs.find(function(d){ return d._vid === (f.id || f.fileId); });
       if (!doc && f.name){
@@ -9472,13 +9523,26 @@ const DL = (function(){
         if (nameMatches.length === 1) doc = nameMatches[0];
         else if (nameMatches.length > 1) doc = nameMatches[0]; // ambigu: eerste; loggen doen we alleen 1× per download
       }
-      const rev = (doc && doc.revisie) || f.revision || '';
-      const ver = (doc && doc._versie) || '';
-      const map = (doc && doc.file_location) || '';
-      csvRows.push(['"' + (f.name || '').replace(/"/g, '""') + '"', '"' + rev + '"', '"' + ver + '"', '"' + map.replace(/"/g, '""') + '"'].join(';'));
+      return {
+        naam: f.name || '',
+        revisie: (doc && doc.revisie) || f.revision || '',
+        versie: (doc && doc._versie) || '',
+        map: (doc && doc.file_location) || '',
+        url: doc ? _tcFileUrl(doc) : '',
+      };
     });
     const relSlug = (rel && rel.name ? rel.name : 'release').replace(/[^a-zA-Z0-9-_ ]/g, '');
-    zip.file('_documentenlijst_' + relSlug + '.csv', '﻿' + csvRows.join('\n'));
+    try {
+      const xbuf = await _buildMetaXlsxBuffer(metaRows, 'Release');
+      zip.file('_documentenlijst_' + relSlug + '.xlsx', xbuf);
+    } catch(e){
+      console.warn('[DL] xlsx-lijst mislukt, CSV-fallback:', e.message);
+      const csvRows = [['Bestandsnaam', 'Revisie', 'Versie', 'Map'].join(';')];
+      metaRows.forEach(function(r){
+        csvRows.push(['"' + r.naam.replace(/"/g, '""') + '"', '"' + r.revisie + '"', '"' + String(r.versie) + '"', '"' + r.map.replace(/"/g, '""') + '"'].join(';'));
+      });
+      zip.file('_documentenlijst_' + relSlug + '.csv', '\ufeff' + csvRows.join('\n'));
+    }
     if (btn) btn.textContent = '⏳ ZIP maken…';
     try {
       const content = await zip.generateAsync({ type: 'blob' });
@@ -11602,7 +11666,7 @@ const RV = (function(){
   }
 
   // === Data conversie (gebaseerd op standalone rechten-viewer regel 1672+) ===
-  function _convertData(folders, permsData, users, groups, projectName){
+  function _convertData(folders, permsData, users, groups, projectName, rootPerms){
     const groupById = {};
     for (const g of groups) if (g.id) groupById[g.id] = g.name || g.displayName || g.id;
     const userById = {};
@@ -11628,9 +11692,8 @@ const RV = (function(){
     }
 
     const allGroupsSet = new Set();
-    const csvData = [{ pad: projectName, read: [], full: [], inherited: false }];
 
-    for (const { folder, permissions } of permsData){
+    function _buildRecord(permissions, pad){
       const subjectAccess = {};
       const denySet = new Set();
       let hasDirect = false, hasInherited = false;
@@ -11688,14 +11751,25 @@ const RV = (function(){
         else if (lvl === 'read') read.push(name);
       }
 
-      csvData.push({
-        pad: folder.path,
+      return {
+        pad,
         read, full,
         inherited: !hasDirect && hasInherited,
         _deny: denySet,
         _hasDirect: hasDirect,
         _inheritFromParent: inheritFromParent,
-      });
+      };
+    }
+
+    // Root-record: verwerk project-root permissies zodat de default access
+    // ("Alle projectleden → alleen-lezen") kan doorvloeien naar top-level mappen.
+    // Bij ontbrekende rootPerms blijft de root leeg, zoals voorheen.
+    const rootRec = _buildRecord(rootPerms, projectName);
+    rootRec.inherited = false; // root heeft geen parent; toon niet als 'overgenomen'
+    const csvData = [rootRec];
+
+    for (const { folder, permissions } of permsData){
+      csvData.push(_buildRecord(permissions, folder.path));
     }
 
     // Users-data
@@ -11727,8 +11801,11 @@ const RV = (function(){
       for (const g of u.groups) allGroupsSet.add(g);
     }
 
-    // Top-down propagatie: vul ontbrekende inheritance aan waar de TC API het niet meelevert
-    _propagateInheritedPermissions(csvData.slice(1), allGroupsSet);
+    // Top-down propagatie: vul ontbrekende inheritance aan waar de TC API het niet meelevert.
+    // csvData wordt in z'n geheel doorgegeven zodat top-level mappen hun parent
+    // (de project-root) in padToRecord vinden — de root wordt zelf overgeslagen omdat
+    // parts.length < 2 (root-pad heeft één segment).
+    _propagateInheritedPermissions(csvData, allGroupsSet);
 
     // Sorteer csvData hiërarchisch zodat sub-mappen direct onder hun parent staan
     // (segment-voor-segment vergelijken met numeric-aware locale → "2" < "10")
@@ -12243,12 +12320,19 @@ const RV = (function(){
 
       const folders = await _fetchFoldersRecursive(rootId, tcProject.name || '–');
       console.log('[RV] folders gevonden:', folders.length);
+      // Root-permissies apart ophalen: `_fetchFoldersRecursive` levert alleen sub-folders,
+      // maar de default access op projectniveau (bv. "Alle projectleden → alleen-lezen")
+      // zit op de root-folder. Zonder deze fetch krijgt de root-record lege ACL's en
+      // propageert er niets naar top-level mappen (root cause A4, aug 24 2026).
+      let rootPerms = null;
+      try { rootPerms = await _fetchUnwrapped('/folders/fs/' + rootId + '/permissions'); }
+      catch(e){ console.warn('[RV] root-permissions mislukt:', e.message); }
       const permsData = await _fetchPermissions(folders);
       if (typeof _prefetchProgress === 'function'){
         try { _prefetchProgress({ phase: 'team ophalen', unit: 'rechten' }); } catch(_){}
       }
       const team = await _fetchTeam();
-      _data = _convertData(folders, permsData, team.users, team.groups, tcProject.name || '–');
+      _data = _convertData(folders, permsData, team.users, team.groups, tcProject.name || '–', rootPerms);
       _buildTreeIndices();
       _isLoaded = true;
       console.log('[RV] geladen:', _data.csvData.length - 1, 'mappen,', _data.allGroups.length, 'groepen,', _data.allUsers.length, 'gebruikers');
