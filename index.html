@@ -267,6 +267,9 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .qr-view-btn{padding:10px 20px;background:var(--af);color:#fff;border:none;border-radius:var(--r-pill);font:600 14px 'Poppins',sans-serif;cursor:pointer;transition:background .15s}
 .qr-view-btn:hover{background:var(--af2)}
 .qr-view-btn:disabled{opacity:.5;cursor:wait}
+.share-revoke-btn{background:transparent;border:1px solid var(--hl);color:var(--g4);border-radius:var(--r-sm);padding:2px 7px;cursor:pointer;font-size:11px;line-height:1.4;flex-shrink:0;transition:all .15s}
+.share-revoke-btn:hover:not(:disabled){color:var(--warn);border-color:var(--warn)}
+.share-revoke-btn:disabled{opacity:.5;cursor:wait}
 .ftr{
   text-align:center;color:var(--g5);font-size:var(--fs-sm);
   padding:var(--s5);
@@ -1414,7 +1417,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.15';
+const COCKPIT_VERSION = '1.18';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -2445,10 +2448,20 @@ function _initDashboardRefresh(){
 
   // 3. Eigen upload klaar: PU dispatcht cockpit:upload-done. Dashboard verfrissen
   //    + DL-cache wissen zodat de net-geüploade bestanden in de lijst komen.
+  //    v1.18: fileIds uit event doorgeven aan DL.noteUploaded zodat het _modified veld
+  //    van deze vids naar upload-tijd wordt overschreven — TC's /folders/items is 1-2
+  //    min stale na een upload; zonder deze buffer valt de file uit "Gewijzigd: vandaag".
   document.addEventListener('cockpit:upload-done', function(e){
-    const n = (e && e.detail && e.detail.count) || 0;
-    console.log('[Cockpit] cockpit:upload-done event (' + n + ' bestanden) — invalidate caches');
-    if (typeof DL !== 'undefined' && typeof DL.invalidateCache === 'function') DL.invalidateCache();
+    const detail = (e && e.detail) || {};
+    const n = detail.count || 0;
+    const fileIds = detail.fileIds || [];
+    console.log('[Cockpit] cockpit:upload-done event (' + n + ' bestanden, ' + fileIds.length + ' vids) — invalidate caches');
+    if (typeof DL !== 'undefined'){
+      // Volgorde belangrijk: eerst buffer schrijven, dán cache wissen — anders draait
+      // de reload voordat de buffer bestaat en wordt _modified niet overschreven.
+      if (typeof DL.noteUploaded === 'function' && fileIds.length) DL.noteUploaded(fileIds);
+      if (typeof DL.invalidateCache === 'function') DL.invalidateCache();
+    }
     refreshDashboard('upload-done');
   });
 
@@ -2874,6 +2887,7 @@ function renderShares(shares){
       + '<span class="rel-tag">'+escapeHtml(String(tag).substring(0,10))+'</span>'
       + '<span class="rel-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
       + '<span class="rel-meta">'+escapeHtml(expStr)+'</span>'
+      + (s.id ? '<button type="button" class="share-revoke-btn" data-share-revoke="'+escapeHtml(s.id)+'" data-share-name="'+escapeHtml(name)+'" title="Deel-link intrekken — ontvangers verliezen direct toegang">✕</button>' : '')
       + '<span class="ext-link">↗ TC</span>'
       + '</div>';
   }).join('');
@@ -2884,6 +2898,58 @@ function renderShares(shares){
       else openInTC('activity');
     });
   });
+  el.querySelectorAll('.share-revoke-btn').forEach(function(b){
+    b.addEventListener('click', function(e){
+      e.stopPropagation();
+      revokeShare(b.getAttribute('data-share-revoke'), b.getAttribute('data-share-name') || 'deel-link', b);
+    });
+  });
+}
+
+// v1.17 — deel-link intrekken vanaf het dashboard. TC's webclient heeft geen
+// direct bereikbare shares-beheerpagina meer (alleen de ongefilterde Activity-
+// stroom), dus intrekken gebeurt hier. Het DELETE-schema is niet publiek
+// gedocumenteerd; zelfde les als de release-fix (v1.15): succes komt uit een
+// verificatie-GET, nooit uit de HTTP-status. Fallback bij 404/405: expiry in
+// het verleden zetten. De console meldt welke route werkte.
+async function revokeShare(shareId, name, btnEl){
+  if (!shareId) return;
+  if (!confirm('Deel-link "' + name + '" intrekken?\n\nAlle ontvangers verliezen direct toegang — ook als de share meerdere bestanden bevat. Dit kan niet ongedaan worden gemaakt; opnieuw delen maakt een nieuwe link.')) return;
+  if (btnEl){ btnEl.disabled = true; btnEl.textContent = '⏳'; }
+  const headers = { 'Authorization': 'Bearer ' + tcToken, 'Accept': 'application/json' };
+  let route = 'DELETE';
+  try {
+    let r = await fetch(TC_API_BASE + '/shares/' + encodeURIComponent(shareId), { method: 'DELETE', headers: headers });
+    if (r.status === 404 || r.status === 405){
+      route = 'expiry';
+      r = await fetch(TC_API_BASE + '/shares/' + encodeURIComponent(shareId), {
+        method: 'PUT',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, headers),
+        body: JSON.stringify({ expiryDate: new Date(Date.now() - 60000).toISOString() }),
+      });
+    }
+    // Na-verificatie met een echte fetch — tcFetchSafe zou een mislukte GET als
+    // lege lijst maskeren en het intrekken ten onrechte als gelukt melden.
+    let fresh;
+    try {
+      const r2 = await tcFetch('/shares?projectId=' + encodeURIComponent(tcProject.id) + '&pageSize=100');
+      fresh = r2 && r2._partial ? r2._data : r2;
+    } catch(e){
+      throw new Error('verificatie mislukt (' + e.message + ') — controleer in Trimble Connect of de link weg is');
+    }
+    const list = Array.isArray(fresh) ? fresh : (fresh && Array.isArray(fresh.items) ? fresh.items : []);
+    const still = list.find(function(x){ return x.id === shareId; });
+    const exp = still && (still.expiresOn || still.expiryDate);
+    const stillOpen = still && (!exp || new Date(exp).getTime() > Date.now());
+    if (stillOpen) throw new Error('de share staat na intrekken (' + route + ', HTTP ' + r.status + ') nog steeds open');
+    console.log('[Cockpit] share ingetrokken via ' + route + ':', name);
+    if (typeof DIAG !== 'undefined') DIAG.note('Share ingetrokken (' + route + '): ' + name);
+    renderShares(list);
+  } catch(e){
+    console.warn('[Cockpit] share intrekken mislukt:', e.message);
+    alert('Intrekken mislukt: ' + e.message);
+    if (btnEl){ btnEl.disabled = false; btnEl.textContent = '✕'; }
+  }
 }
 
 // Favorites: per-project bookmarks van folder-IDs (localStorage)
@@ -6329,6 +6395,10 @@ const PU = (function(){
     if (upBtn) upBtn.disabled = true;
     _psetStats = { ok:0, fail:0 };
     let ok = 0, fail = 0, totalBytes = 0, metaComplete = 0, metaWarn = 0;
+    // v1.18: verzamel succesvolle vids zodat het cockpit:upload-done event ze
+    // kan meesturen. DL gebruikt dat om _modified te overschrijven en TC's
+    // eventual-consistency op /folders-listing te overbruggen.
+    const uploadedFileIds = [];
 
     // Parallel met concurrency 3 — TC verwerkt initiate-calls parallel; _retryFetch vangt
     // 429 op als de server toch limiteert. Token-refresh-mutex (_puRefreshInFlight) zorgt
@@ -6343,6 +6413,7 @@ const PU = (function(){
           ok++;
           totalBytes += item.file.size;
           if (wasComplete) metaComplete++; else metaWarn++;
+          if (item.fileId) uploadedFileIds.push(item.fileId);
         } catch(e){
           console.error('[PU] failed', item.file.name, e);
           item.status = 'error';
@@ -6375,10 +6446,13 @@ const PU = (function(){
 
     // Dashboard + DL signaal: jouw uploads zijn klaar, hun caches zijn stale.
     // Cockpit luistert hierop (_initDashboardRefresh) en wist + ververst.
+    // v1.18: fileIds meegestuurd zodat DL het _modified veld van deze vids
+    // gericht kan overschrijven naar upload-tijd (TC's /folders update anders
+    // pas na 1-2 min, waardoor bv. "Gewijzigd: vandaag" de file niet toont).
     if (ok > 0){
       try {
         document.dispatchEvent(new CustomEvent('cockpit:upload-done', {
-          detail: { count: ok, failed: fail, bytes: totalBytes }
+          detail: { count: ok, failed: fail, bytes: totalBytes, fileIds: uploadedFileIds }
         }));
       } catch(_){}
     }
@@ -6570,6 +6644,10 @@ const DL = (function(){
     { k: 'controleverzoek',        l: 'Controleverzoek', w: '8%' },
     { k: 'ifc_timestamp',          l: 'IFC timestamp',   w: '8%' },
     { k: '_versie',                l: 'Versie',          w: '5%' },
+    // Versie-QR-status uit de hub-registry (F3 ronde 3). Underscore-key: ontsnapt
+    // bewust aan de meta-schema-gate in _getActiveCols; waarde wordt door
+    // _qrvApplyRegistry op de docs gematerialiseerd zodat sorteren werkt.
+    { k: '_qr_status',             l: 'Versie-QR',       w: '90px' },
     { k: '_modified',              l: 'Gewijzigd',       w: '10%' },
     { k: '_created',               l: 'Toegevoegd',      w: '10%' },
     { k: 'file_location',          l: 'Map',             w: '15%' },
@@ -6578,7 +6656,7 @@ const DL = (function(){
   // Werkvoorbereiders scannen op doc-nummer + titel + revisie + bedrijf — die waren standaard verborgen.
   const DEFAULT_VISIBLE = ['bestandsnaam', 'document_nummer', 'titel', 'revisie', 'document_datum', 'document_status', 'bedrijf'];
   // Kolommen die NIET als per-kolom filter beschikbaar zijn (vrij-tekst, datums, technical)
-  const SKIP_FILTER = new Set(['bestandsnaam', 'document_nummer', 'titel', 'revisie', 'document_datum', 'document_aanmaak_datum', '_versie', '_modified', '_created', 'file_location', 'ifc_timestamp']);
+  const SKIP_FILTER = new Set(['bestandsnaam', 'document_nummer', 'titel', 'revisie', 'document_datum', 'document_aanmaak_datum', '_versie', '_qr_status', '_modified', '_created', 'file_location', 'ifc_timestamp']);
   function _isMetaCol(k){ return !!k && k.charAt(0) !== '_' && k !== 'bestandsnaam' && k !== 'file_location'; }
   // Een veld is inline-editbaar als het een PSet-UUID heeft in PROP_MAP (dwz. echt metadata is).
   function _isEditableField(k){
@@ -7923,6 +8001,11 @@ const DL = (function(){
       // Metadata na docs binnen — niet-blokkerend voor lijst-render
       _renderTable();
 
+      // Versie-QR-registry (kolom 🏷): niet-blokkerend; no-op zolang de
+      // EXTENSIONS-allowlist nog niet opgelost is (vangnet zit in _qrvOpenDialog
+      // en _updateSelectionBar).
+      _qrvRegistryLoad().catch(function(e){ console.warn('[DL] qr-registry laden mislukt:', e.message); });
+
       // Cache-check: als geldig (≤24u oud), direct toepassen en bulk+deep-scan skippen
       const cache = _readCache();
       if (cache){
@@ -7939,6 +8022,8 @@ const DL = (function(){
           console.log('[DL] cache hit:', hits, '/', _docs.length, 'docs (' + withMeta + ' met metadata, ' + (hits - withMeta) + ' als leeg gecached) — bulk + deep-scan overgeslagen');
           // Recent-saved buffer toepassen: overschrijf stale cache-data met onze laatst-bevestigde saves
           try { _recentSavedApply(); } catch(e){ console.warn('[DL] recent-saved apply fout:', e.message); }
+          // v1.18: recent-uploaded buffer — overschrijf _modified van net-geüploade vids naar upload-tijd
+          try { _recentUploadedApply(); } catch(e){ console.warn('[DL] recent-uploaded apply fout:', e.message); }
           _renderTable();
           _buildDatalists();
           // Retry pending edits ook bij cache-hit (anders wachten ze tot volgende force-refresh)
@@ -7962,6 +8047,8 @@ const DL = (function(){
       // Recent-saved buffer toepassen NA bulk: overschrijf bulk-data met onze laatst-bevestigde
       // saves zodat ↻ Vernieuwen vlak na save niet de stale TC-bulk-waarde toont.
       try { _recentSavedApply(); } catch(e){ console.warn('[DL] recent-saved apply fout:', e.message); }
+      // v1.18: recent-uploaded buffer — overschrijf _modified van net-geüploade vids (TC's /folders is stale)
+      try { _recentUploadedApply(); } catch(e){ console.warn('[DL] recent-uploaded apply fout:', e.message); }
       _renderTable(); // bulk binnen, eerste 100 docs hebben metadata
       _buildDatalists();
       // Retry pending edits uit offline-buffer (failed saves van eerdere sessie)
@@ -7972,6 +8059,9 @@ const DL = (function(){
           // Recent-saved buffer ook ná deep-scan toepassen — deep-scan kan eveneens stale data
           // teruggeven die onze recente saves zou overschrijven.
           try { _recentSavedApply(); } catch(_){}
+          // v1.18: idem voor recent-uploaded — deep-scan verandert _modified niet, maar dit is
+          // de laatste render vóór cache-write; buffer wint tot TTL.
+          try { _recentUploadedApply(); } catch(_){}
           _writeCache(_buildCacheFromDocs());
           _buildDatalists(); // rebuilden zodat deep-scan-waarden ook beschikbaar zijn
           console.log('[DL] cache geschreven voor', _docs.length, 'docs (24u TTL)');
@@ -8472,6 +8562,16 @@ const DL = (function(){
           extraAttrs = ' data-editable="' + _esc(c.k) + '" title="Dubbelklik — kies uit de lijst. Wijziging wordt direct opgeslagen."';
         }
       }
+      else if (c.k === '_qr_status' && v){
+        // Versie-QR-badge: groen = print actueel, rood ⚠ = er is een nieuwere versie
+        const qrWarn = String(v).indexOf('⚠') >= 0;
+        const qrReg = (typeof _qrvRegistry !== 'undefined') && _qrvRegistry && _qrvRegistry.get(d._vid);
+        const qrTt = qrReg
+          ? ('QR gegenereerd op ' + new Date(qrReg.createdAt).toLocaleDateString('nl-NL') + ' · '
+             + (qrReg.scanCount || 0) + '× gescand' + (qrWarn ? ' · print is NIET meer actueel' : ''))
+          : '';
+        v = '<span class="dl-bdg ' + (qrWarn ? 'dl-bdg-ver' : 'dl-bdg-def') + '" title="' + _esc(qrTt) + '">🏷 ' + _esc(v) + '</span>';
+      }
       else {
         v = _esc(v == null ? '' : v);
         // Metadata-kolommen krijgen dl-cell-meta zodat lange teksten afbreken en de
@@ -8765,6 +8865,8 @@ const DL = (function(){
     // Versie-QR-knop alleen tonen bij licentie op de qr-codes-module
     const qrvBtn = document.getElementById('dl-qrv-btn');
     if (qrvBtn) qrvBtn.style.display = _qrvAllowed() ? '' : 'none';
+    // Vangnet-trigger registry: goedkoop (early-return zodra geladen)
+    _qrvRegistryLoad().catch(function(){});
     _updateBulkEditButton();
   }
 
@@ -8846,6 +8948,69 @@ const DL = (function(){
     }
     if (merged > 0) console.log('[DL] recent-saved buffer:', merged, 'velden over', mergedDocs, 'docs gemerged (anti-stale)');
     _recentSavedWriteAll(all);
+    return merged;
+  }
+
+  // === Recent-uploaded buffer (v1.18 anti-eventually-consistent voor file-uploads) ===
+  // Analog aan _recentSaved* maar voor het _modified veld van net-geüploade bestanden.
+  // TC's /folders/{id}/items update modifiedOn NIET direct na een file-upload of nieuwe
+  // versie — dat kan 1-2 min duren. Filter "Gewijzigd: vandaag" (r8053) faalt dan omdat
+  // _modified nog de vorige upload-timestamp draagt.
+  // Fix: bij cockpit:upload-done event met fileIds → localStorage buffer met ts=Date.now().
+  // Bij elke _loadDocs → merge over doc._modified als TC's waarde ouder is EN binnen TTL.
+  const RECENT_UPLOADED_TTL_MS = 5 * 60 * 1000;
+  function _recentUploadedKey(){ return 'dl-recentuploaded-' + (tcProject && tcProject.id || 'unknown'); }
+  function _recentUploadedGetAll(){
+    try {
+      const raw = localStorage.getItem(_recentUploadedKey());
+      if (!raw) return {};
+      const obj = JSON.parse(raw);
+      return (obj && typeof obj === 'object') ? obj : {};
+    } catch(_){ return {}; }
+  }
+  function _recentUploadedWriteAll(obj){
+    try {
+      const cutoff = Date.now() - RECENT_UPLOADED_TTL_MS;
+      for (const vid in obj){
+        if (!obj[vid] || typeof obj[vid].ts !== 'number' || obj[vid].ts < cutoff) delete obj[vid];
+      }
+      if (Object.keys(obj).length === 0){
+        localStorage.removeItem(_recentUploadedKey());
+      } else {
+        localStorage.setItem(_recentUploadedKey(), JSON.stringify(obj));
+      }
+    } catch(_){}
+  }
+  function _recentUploadedAdd(fileIds){
+    if (!Array.isArray(fileIds) || !fileIds.length) return;
+    const all = _recentUploadedGetAll();
+    const now = Date.now();
+    for (const vid of fileIds){
+      if (vid) all[vid] = { ts: now };
+    }
+    _recentUploadedWriteAll(all);
+  }
+  // Merge over docs[]: als een vid in de buffer staat en TC's _modified ouder is dan onze
+  // ts, overschrijven we _modified naar de buffer-ts (als ISO). Zowel nieuwe versies van
+  // bestaande files als compleet nieuwe files landen zo binnen enkele seconden onder
+  // "Gewijzigd: vandaag", ongeacht TC's server-side sync-latency.
+  function _recentUploadedApply(){
+    const all = _recentUploadedGetAll();
+    const cutoff = Date.now() - RECENT_UPLOADED_TTL_MS;
+    let merged = 0;
+    for (const vid in all){
+      const entry = all[vid];
+      if (!entry || typeof entry.ts !== 'number' || entry.ts < cutoff){ delete all[vid]; continue; }
+      const doc = _docs.find(function(d){ return d._vid === vid; });
+      if (!doc) continue;  // nieuwe file nog niet zichtbaar in _docs — volgende reload
+      const tcTs = Date.parse(doc._modified || doc._created || '') || 0;
+      if (tcTs < entry.ts){
+        doc._modified = new Date(entry.ts).toISOString();
+        merged++;
+      }
+    }
+    if (merged > 0) console.log('[DL] recent-uploaded buffer:', merged, '_modified velden overschreven (anti-stale folder-listing)');
+    _recentUploadedWriteAll(all);
     return merged;
   }
 
@@ -9359,12 +9524,13 @@ const DL = (function(){
           + '<span class="dl-views-name" title="' + _esc(wie) + '">' + _esc(v.name)
           + ((v.release && v.release.id) ? ' <span class="dl-views-rel" title="Gekoppelde release">📦 ' + _esc(v.release.name || 'release') + '</span>' : '')
           + '</span>'
-          + (mag
+          + (mag || _qrvAllowed()
               ? '<span class="dl-views-acts">'
-                + '<button type="button" class="dl-views-act" data-view-act="promote" title="' + _esc(relTitle) + '">📦</button>'
+                + (_qrvAllowed() ? '<button type="button" class="dl-views-act" data-view-act="qrv" title="Versie-QR\'s genereren voor de bestanden van dit werkpakket">🏷️</button>' : '')
+                + (mag ? '<button type="button" class="dl-views-act" data-view-act="promote" title="' + _esc(relTitle) + '">📦</button>'
                 + '<button type="button" class="dl-views-act" data-view-act="update" title="Bijwerken met de huidige instellingen">↻</button>'
                 + '<button type="button" class="dl-views-act" data-view-act="rename" title="Hernoemen">✎</button>'
-                + '<button type="button" class="dl-views-act" data-view-act="delete" title="Verwijderen">🗑</button>'
+                + '<button type="button" class="dl-views-act" data-view-act="delete" title="Verwijderen">🗑</button>' : '')
                 + '</span>'
               : '')
           + '</div>';
@@ -9403,6 +9569,14 @@ const DL = (function(){
           if (act === 'update') _viewUpdate(v, scope);
           else if (act === 'rename') _viewRename(v, scope);
           else if (act === 'delete') _viewDelete(v, scope);
+          else if (act === 'qrv'){
+            // Versie-QR-flow met dit werkpakket als bron (F3 ronde 3)
+            const pick = root.querySelector('#dl-views-picker');
+            const pbtn = root.querySelector('#dl-views-btn');
+            if (pick) pick.style.display = 'none';
+            if (pbtn) pbtn.classList.remove('active');
+            _qrvOpenDialogForView(v, scope);
+          }
           else if (act === 'promote'){
             // v1.12: gekoppeld werkpakket → sync; ongekoppeld → eerste promotie
             if (v.release && v.release.id) _syncReleaseFromView(v, scope);
@@ -11515,6 +11689,9 @@ const DL = (function(){
   let _qrvItems = [];            // [{d, code, url, revision, versionId}]
   let _qrvServiceMember = null;  // null = nog niet gecheckt
   let _qrvBusy = false;
+  let _qrvCtx = null;            // {docs, view, scope} | null — gezet door de bron-select (werkpakket)
+  let _qrvRegistry = null;       // Map fileId → hub-registratie (null = nog niet geladen)
+  let _qrvRegistryBusy = false;
 
   function _qrvAllowed(){
     try {
@@ -11523,7 +11700,11 @@ const DL = (function(){
     } catch(_){ return false; }
   }
   function _qrvSelDocs(){
+    if (_qrvCtx && _qrvCtx.docs) return _qrvCtx.docs;
     return _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
+  }
+  function _qrvManualCount(){
+    return _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); }).length;
   }
 
   function _qrvOpenDialog(){
@@ -11542,13 +11723,11 @@ const DL = (function(){
     });
     const genBtn = document.getElementById('dl-qrv-generate');
     if (genBtn) genBtn.disabled = false;
-    const sel = _qrvSelDocs();
-    const filesEl = document.getElementById('dl-qrv-files');
-    if (filesEl){
-      const names = sel.slice(0, 6).map(function(d){ return _esc(d.document_nummer || d.bestandsnaam); }).join(', ');
-      filesEl.innerHTML = '<strong>' + sel.length + ' document' + (sel.length === 1 ? '' : 'en') + ':</strong> ' +
-        names + (sel.length > 6 ? ' … (+' + (sel.length - 6) + ')' : '');
-    }
+    // Verse sessie: bron terug naar handmatige selectie (ctx alleen behouden
+    // als de dialoog via de 🏷️-werkpakket-ingang is geopend — die zet ctx vooraf)
+    if (!(_qrvCtx && _qrvCtx.viaPicker)) _qrvCtx = null;
+    _qrvSourceRender();
+    _qrvRenderFiles();
     modal.style.display = '';
     _qrvRenderModeBlock();
     _qrvLoadConfig().then(_qrvRenderModeBlock).catch(function(e){
@@ -11557,13 +11736,17 @@ const DL = (function(){
     });
     _qrvPreflight();
     _qrvStampInitUi();
+    _qrvUpdatePreviewBtn();
+    _qrvRegistryLoad().catch(function(){});
     // Zelfde project-logo als de map-QR's (gedeelde cache)
     _qrRestoreLogo().catch(function(){});
-    _qrLog('qrv-open', sel.length);
+    _qrLog('qrv-open', _qrvSelDocs().length);
   }
   function _qrvCloseDialog(){
     const modal = document.getElementById('dl-qrv-modal');
     if (modal) modal.style.display = 'none';
+    _qrvCtx = null;
+    _qrvPreviewClose();
   }
 
   // Hub-config: mode lezen (alle gebruikers) / schrijven (alleen admins, met
@@ -11685,6 +11868,155 @@ const DL = (function(){
     }
   }
 
+  // === QR-registry: welke documenten hebben al een Versie-QR? ===
+  // Eén hub-call per sessie (nieuwste registratie per file_id); gematerialiseerd
+  // als d._qr_status zodat de kolom sorteerbaar is (_filt/sort lezen d[k]).
+  async function _qrvRegistryLoad(force){
+    if (!_qrvAllowed() || _qrvRegistryBusy) return;
+    if (_qrvRegistry && !force) return;
+    const session = _getHubSessionTokenDL();
+    if (!session || !tcProject || !tcProject.id) return;
+    _qrvRegistryBusy = true;
+    try {
+      const r = await fetch(QRV_HUB_BASE + '/api/qr-list?project=' + encodeURIComponent(tcProject.id), {
+        headers: { 'X-Session': session, 'Accept': 'application/json' },
+      });
+      if (r.ok){
+        const d = await r.json();
+        const map = new Map();
+        (d.items || []).forEach(function(it){ map.set(it.fileId, it); });
+        _qrvRegistry = map;
+        _qrvApplyRegistry();
+        _renderTable();
+        _qrvRenderFiles(); // modal-lijst verversen als die open is
+      }
+    } catch(e){
+      console.warn('[DL] qr-registry laden mislukt:', e.message);
+    }
+    _qrvRegistryBusy = false;
+  }
+  function _qrvApplyRegistry(){
+    if (!_qrvRegistry) return;
+    for (const d of _docs){
+      const reg = d._vid ? _qrvRegistry.get(d._vid) : null;
+      if (!reg){ d._qr_status = ''; continue; }
+      const warn = reg.printedRevision != null && String(d._versie || '') !== '' &&
+        String(reg.printedRevision) !== String(d._versie);
+      d._qr_status = 'rev ' + (reg.printedRevision || '?') + (warn ? ' ⚠' : '');
+    }
+  }
+
+  // Bestandenlijst in de modal, incl. "N van M heeft al een QR"-markering
+  function _qrvRenderFiles(){
+    const filesEl = document.getElementById('dl-qrv-files');
+    if (!filesEl) return;
+    const sel = _qrvSelDocs();
+    const names = sel.slice(0, 6).map(function(d){
+      const heeft = _qrvRegistry && d._vid && _qrvRegistry.has(d._vid);
+      return _esc(d.document_nummer || d.bestandsnaam) + (heeft ? ' 🏷️' : '');
+    }).join(', ');
+    const met = _qrvRegistry ? sel.filter(function(d){ return d._vid && _qrvRegistry.has(d._vid); }).length : 0;
+    filesEl.innerHTML = '<strong>' + sel.length + ' document' + (sel.length === 1 ? '' : 'en') + ':</strong> ' +
+      names + (sel.length > 6 ? ' … (+' + (sel.length - 6) + ')' : '') +
+      (met > 0 ? ' <span style="color:var(--g5)">— ' + met + ' van ' + sel.length + ' heeft al een QR</span>' : '');
+  }
+
+  // === Bron-select: handmatige selectie óf een werkpakket ===
+  function _qrvSourceRender(){
+    const selEl = document.getElementById('dl-qrv-source');
+    if (!selEl) return;
+    const current = _qrvCtx && _qrvCtx.view ? (_qrvCtx.scope + ':' + _qrvCtx.view.id) : '';
+    function build(){
+      let html = '<option value="">Handmatige selectie (' + _qrvManualCount() + ')</option>';
+      function groep(label, list, scope){
+        const opts = (list || []).map(function(v){
+          return '<option value="' + _esc(scope + ':' + v.id) + '">' + _esc(v.name) + '</option>';
+        }).join('');
+        return opts ? '<optgroup label="' + label + '">' + opts + '</optgroup>' : '';
+      }
+      html += groep('Gedeeld in dit project', _views.shared, 'shared');
+      html += groep('Alleen voor jou', _views.personal, 'personal');
+      selEl.innerHTML = html;
+      selEl.value = current;
+      if (selEl.value !== current) selEl.value = '';
+    }
+    build();
+    // Weergaves kunnen nog aan het laden zijn → groepen aanvullen zodra binnen
+    if (typeof _ensureViewsLoaded === 'function'){
+      _ensureViewsLoaded().then(build).catch(function(){});
+    }
+  }
+  function _qrvSourceChanged(){
+    const selEl = document.getElementById('dl-qrv-source');
+    if (!selEl) return;
+    const val = selEl.value;
+    if (!val){
+      _qrvCtx = null;
+    } else {
+      const ix = val.indexOf(':');
+      const scope = val.slice(0, ix), id = val.slice(ix + 1);
+      const v = (_views[scope] || []).find(function(w){ return w.id === id; });
+      if (!v){ selEl.value = ''; _qrvCtx = null; }
+      else {
+        // Zelfde precedent als werkpakket→release-promotie: weergave echt
+        // toepassen en dan de live _filt()-uitkomst als doc-set nemen.
+        // Bewust zichtbaar effect: de tabel achter de modal verandert mee.
+        _activeViewId = v.id;
+        _viewApply(v.state);
+        try { _renderViewsButton(); _renderViewsPicker(); } catch(_){}
+        const docs = _filt().filter(function(d){ return d._vid; });
+        if (!docs.length){
+          alert('Dit werkpakket bevat op dit moment geen bestanden.');
+          selEl.value = ''; _qrvCtx = null;
+        } else {
+          _qrvCtx = { docs: docs, view: v, scope: scope };
+        }
+      }
+    }
+    // Nieuwe doc-set → generatie-state resetten
+    _qrvItems = [];
+    const grid = document.getElementById('dl-qrv-grid');
+    if (grid) grid.innerHTML = '';
+    const st = document.getElementById('dl-qrv-status');
+    if (st) st.textContent = '';
+    ['dl-qrv-zip', 'dl-qrv-pdf', 'dl-qrv-stamp', 'dl-qrv-to-release'].forEach(function(id){
+      const b = document.getElementById(id); if (b) b.disabled = true;
+    });
+    _qrvRenderFiles();
+    _qrvUpdatePreviewBtn();
+    _qrvPreviewClose();
+  }
+  function _qrvUpdatePreviewBtn(){
+    const b = document.getElementById('dl-qrv-stamp-preview');
+    if (b) b.disabled = !_qrvSelDocs().some(_qrvIsPdf);
+  }
+
+  // Werkpakket-ingang vanuit de Weergaves-picker (🏷️-knop): ctx vooraf zetten
+  // en dan de normale dialoog openen. viaPicker voorkomt de ctx-reset daar.
+  function _qrvOpenDialogForView(v, scope){
+    if (!_qrvAllowed()) return;
+    _activeViewId = v.id;
+    _viewApply(v.state);
+    try { _renderViewsButton(); _renderViewsPicker(); } catch(_){}
+    const docs = _filt().filter(function(d){ return d._vid; });
+    if (!docs.length){ alert('Dit werkpakket bevat op dit moment geen bestanden.'); return; }
+    _qrvCtx = { docs: docs, view: v, scope: scope, viaPicker: true };
+    _qrvOpenDialog();
+    delete _qrvCtx.viaPicker;
+  }
+
+  // Doorklik naar release: dezelfde docs (alleen die mét een QR) de bestaande
+  // release-dialoog in. Met view+scope erbij doet _submitAddToRelease de
+  // werkpakket⇄release-koppeling en pint _releaseAddLatest dezelfde versies
+  // als de QR-registratie (beide via _latestVersion).
+  function _qrvToRelease(){
+    if (!_qrvItems.length) return;
+    const ctx = _qrvCtx;
+    const docs = _qrvItems.map(function(it){ return it.d; });
+    _qrvCloseDialog();
+    _openAddToReleaseDialog(ctx && ctx.view ? { docs: docs, view: ctx.view, scope: ctx.scope } : { docs: docs });
+  }
+
   // Genereren: per document nieuwste versie ophalen (+ evt. PUBLIC share),
   // daarna één batch-registratie bij de hub → codes → QR-grid.
   async function _qrvGenerate(){
@@ -11704,10 +12036,21 @@ const DL = (function(){
       for (let i = 0; i < sel.length; i++){
         const d = sel[i];
         if (st) st.textContent = 'Versies ophalen… (' + (i + 1) + '/' + sel.length + ')';
-        const versions = await _fetchVersions(d._vid);
-        if (!versions || !versions.length){ failed.push(d.bestandsnaam + ' (versies onbekend)'); continue; }
-        const newest = versions[0]; // nieuwste eerst, zelfde aanname als detailpaneel
-        const revision = (newest.revision != null && newest.revision !== '') ? String(newest.revision) : String(versions.length);
+        // Versie-unificatie: _latestVersion (max-revision, de mei-21-les) — zelfde
+        // regel als _releaseAddLatest, zodat QR, print-set én release dezelfde
+        // versie pinnen. Vangnet zonder numerieke revisie: het oude versions[0].
+        let revision, versionId;
+        const lv = await _latestVersion(d);
+        if (lv){
+          revision = String(lv.revision);
+          versionId = lv.versionId || '';
+        } else {
+          const versions = await _fetchVersions(d._vid); // memoized — geen extra call
+          if (!versions || !versions.length){ failed.push(d.bestandsnaam + ' (versies onbekend)'); continue; }
+          const newest = versions[0];
+          revision = (newest.revision != null && newest.revision !== '') ? String(newest.revision) : String(versions.length);
+          versionId = newest.versionId || '';
+        }
         let stoken = '';
         if (_qrvMode === 'share'){
           if (st) st.textContent = 'Deel-link maken… (' + (i + 1) + '/' + sel.length + ')';
@@ -11733,14 +12076,14 @@ const DL = (function(){
             continue;
           }
         }
-        const item = { d: d, revision: revision, versionId: newest.versionId || '' };
+        const item = { d: d, revision: revision, versionId: versionId };
         byFileId[d._vid] = item;
         docsPayload.push({
           fileId: d._vid,
           fileName: d.bestandsnaam || '',
           docNumber: d.document_nummer || '',
           title: d.titel || '',
-          versionId: newest.versionId || '',
+          versionId: versionId,
           revision: revision,
           stoken: stoken,
         });
@@ -11765,13 +12108,24 @@ const DL = (function(){
       }).filter(Boolean);
 
       await _qrvRenderGrid();
-      ['dl-qrv-zip', 'dl-qrv-pdf', 'dl-qrv-stamp'].forEach(function(id){
+      ['dl-qrv-zip', 'dl-qrv-pdf', 'dl-qrv-stamp', 'dl-qrv-to-release'].forEach(function(id){
         const b = document.getElementById(id); if (b) b.disabled = !_qrvItems.length;
       });
       if (st){
         st.textContent = _qrvItems.length + ' QR-code' + (_qrvItems.length === 1 ? '' : 's') + ' gegenereerd.' +
           (failed.length ? ' Mislukt: ' + failed.join('; ') : '');
       }
+      // Registry lokaal bijwerken (geen refetch) → kolom + modal-lijst kloppen direct
+      if (!_qrvRegistry) _qrvRegistry = new Map();
+      _qrvItems.forEach(function(it){
+        _qrvRegistry.set(it.d._vid, {
+          fileId: it.d._vid, code: it.code, printedRevision: it.revision,
+          printedVersionId: it.versionId, mode: _qrvMode, createdAt: Date.now(), scanCount: 0,
+        });
+      });
+      _qrvApplyRegistry();
+      _renderTable();
+      _qrvRenderFiles();
       _qrLog('qrv-generate', _qrvItems.length);
     } catch(e){
       console.error('[DL] versie-QR genereren mislukt:', e);
@@ -11893,44 +12247,271 @@ const DL = (function(){
   // terugzetten-in-TC als nieuwe versie is een latere vervolgstap).
   function _qrvIsPdf(d){ return _getExt(d && d.bestandsnaam) === 'pdf'; }
   function _qrvStampKey(){ return 'dl-qrstamp-' + (tcProject && tcProject.id || 'unknown'); }
+  // Schema v2 (ronde 3): {corner:'rb|ro|lb|lo', dx:mm, dy:mm, size:20|25|30|40|50, all}
+  // dx/dy = afstand van het blok tot de gekozen hoek, gezet via het sleep-voorbeeld.
+  const QRV_STAMP_SIZES = [20, 25, 30, 40, 50];
   function _qrvStampGet(){
     try {
       const raw = localStorage.getItem(_qrvStampKey());
       if (raw){
         const o = JSON.parse(raw);
-        return {
-          pos: ['rb', 'ro', 'lb', 'lo'].indexOf(o.pos) >= 0 ? o.pos : 'rb',
-          size: ['s', 'm', 'l'].indexOf(o.size) >= 0 ? o.size : 'm',
-          all: !!o.all,
-        };
+        if (o && o.pos){
+          // Migratie van schema v1 {pos, size:'s|m|l', all}: oude vaste rand was 5mm
+          const cfg = {
+            corner: ['rb', 'ro', 'lb', 'lo'].indexOf(o.pos) >= 0 ? o.pos : 'rb',
+            dx: 5, dy: 5,
+            size: o.size === 'l' ? 25 : 20,
+            all: !!o.all,
+          };
+          _qrvStampSet(cfg); // eenmalig terugschrijven
+          return cfg;
+        }
+        if (o && o.corner){
+          return {
+            corner: ['rb', 'ro', 'lb', 'lo'].indexOf(o.corner) >= 0 ? o.corner : 'rb',
+            dx: isFinite(o.dx) ? Math.min(Math.max(Number(o.dx), 0), 500) : 5,
+            dy: isFinite(o.dy) ? Math.min(Math.max(Number(o.dy), 0), 500) : 5,
+            size: QRV_STAMP_SIZES.indexOf(Number(o.size)) >= 0 ? Number(o.size) : 30,
+            all: !!o.all,
+          };
+        }
       }
     } catch(_){}
-    return { pos: 'rb', size: 'm', all: false };
+    return { corner: 'rb', dx: 5, dy: 5, size: 30, all: false };
   }
   function _qrvStampSet(cfg){
     try { localStorage.setItem(_qrvStampKey(), JSON.stringify(cfg)); } catch(_){}
   }
-  // UI ⇄ voorkeur: bij openen vullen, bij wijzigen direct bewaren
+  // UI ⇄ voorkeur: bij openen vullen, bij wijzigen direct bewaren.
+  // De hoek-select is de grove keuze; het sleep-voorbeeld verfijnt dx/dy.
   function _qrvStampInitUi(){
     const cfg = _qrvStampGet();
     const pos = document.getElementById('dl-qrv-stamp-pos');
     const size = document.getElementById('dl-qrv-stamp-size');
     const all = document.getElementById('dl-qrv-stamp-all');
-    if (pos) pos.value = cfg.pos;
-    if (size) size.value = cfg.size;
+    if (pos) pos.value = cfg.corner;
+    if (size) size.value = String(cfg.size);
     if (all) all.checked = cfg.all;
+    _qrvStampSummary(cfg);
   }
   function _qrvStampReadUi(){
+    const prev = _qrvStampGet();
     const pos = document.getElementById('dl-qrv-stamp-pos');
     const size = document.getElementById('dl-qrv-stamp-size');
     const all = document.getElementById('dl-qrv-stamp-all');
+    const corner = pos && pos.value || prev.corner;
     const cfg = {
-      pos: pos && pos.value || 'rb',
-      size: size && size.value || 'm',
+      corner: corner,
+      // Hoek gewisseld via de select → offsets terug naar de standaardrand
+      dx: corner === prev.corner ? prev.dx : 5,
+      dy: corner === prev.corner ? prev.dy : 5,
+      size: size ? (Number(size.value) || prev.size) : prev.size,
       all: !!(all && all.checked),
     };
     _qrvStampSet(cfg);
+    _qrvStampSummary(cfg);
+    if (_qrvPrev) _qrvPreviewPlaceBox(); // voorbeeld live mee laten bewegen
     return cfg;
+  }
+  const QRV_CORNER_LABEL = { rb: 'rechtsonder', ro: 'rechtsboven', lb: 'linksonder', lo: 'linksboven' };
+  function _qrvStampSummary(cfg){
+    const el = document.getElementById('dl-qrv-stamp-summary');
+    if (el) el.textContent = (QRV_CORNER_LABEL[cfg.corner] || cfg.corner) + ' · ' +
+      (Math.round(cfg.dx * 10) / 10) + ' × ' + (Math.round(cfg.dy * 10) / 10) + ' mm van de hoek · ' + cfg.size + ' mm';
+  }
+
+  // === Sleep-voorbeeld: pagina 1 renderen (pdf.js) en het QR-blok verslepen ===
+  let _qrvPrev = null;                 // { vid, pageWpt, pageHpt, scale } — actieve voorbeeldsessie
+  const _qrvPrevCache = new Map();     // vid → { pageWpt, pageHpt, dataUrl } — geen her-download per sessie
+  let _qrvPrevDragBound = false;
+
+  async function _qrvEnsurePdfJs(){
+    function ns(){ return window.pdfjsLib || window['pdfjs-dist/build/pdf']; }
+    if (ns()) return ns();
+    const urls = [
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+    ];
+    let lastErr;
+    for (const u of urls){
+      try { await _loadScriptOnce(u); if (ns()) break; }
+      catch(e){ lastErr = e; }
+    }
+    if (!ns()) throw lastErr || new Error('pdf.js kon niet geladen worden');
+    // Cross-origin Worker faalt in het TC-iframe; pdf.js 3.x vangt dat zelf op en
+    // laadt workerSrc dan als gewoon script op de main thread (fake worker).
+    try { ns().GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } catch(_){}
+    return ns();
+  }
+
+  function _qrvPreviewToggle(){
+    const wrap = document.getElementById('dl-qrv-prevwrap');
+    if (!wrap) return;
+    if (wrap.style.display !== 'none'){ _qrvPreviewClose(); return; }
+    const pdfs = _qrvSelDocs().filter(_qrvIsPdf);
+    if (!pdfs.length) return;
+    const fileSel = document.getElementById('dl-qrv-prev-file');
+    if (fileSel){
+      const cur = fileSel.value;
+      fileSel.innerHTML = pdfs.map(function(d){
+        return '<option value="' + _esc(d._vid) + '">' + _esc(d.document_nummer || d.bestandsnaam) + '</option>';
+      }).join('');
+      if (cur && pdfs.some(function(d){ return d._vid === cur; })) fileSel.value = cur;
+      fileSel.style.display = pdfs.length > 1 ? '' : 'none';
+    }
+    wrap.style.display = '';
+    const btn = document.getElementById('dl-qrv-stamp-preview');
+    if (btn) btn.textContent = '📐 Voorbeeld sluiten';
+    const chosen = pdfs.find(function(d){ return fileSel && d._vid === fileSel.value; }) || pdfs[0];
+    _qrvPreviewRender(chosen);
+  }
+  function _qrvPreviewClose(){
+    const wrap = document.getElementById('dl-qrv-prevwrap');
+    if (wrap) wrap.style.display = 'none';
+    const btn = document.getElementById('dl-qrv-stamp-preview');
+    if (btn) btn.textContent = '📐 Positie bepalen';
+    _qrvPrev = null;
+  }
+
+  async function _qrvPreviewRender(d){
+    const canvas = document.getElementById('dl-qrv-prev-canvas');
+    const stEl = document.getElementById('dl-qrv-prev-status');
+    const box = document.getElementById('dl-qrv-prev-box');
+    if (!canvas || !d) return;
+    if (box) box.style.display = 'none';
+    const paint = function(dataUrl, pageWpt, pageHpt){
+      const img = new Image();
+      img.onload = function(){
+        // CSS-schaal: passend binnen ~520×640, punten → css-px
+        const cssScale = Math.min(520 / pageWpt, 640 / pageHpt);
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        canvas.style.width = Math.round(pageWpt * cssScale) + 'px';
+        canvas.style.height = Math.round(pageHpt * cssScale) + 'px';
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        _qrvPrev = { vid: d._vid, pageWpt: pageWpt, pageHpt: pageHpt, scale: cssScale };
+        if (stEl) stEl.textContent = 'Sleep het blok naar de gewenste plek — de positie wordt per project onthouden.';
+        _qrvPreviewDragInit();
+        _qrvPreviewPlaceBox();
+      };
+      img.src = dataUrl;
+    };
+    const hit = _qrvPrevCache.get(d._vid);
+    if (hit){ paint(hit.dataUrl, hit.pageWpt, hit.pageHpt); return; }
+    try {
+      if (stEl) stEl.textContent = 'PDF laden…';
+      const pdfjs = await _qrvEnsurePdfJs();
+      const dlUrl = await _getFileDownloadUrl(d._vid);
+      if (!dlUrl) throw new Error('geen download-URL');
+      const resp = await fetch(dlUrl);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const buf = await resp.arrayBuffer();
+      const task = pdfjs.getDocument({ data: buf });
+      const pdf = await task.promise;
+      const page = await pdf.getPage(1);
+      const vp1 = page.getViewport({ scale: 1 }); // rotatie-toegepaste maat (= wat je ziet)
+      const pageWpt = vp1.width, pageHpt = vp1.height;
+      const cssScale = Math.min(520 / pageWpt, 640 / pageHpt);
+      const dpr = window.devicePixelRatio || 1;
+      const rvp = page.getViewport({ scale: cssScale * dpr });
+      const off = document.createElement('canvas');
+      off.width = Math.round(rvp.width); off.height = Math.round(rvp.height);
+      await page.render({ canvasContext: off.getContext('2d'), viewport: rvp }).promise;
+      const dataUrl = off.toDataURL('image/png');
+      try { await task.destroy(); } catch(_){}
+      _qrvPrevCache.set(d._vid, { pageWpt: pageWpt, pageHpt: pageHpt, dataUrl: dataUrl });
+      paint(dataUrl, pageWpt, pageHpt);
+    } catch(e){
+      console.warn('[DL] qrv-voorbeeld mislukt:', d.bestandsnaam, '—', e.message);
+      if (stEl) stEl.textContent = 'Voorbeeld niet mogelijk voor dit bestand (bv. beveiligde PDF) — kies een ander bestand of gebruik de hoek-keuze.';
+    }
+  }
+
+  // Gedeelde stempel-geometrie (mm): moet 1-op-1 sporen met _qrvExportStamped
+  const QRV_MM = 2.83465, QRV_PAD_MM = 2, QRV_CAP_MM = 3.2, QRV_EDGE_DEFAULT = 5;
+  function _qrvBoxMm(cfg){
+    return { w: cfg.size + QRV_PAD_MM * 2, h: cfg.size + QRV_PAD_MM * 2 + QRV_CAP_MM };
+  }
+  // cfg → overlay-positie (canvas is y-omlaag, PDF y-omhoog)
+  function _qrvPreviewPlaceBox(){
+    const box = document.getElementById('dl-qrv-prev-box');
+    const canvas = document.getElementById('dl-qrv-prev-canvas');
+    if (!box || !canvas || !_qrvPrev) return;
+    const cfg = _qrvStampGet();
+    const s = _qrvPrev.scale, bm = _qrvBoxMm(cfg);
+    const boxWpx = bm.w * QRV_MM * s, boxHpx = bm.h * QRV_MM * s;
+    const cw = parseFloat(canvas.style.width), ch = parseFloat(canvas.style.height);
+    const xPt = (cfg.corner === 'lb' || cfg.corner === 'lo') ? cfg.dx * QRV_MM : _qrvPrev.pageWpt - cfg.dx * QRV_MM - bm.w * QRV_MM;
+    const yPt = (cfg.corner === 'rb' || cfg.corner === 'lb') ? cfg.dy * QRV_MM : _qrvPrev.pageHpt - cfg.dy * QRV_MM - bm.h * QRV_MM;
+    let left = xPt * s;
+    let top = (_qrvPrev.pageHpt - (yPt + bm.h * QRV_MM)) * s;
+    left = Math.min(Math.max(left, 0), Math.max(0, cw - boxWpx));
+    top = Math.min(Math.max(top, 0), Math.max(0, ch - boxHpx));
+    box.style.display = '';
+    box.style.left = left + 'px';
+    box.style.top = top + 'px';
+    box.style.width = boxWpx + 'px';
+    box.style.height = boxHpx + 'px';
+    const capPx = Math.max(7, QRV_CAP_MM * QRV_MM * s);
+    box.innerHTML = '<div style="position:absolute;inset:' + (QRV_PAD_MM * QRV_MM * s) + 'px;bottom:' + (QRV_PAD_MM * QRV_MM * s + capPx) + 'px;background:repeating-conic-gradient(#ccc 0 25%,#fff 0 50%) 0 0/8px 8px;border:1px solid #aaa"></div>' +
+      '<div style="position:absolute;left:0;right:0;bottom:2px;text-align:center;font-size:' + Math.min(11, capPx) + 'px;color:#555;line-height:1">Versiecheck · rev X</div>';
+  }
+  // overlay-positie → cfg (op loslaten): dichtstbijzijnde hoek + mm-offsets
+  function _qrvPreviewCommit(){
+    const box = document.getElementById('dl-qrv-prev-box');
+    if (!box || !_qrvPrev) return;
+    const cfgOld = _qrvStampGet();
+    const s = _qrvPrev.scale, bm = _qrvBoxMm(cfgOld);
+    const left = parseFloat(box.style.left) || 0, top = parseFloat(box.style.top) || 0;
+    const xPt = left / s;
+    const yPt = _qrvPrev.pageHpt - (top / s) - bm.h * QRV_MM;
+    const cx = xPt + bm.w * QRV_MM / 2, cy = yPt + bm.h * QRV_MM / 2;
+    const corner = (cx < _qrvPrev.pageWpt / 2 ? 'l' : 'r') + (cy < _qrvPrev.pageHpt / 2 ? 'b' : 'o');
+    const dxMm = (corner === 'lb' || corner === 'lo') ? xPt / QRV_MM : (_qrvPrev.pageWpt - xPt - bm.w * QRV_MM) / QRV_MM;
+    const dyMm = (corner === 'rb' || corner === 'lb') ? yPt / QRV_MM : (_qrvPrev.pageHpt - yPt - bm.h * QRV_MM) / QRV_MM;
+    const cfg = {
+      corner: corner,
+      dx: Math.max(0, Math.round(dxMm * 10) / 10),
+      dy: Math.max(0, Math.round(dyMm * 10) / 10),
+      size: cfgOld.size, all: cfgOld.all,
+    };
+    _qrvStampSet(cfg);
+    _qrvStampSummary(cfg);
+    const pos = document.getElementById('dl-qrv-stamp-pos');
+    if (pos) pos.value = corner;
+  }
+  function _qrvPreviewDragInit(){
+    if (_qrvPrevDragBound) return;
+    const box = document.getElementById('dl-qrv-prev-box');
+    const canvas = document.getElementById('dl-qrv-prev-canvas');
+    if (!box || !canvas) return;
+    _qrvPrevDragBound = true;
+    let grabDx = 0, grabDy = 0, stageRect = null, dragging = false;
+    box.addEventListener('pointerdown', function(e){
+      dragging = true;
+      stageRect = canvas.getBoundingClientRect();
+      const br = box.getBoundingClientRect();
+      grabDx = e.clientX - br.left; grabDy = e.clientY - br.top;
+      try { box.setPointerCapture(e.pointerId); } catch(_){}
+      e.preventDefault();
+    });
+    box.addEventListener('pointermove', function(e){
+      if (!dragging || !stageRect) return;
+      const bw = parseFloat(box.style.width) || 0, bh = parseFloat(box.style.height) || 0;
+      let left = e.clientX - stageRect.left - grabDx;
+      let top = e.clientY - stageRect.top - grabDy;
+      left = Math.min(Math.max(left, 0), Math.max(0, stageRect.width - bw));
+      top = Math.min(Math.max(top, 0), Math.max(0, stageRect.height - bh));
+      box.style.left = left + 'px';
+      box.style.top = top + 'px';
+    });
+    const stop = function(e){
+      if (!dragging) return;
+      dragging = false;
+      try { box.releasePointerCapture(e.pointerId); } catch(_){}
+      _qrvPreviewCommit();
+    };
+    box.addEventListener('pointerup', stop);
+    box.addEventListener('pointercancel', stop);
   }
 
   async function _qrvExportStamped(btn){
@@ -11940,8 +12521,8 @@ const DL = (function(){
     try { QR = await _ensureQRCode(); } catch(e){ alert('Kan QR-library niet laden — controleer de internetverbinding.'); return; }
     try { JSZip = await _ensureJSZip(); } catch(e){ alert('Kan ZIP-library niet laden — controleer de internetverbinding.'); return; }
     const cfg = _qrvStampReadUi();
-    const MM = 2.83465; // punten per mm
-    const sizeMm = cfg.size === 's' ? 15 : (cfg.size === 'l' ? 25 : 20);
+    const MM = QRV_MM; // punten per mm
+    const sizeMm = cfg.size; // 20|25|30|40|50 (schema v2)
     const st = document.getElementById('dl-qrv-status');
     const orig = btn ? btn.textContent : '';
     if (btn){ btn.disabled = true; }
@@ -11991,12 +12572,19 @@ const DL = (function(){
           const png = await pdfDoc.embedPng(qrPng);
           const font = await pdfDoc.embedFont(PDFLibNS.StandardFonts.Helvetica);
           const pages = cfg.all ? pdfDoc.getPages() : [pdfDoc.getPage(0)];
-          const q = sizeMm * MM, pad = 2 * MM, edge = 5 * MM, capH = 3.2 * MM;
+          const q = sizeMm * MM, pad = QRV_PAD_MM * MM, capH = QRV_CAP_MM * MM;
           const boxW = q + pad * 2, boxH = q + pad * 2 + capH;
+          // Plaatsing schema v2: mm-offsets vanaf de gekozen hoek (uit het
+          // sleep-voorbeeld). Clamp per pagina — kleinere formaten in de set
+          // ("10 mm uit de hoek" is overdraagbaar van A0 naar A3).
+          // Bekende beperking: pagina's met /Rotate worden in ongedraaide
+          // ruimte gestempeld en kunnen visueel afwijken van het voorbeeld.
           for (const page of pages){
             const W = page.getWidth(), H = page.getHeight();
-            const x = (cfg.pos === 'lb' || cfg.pos === 'lo') ? edge : W - edge - boxW;
-            const y = (cfg.pos === 'ro' || cfg.pos === 'lo') ? H - edge - boxH : edge;
+            let x = (cfg.corner === 'lb' || cfg.corner === 'lo') ? cfg.dx * MM : W - cfg.dx * MM - boxW;
+            let y = (cfg.corner === 'rb' || cfg.corner === 'lb') ? cfg.dy * MM : H - cfg.dy * MM - boxH;
+            x = Math.min(Math.max(x, 0), Math.max(0, W - boxW));
+            y = Math.min(Math.max(y, 0), Math.max(0, H - boxH));
             page.drawRectangle({ x: x, y: y, width: boxW, height: boxH, color: PDFLibNS.rgb(1, 1, 1), borderColor: PDFLibNS.rgb(0.6, 0.6, 0.6), borderWidth: 0.5 });
             page.drawImage(png, { x: x + pad, y: y + pad + capH, width: q, height: q });
             const cap = 'Versiecheck · rev ' + it.revision;
@@ -12336,6 +12924,9 @@ const DL = (function(){
             '</div>' +
             '<div class="dl-share-body">' +
               '<p class="dl-qr-intro">Print de QR-code óp het document. Wie hem scant ziet direct — <strong>zonder Trimble-account</strong> — of die print nog de actuele versie is. Voor PDF\'s stempelt de <strong>Print-set</strong> de QR automatisch in de tekening (het origineel in Trimble Connect blijft onaangeroerd); voor andere bestanden gebruik je het stickervel of de losse PNG\'s.</p>' +
+              '<div class="dl-share-label">Bron' +
+                '<select id="dl-qrv-source" class="dl-share-input" style="width:auto;margin-left:8px" title="Handmatige selectie of een werkpakket (opgeslagen weergave) als bron. Let op: een werkpakket kiezen past ook de lijst achter dit venster aan."></select>' +
+              '</div>' +
               '<div id="dl-qrv-files" style="font-size:13px;color:var(--g6);margin-bottom:var(--s3)"></div>' +
               '<div id="dl-qrv-mode"></div>' +
               '<div id="dl-qrv-preflight"></div>' +
@@ -12348,12 +12939,24 @@ const DL = (function(){
                     '<option value="lo">Linksboven</option>' +
                   '</select>' +
                   '<select id="dl-qrv-stamp-size" class="dl-share-input" style="width:auto">' +
-                    '<option value="s">Klein (15 mm)</option>' +
-                    '<option value="m">Normaal (20 mm)</option>' +
-                    '<option value="l">Groot (25 mm)</option>' +
+                    '<option value="20">20 mm</option>' +
+                    '<option value="25">25 mm</option>' +
+                    '<option value="30">30 mm (standaard)</option>' +
+                    '<option value="40">40 mm</option>' +
+                    '<option value="50">50 mm</option>' +
                   '</select>' +
                   '<label style="display:flex;gap:6px;align-items:center;font-weight:normal;cursor:pointer"><input type="checkbox" id="dl-qrv-stamp-all"> alle pagina\'s</label>' +
+                  '<button type="button" id="dl-qrv-stamp-preview" class="dl-cols-btn" disabled title="Toon pagina 1 van een PDF en sleep de QR naar de juiste plek">📐 Positie bepalen</button>' +
+                  '<span id="dl-qrv-stamp-summary" style="font-size:12px;color:var(--g5)"></span>' +
                 '</div>' +
+              '</div>' +
+              '<div id="dl-qrv-prevwrap" style="display:none;margin-bottom:var(--s3)">' +
+                '<select id="dl-qrv-prev-file" class="dl-share-input" style="width:auto;margin-bottom:6px"></select>' +
+                '<div id="dl-qrv-prev-stage" style="position:relative;display:inline-block;border:1px solid var(--hl-light);line-height:0;touch-action:none">' +
+                  '<canvas id="dl-qrv-prev-canvas"></canvas>' +
+                  '<div id="dl-qrv-prev-box" style="display:none;position:absolute;background:#fff;border:1px solid #888;box-shadow:0 1px 6px rgba(0,0,0,.25);cursor:grab;touch-action:none;user-select:none"></div>' +
+                '</div>' +
+                '<div id="dl-qrv-prev-status" style="font-size:12px;color:var(--g5);margin-top:4px;line-height:1.4"></div>' +
               '</div>' +
               '<div id="dl-qrv-status" style="font-size:13px;color:var(--g5);min-height:18px"></div>' +
               '<div id="dl-qrv-grid" class="dl-qr-grid"></div>' +
@@ -12364,6 +12967,7 @@ const DL = (function(){
               '<button type="button" id="dl-qrv-pdf" class="dl-share-btn dl-share-btn-secondary" disabled title="Stickervel: printbaar A4 met alle versie-QR\'s + bijschrift, om uit te knippen">🖨 Stickervel</button>' +
               '<button type="button" id="dl-qrv-zip" class="dl-share-btn dl-share-btn-secondary" disabled title="ZIP met losse QR-PNG\'s + koppeltabel">⬇ ZIP (PNG\'s)</button>' +
               '<button type="button" id="dl-qrv-stamp" class="dl-share-btn dl-share-btn-secondary" disabled title="Download de PDF\'s mét de QR er al in gestempeld — direct printen">📄 Print-set (QR in PDF)</button>' +
+              '<button type="button" id="dl-qrv-to-release" class="dl-share-btn dl-share-btn-secondary" disabled title="Voeg deze documenten (met zojuist gegenereerde QR\'s) toe aan een release — met dezelfde versies vastgepind">📦 Naar release</button>' +
               '<button type="button" id="dl-qrv-generate" class="dl-share-btn dl-share-btn-primary">QR-codes genereren</button>' +
             '</div>' +
           '</div>' +
@@ -12691,6 +13295,18 @@ const DL = (function(){
       const el = root.querySelector('#' + id);
       if (el) el.addEventListener('change', _qrvStampReadUi);
     });
+    // Ronde 3: bron-select, sleep-voorbeeld, naar-release
+    const qrvSource = root.querySelector('#dl-qrv-source');
+    if (qrvSource) qrvSource.addEventListener('change', _qrvSourceChanged);
+    const qrvPrevBtn = root.querySelector('#dl-qrv-stamp-preview');
+    if (qrvPrevBtn) qrvPrevBtn.addEventListener('click', _qrvPreviewToggle);
+    const qrvPrevFile = root.querySelector('#dl-qrv-prev-file');
+    if (qrvPrevFile) qrvPrevFile.addEventListener('change', function(){
+      const d = _qrvSelDocs().find(function(x){ return x._vid === qrvPrevFile.value; });
+      if (d) _qrvPreviewRender(d);
+    });
+    const qrvToRel = root.querySelector('#dl-qrv-to-release');
+    if (qrvToRel) qrvToRel.addEventListener('click', _qrvToRelease);
     // Add-to-release dialog
     const zipBtn = root.querySelector('#dl-zip-btn');
     if (zipBtn) zipBtn.addEventListener('click', function(){ _downloadSelectionZip(zipBtn); });
@@ -13081,6 +13697,13 @@ const DL = (function(){
       } else {
         console.log('[DL] cache geïnvalideerd — herlaad bij eerstvolgende activate');
       }
+    },
+    // v1.18: cockpit meldt hier de fileIds van net-geüploade files. Wij bewaren die
+    // 5 min in een localStorage-buffer zodat _recentUploadedApply() bij elke _loadDocs
+    // het _modified veld naar upload-tijd overschrijft — dan verschijnt de file direct
+    // onder "Gewijzigd: vandaag" ondanks TC's stale /folders modifiedOn.
+    noteUploaded: function(fileIds){
+      try { _recentUploadedAdd(fileIds); } catch(e){ console.warn('[DL] noteUploaded fout:', e.message); }
     },
     prefetch: function(onProgress){
       const ext = EXTENSIONS.find(function(e){ return e.key === 'documentenlijst'; });

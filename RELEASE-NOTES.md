@@ -2,6 +2,40 @@
 
 ---
 
+## Versie 1.18 — 24 augustus 2026
+
+### Zojuist geüploade bestanden verschijnen direct onder "Gewijzigd: vandaag"
+
+Meteen na een upload of een nieuwe versie stond het bestand vaak nog niet in het periode-filter (*Gewijzigd: vandaag*, *laatste 7 dagen*, *laatste 30 dagen*). Reden: Trimble Connect's mappen-endpoint werkt de wijzigingsdatum van een bestand pas 1-2 minuten na de upload bij (server-side eventual consistency). Zelfs een ↻ Vernieuwen hielp niet — de cockpit kreeg gewoon dezelfde oude datum terug van Trimble.
+
+**Wat is er veranderd?**
+
+- **De uploader meldt nu welke bestanden er net binnen zijn** — het `cockpit:upload-done`-signaal draagt vanaf deze versie de fileIds mee (was: alleen aantal + bytes).
+- **De documentenlijst vangt die op in een kort-durende buffer** — voor elk net-geüpload bestand wordt lokaal onthouden dat het op tijdstip X binnenkwam. Bij elke lijst-laad wordt de wijzigingsdatum van dat bestand overschreven met dat tijdstip, zolang Trimble Connect nog een oudere datum teruggeeft. Buffer verloopt na 5 minuten — daarna wint Trimble weer.
+- **Werkt voor beide gevallen** — nieuwe versie van een bestaand bestand (zelfde fileId, andere modifiedOn) én een compleet nieuw bestand (nieuw record in de lijst na de reload).
+- **Zelfde patroon als de bestaande PSet-save-buffer** — voor metadata-wijzigingen bestond deze anti-stale-truc al (3 min TTL). Nu is de dekking compleet.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
+## Versie 1.17 — 24 augustus 2026
+
+### Deel-links intrekken vanaf het dashboard
+
+Trimble heeft de eigen shares-beheerpagina uit de webclient gehaald; deel-links beheren kan daar alleen nog via de algemene activiteitenstroom. Daarom kan het nu rechtstreeks in de cockpit.
+
+**Wat is er veranderd?**
+
+- **Intrekken met één klik** — elke regel in het dashboard-blok *Open shares* heeft nu een ✕-knop. Na een duidelijke bevestiging (ontvangers verliezen direct toegang, ook bij een link met meerdere bestanden) wordt de link ingetrokken.
+- **Met controle dat de link echt dood is** — na het intrekken controleert de cockpit bij Trimble Connect of de link werkelijk weg is. Pas dan verdwijnt de regel; mislukt er iets, dan zie je dat meteen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.15 — 24 augustus 2026
 
 ### Releases pinnen nu écht de nieuwste versie
