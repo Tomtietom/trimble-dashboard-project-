@@ -2,6 +2,23 @@
 
 ---
 
+## Versie 1.10 — 24 augustus 2026
+
+### Rechten Viewer laat overgenomen leesrechten weer zien
+
+De Rechten Viewer onderschatte wat gebruikers werkelijk zagen. Wie in de projectinstellingen van Trimble Connect *Alle projectleden → alleen-lezen* had staan, verwachtte dat elke map dat leesrecht overneemt — maar de viewer zette bij die mappen **Geen toegang**. Precies het tegenovergestelde van waarvoor je hem gebruikt. Voor de tweede keer gemeld (eerste keer 19 mei); nu opgelost.
+
+**Wat is er veranderd?**
+
+- **De projectstandaard telt weer mee** — de Rechten Viewer haalt nu ook de rechten op van de bovenste map (het project zelf) en gebruikt die als startpunt voor de overerving naar onderliggende mappen. De regel *Alle projectleden → alleen-lezen* die je op projectniveau hebt ingesteld, stroomt daardoor door naar elke map die die overerving niet expliciet heeft geblokkeerd.
+- **Effect in de weergaves** — bij *Groepen* en *Gebruikers* verschijnt op mappen die hun rechten van het project erven voortaan een **leesrecht-label** (in plaats van *Geen toegang*), met *(rechten van parent overgenomen)* in de tooltip. Bij *Mappen* telt de doorgevoerde overerving mee in de kleuren en de dashboard-tellers.
+- **Uitzonderingen blijven werken** — een map waar iemand expliciet is uitgesloten (*Geen toegang*) blijft uitgesloten. Een map waar de overerving in Trimble Connect zelf is uitgezet, blijft ook uitgesloten van deze doorwerking.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.9 — 24 augustus 2026
 
 ### Bewerken zonder raden, en de ZIP-knop waar je hem verwacht
