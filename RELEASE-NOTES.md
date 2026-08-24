@@ -36,6 +36,32 @@ Sluit Trimble Connect één keer volledig en open opnieuw.
 
 ---
 
+## Versie 1.16 — 24 augustus 2026
+
+### Versie-QR verfijnd: precies positioneren, zien wat al een QR heeft, en de werkpakket-route
+
+Drie verbeteringen uit de eerste praktijktest van de Versie-QR.
+
+**De stempel staat nu precies waar jij hem wilt**
+
+- **📐 Positie bepalen** — nieuw in de Versie-QR-dialoog: de eerste pagina van je tekening wordt getoond en je **sleept** het QR-blok naar de juiste plek (naast het titelblok, in een leeg hoekje — waar je maar wilt). De positie wordt als afstand tot de dichtstbijzijnde hoek onthouden en werkt daardoor ook op andere papierformaten in dezelfde set.
+- **Groter en beter leesbaar** — de formaten zijn nu 20 tot 50 mm (standaard 30 mm); op A0/A1 is de code daarmee vanaf de muur scanbaar. Eerder gekozen instellingen worden automatisch omgezet.
+
+**Je ziet nu welke documenten een QR hebben**
+
+- Nieuwe kolom **Versie-QR** in de documentenlijst (aan te zetten via Kolommen): een groene badge *🏷 rev 3* betekent "QR geprint op revisie 3, nog actueel"; wordt er een nieuwere versie geüpload dan kleurt de badge rood met ⚠ — tijd om opnieuw te printen. De badge toont ook wanneer de QR is gemaakt en hoe vaak hij gescand is.
+- In de Versie-QR-dialoog zie je per selectie direct "N van M heeft al een QR".
+
+**De zuivere route: werkpakket → QR's → release**
+
+- Kies in de Versie-QR-dialoog als **Bron** een werkpakket (bijvoorbeeld *"UO Aannemer"*) in plaats van een handmatige selectie — of start direct via het nieuwe **🏷️** bij een werkpakket onder Weergaves.
+- Na het genereren staat er een knop **📦 Naar release**: dezelfde documenten gaan in één keer een release in, vastgepind op exact de versies waarvoor de QR's zijn gemaakt. Print-set, QR-registratie en release verwijzen daardoor gegarandeerd naar dezelfde versie.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.15 — 24 augustus 2026
 
 ### Releases pinnen nu écht de nieuwste versie
