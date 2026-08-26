@@ -2,6 +2,24 @@
 
 ---
 
+## Versie 1.21 — 26 augustus 2026
+
+### Rechten Viewer: uitgezette overerving en uitgesloten groepen worden weer gerespecteerd
+
+Bij het natrekken van de vorige versie kwamen twee gebreken naar boven die daarvóór verborgen zaten: zolang er helemaal niets overgeërfd werd, viel niet op dat de Rechten Viewer twee soorten uitzonderingen negeerde. Nu versie 1.19 de overerving wél doorvoert, werden ze zichtbaar — en meteen opgelost. Belangrijk, want in beide gevallen liet de viewer **méér** toegang zien dan mensen werkelijk hebben.
+
+**Wat is er veranderd?**
+
+- **"Overerving uit" telt weer mee** — zet je in Trimble Connect bij een map de overerving uit (in het rechtenoverzicht de kolom *Overgenomen: Nee*), dan hoort die map de rechten van de bovenliggende map juist **niet** te krijgen. De Rechten Viewer las die schakelaar op de verkeerde plek uit en negeerde hem daardoor. In een doorsnee project raakt dat al snel een handvol hoofdmappen — die toonden ten onrechte leesrecht voor iedereen.
+- **Expliciet uitgesloten blijft uitgesloten** — staat een groep bij een map op *Geen toegang*, dan wint dat nu van een leesrecht dat via de projectstandaard binnenkomt. Voorheen kreeg zo'n map alsnog het label *Lezen*, waardoor het uitsluiten van een groep in de praktijk geen effect leek te hebben.
+
+**Waar let je op bij het controleren?** Vergelijk een paar mappen met het rechtenoverzicht van Trimble Connect zelf (*Instellingen → Overzicht van rechten*). Mappen met *Overgenomen: Nee* horen in de Rechten Viewer op *Geen toegang* te staan, tenzij daar eigen rechten zijn ingesteld.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.20 — 24 augustus 2026
 
 ### Dashboard-tegels: korte omschrijving, nieuwe volgorde, en zichtbare laad-status
