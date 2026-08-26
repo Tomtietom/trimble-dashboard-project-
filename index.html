@@ -205,24 +205,45 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
   font-family:'Montserrat',sans-serif;font-weight:700;
   font-size:var(--fs-md);letter-spacing:-.02em;color:var(--dk);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:color .2s;
 }
-.tile-stat{font-size:var(--fs-sm);color:var(--g4);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
-.tile-stat.tile-loading{color:var(--af);font-weight:600}
+/* v1.20: korte omschrijving onder de titel. Twee regels max, ellipsis daarna. */
+.tile-desc{
+  font-size:var(--fs-sm);color:var(--g5);font-weight:400;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;text-overflow:ellipsis;transition:color .2s;
+}
+.tile-stat{font-size:var(--fs-sm);color:var(--g4);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:color .2s}
+.tile-stat.tile-loading{font-weight:600}
 .tile-stat.tile-loading::before{
   content:'';display:inline-block;width:12px;height:12px;flex-shrink:0;
-  border:2px solid var(--af);border-top-color:transparent;border-radius:50%;
+  border:2px solid currentColor;border-top-color:transparent;border-radius:50%;
   animation:tileSpin .8s linear infinite;
 }
 .tile-stat.tile-done{color:var(--af);font-weight:600}
 .tile-stat.tile-error{color:var(--warn);font-weight:600}
 @keyframes tileSpin{to{transform:rotate(360deg)}}
-.tile{position:relative;overflow:hidden;transition:transform .2s, box-shadow .2s, border-color .2s, opacity .25s}
-.tile.tile-loading{border-color:var(--afl)}
+.tile{position:relative;overflow:hidden;transition:background .25s, transform .2s, box-shadow .2s, border-color .2s}
+/* v1.20: laad-state = vol donker-oranje tegel met witte tekst, zodat "aan het laden"
+   in één oogopslag anders is dan "klaar voor gebruik". Vervangt de eerdere opacity-truc. */
+.tile.tile-loading{
+  background:var(--af);
+  border-color:var(--af);
+  color:#fff;
+}
 .tile.tile-loading .tile-title,
-.tile.tile-loading .tile-icon{opacity:.45;transition:opacity .25s}
+.tile.tile-loading .tile-desc,
+.tile.tile-loading .tile-stat{color:#fff}
+.tile.tile-loading .tile-icon{
+  background:rgba(255,255,255,.2);color:#fff;
+}
+.tile.tile-loading:hover{
+  background:var(--af2);
+  border-color:var(--af2);
+}
 .tile.tile-loading::after{
   content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
-  background:linear-gradient(90deg,transparent 0%,var(--af) 50%,transparent 100%);
+  background:linear-gradient(90deg,transparent 0%,#fff 50%,transparent 100%);
   animation:tileSweep 1.4s ease-in-out infinite;
 }
 @keyframes tileSweep{
@@ -1417,7 +1438,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.18';
+const COCKPIT_VERSION = '1.20';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -1800,14 +1821,26 @@ const ICON_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 //  Volgorde = tab-/tegelvolgorde. `tab` is het korte navigatielabel;
 //  `title` het volledige. PREFETCH_ORDER staat hier los van.
 // ============================================================
+// v1.20: EXTENSIONS-volgorde afgestemd op wat de meeste gebruikers eerst pakken
+// (upload → bekijken → rechten → overzicht → QR). PREFETCH_ORDER blijft licht→zwaar
+// en staat expliciet los; volgorde hier gaat alleen over de dashboard-tegels + tabs.
 const EXTENSIONS = [
+  {
+    key: 'project-upload',
+    title: 'Projectinformatie toevoegen',
+    tab: 'Upload',
+    icon: ICON_UPLOAD,
+    iconUrl: 'https://tomtietom.github.io/trimble-project-upload/icon.png',
+    desc: 'Bestanden uploaden met metadata; neemt bij een nieuwe versie de eerdere metadata over.',
+    url: 'https://tomtietom.github.io/trimble-project-upload/',
+  },
   {
     key: 'documentenlijst',
     title: 'Documentenlijst Viewer',
     tab: 'Documentenlijst',
     icon: ICON_DOCS,
     iconUrl: 'https://tomtietom.github.io/tc-viewer/icon.png',
-    desc: 'Documentenlijst met metadata, filters, versies en exporteerbare overzichten.',
+    desc: 'Alle documenten met filters, weergaves, Excel-export en release- en versie-signalering.',
     url: 'https://tomtietom.github.io/tc-viewer/',
   },
   {
@@ -1816,26 +1849,8 @@ const EXTENSIONS = [
     tab: 'Rechten',
     icon: ICON_LOCK,
     iconUrl: 'https://tomtietom.github.io/trimble-rechten-viewer/icon.png',
-    desc: 'Visueel overzicht van maprechten, groepen en gebruikers per project.',
+    desc: 'Zien wie toegang heeft tot welke map — per gebruiker, groep of map.',
     url: 'https://tomtietom.github.io/trimble-rechten-viewer/',
-  },
-  {
-    key: 'project-upload',
-    title: 'Projectinformatie toevoegen',
-    tab: 'Upload',
-    icon: ICON_UPLOAD,
-    iconUrl: 'https://tomtietom.github.io/trimble-project-upload/icon.png',
-    desc: 'Begeleide upload-wizard: documenten met metadata op de juiste plek.',
-    url: 'https://tomtietom.github.io/trimble-project-upload/',
-  },
-  {
-    // v1.10: eigen module met eigen hub-slug (was een knop in de Documentenlijst).
-    // Geen url/iconUrl: bestond nooit als losse extensie; generator leeft in DL.
-    key: 'qr-codes',
-    title: 'QR-codes',
-    tab: 'QR-codes',
-    icon: ICON_QR,
-    desc: 'QR-codes per submap voor kopersmappen — met bedrijfslogo, als ZIP, PDF of losse afbeeldingen.',
   },
   {
     key: 'project-dashboard',
@@ -1845,6 +1860,15 @@ const EXTENSIONS = [
     iconUrl: 'https://tomtietom.github.io/trimble-project-dashboard/icon.png',
     desc: 'Overzicht van al je Trimble Connect projecten met rollen, leden en activiteit.',
     url: 'https://tomtietom.github.io/trimble-project-dashboard/',
+  },
+  {
+    // v1.10: eigen module met eigen hub-slug (was een knop in de Documentenlijst).
+    // Geen url/iconUrl: bestond nooit als losse extensie; generator leeft in DL.
+    key: 'qr-codes',
+    title: 'QR-codes',
+    tab: 'QR-codes',
+    icon: ICON_QR,
+    desc: 'Versie-QR op de tekening en QR-codes per kopersmap — met bedrijfslogo, in ZIP of print-set.',
   },
 ];
 
@@ -2573,6 +2597,7 @@ function renderTiles(){
       + '<div class="tile-icon">'+(disabled ? ICON_LOCK : e.icon)+'</div>'
       + '<div class="tile-body">'
         + '<div class="tile-title">'+escapeHtml(e.tab || e.title)+'</div>'
+        + (e.desc ? '<div class="tile-desc">'+escapeHtml(e.desc)+'</div>' : '')
         + '<span class="tile-stat" data-stat="'+escapeHtml(e.key)+'">'+(disabled ? 'Geen licentie' : '–')+'</span>'
       + '</div>'
       + '</button>';
@@ -13938,6 +13963,11 @@ const RV = (function(){
         }
         const dir = permissions.directPermissions;
         if (dir && dir.inheritance === false) inheritFromParent = false;
+        // FLAT shape (huidige TC, zie OpenAPI FolderPermissionsDto): `inheritance` staat
+        // TOP-LEVEL, niet onder directPermissions. Zonder deze regel wordt de "overerving
+        // uit"-schakelaar van de klant genegeerd en erven die mappen alsnog van de parent —
+        // precies de mappen die in TC's eigen rechtenoverzicht "Overgenomen: Nee" tonen.
+        if (permissions.inheritance === false) inheritFromParent = false;
         if (dir){
           if (dir.acl){ hasDirect = true; processAcl(dir.acl, true); }
           if (dir.defaultAccess){
@@ -13945,8 +13975,15 @@ const RV = (function(){
             applySubject('Alle projectleden', levelToAccess(dir.defaultAccess), true);
           }
         }
-        if (!dir && !inh && permissions.acl){
-          hasDirect = true; processAcl(permissions.acl, true);
+        if (!dir && !inh){
+          if (permissions.acl){ hasDirect = true; processAcl(permissions.acl, true); }
+          // `defaultAccess` is in de spec deprecated; alleen gebruiken als er géén acl is,
+          // want dan is het de enige bron. Staat er wél een acl, dan is die leidend en zou
+          // een achtergebleven defaultAccess te veel rechten toekennen.
+          else if (permissions.defaultAccess){
+            hasDirect = true;
+            applySubject('Alle projectleden', levelToAccess(permissions.defaultAccess), true);
+          }
         }
       }
 
@@ -14125,6 +14162,12 @@ const RV = (function(){
           if (s === groupName) via.unshift(s); else via.push(s);
         }
       }
+      // Expliciete NO_ACCESS wint van een overgeërfde toekenning. Zonder deze regel
+      // maakt een projectbrede "Alle projectleden → lezen" elke NO_ACCESS betekenisloos:
+      // de map zou dan alsnog als Lezen tonen. Wie een map juist voor iedereen wil
+      // afschermen en daarna één groep wil toelaten, zet in TC de overerving uit
+      // (`inheritance: false`) — daar is die schakelaar voor.
+      if (denied.length){ level = 'none'; via.length = 0; }
       out[row.pad] = { level, viaGroups: via, denied };
     }
     return out;
@@ -14153,6 +14196,8 @@ const RV = (function(){
           via.push(ug);
         }
       }
+      // Zelfde regel als bij groepen: expliciete NO_ACCESS wint van overerving.
+      if (denied.length){ level = 'none'; via.length = 0; }
       out[row.pad] = { level, viaGroups: via, denied };
     }
     return out;

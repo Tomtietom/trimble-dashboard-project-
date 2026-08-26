@@ -2,6 +2,21 @@
 
 ---
 
+## Versie 1.20 — 24 augustus 2026
+
+### Dashboard-tegels: korte omschrijving, nieuwe volgorde, en zichtbare laad-status
+
+De tegels op het dashboard toonden alleen een titel plus een klein stat-regeltje. Wie de cockpit voor het eerst opende, moest zelf raden wat elke module deed. Ook was het onderscheid tussen *"aan het laden"* en *"klaar voor gebruik"* subtiel — een lichte spinner in de stat-regel en wat vervaagde tekst. Drie kleine verbeteringen op één plek:
+
+- **Korte omschrijving onder de titel** — elke tegel toont nu in één zin wat de module doet. Bijvoorbeeld: *"Bestanden uploaden met metadata; neemt bij een nieuwe versie de eerdere metadata over"* onder **Upload**, of *"Versie-QR op de tekening en QR-codes per kopersmap"* onder **QR-codes**.
+- **Volgorde afgestemd op de dagelijkse werkstroom** — Upload → Documentenlijst → Rechten → Project Dashboard → QR-codes. De achtergrondlaadvolgorde blijft ongewijzigd (licht → zwaar), alleen wat je op het dashboard ziet is nu logischer voor de meeste gebruikers.
+- **Donker-oranje tegel tijdens laden** — een tegel die nog data ophaalt is nu een vol oranje blok met witte tekst en een lopende voortgangsbalk onderaan. Zodra hij klaar is, wordt hij weer wit met de gewone tellers. Je ziet daardoor direct welke tegels je al kunt aanklikken en welke nog even wachten.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.19 — 24 augustus 2026
 
 ### Rechten Viewer: overgenomen leesrechten nu ook zichtbaar per groep en gebruiker
