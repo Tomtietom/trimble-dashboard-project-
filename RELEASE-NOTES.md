@@ -2,6 +2,23 @@
 
 ---
 
+## Versie 1.19 — 24 augustus 2026
+
+### Rechten Viewer: overgenomen leesrechten nu ook zichtbaar per groep en gebruiker
+
+Directe vervolg op versie 1.10. Marco liet ons weten dat overgenomen leesrechten wél zichtbaar waren in het tabblad *Mappen*, maar níét als je in *Groepen* of *Gebruikers* een specifieke groep of gebruiker koos: daar bleef bij vrijwel elke map *Geen toegang* staan, zelfs bovenaan het project. Nu opgelost.
+
+**Wat is er veranderd?**
+
+- **Kies je in *Groepen* of *Gebruikers* iemand?** Dan verschijnt op mappen die hun leesrecht van de projectstandaard erven (*Alle projectleden → alleen-lezen*) voortaan het label **Lezen**, met *(via Alle projectleden)* in de tooltip. Volledige-toegang op de map zelf blijft groen, expliciet uitgesloten blijft *Geblokkeerd*, en mappen waar de overerving in Trimble Connect zelf is uitgezet blijven *Geen toegang*.
+- **Waarom ging het eerder mis?** Trimble Connect schrijft *Alle projectleden* intern als `tc-groups:*`; de Rechten Viewer herkende in versie 1.10 alleen de kortere schrijfwijze `*`. Daardoor kwam de groep als raw code in de gegevens terecht — de mappen-teller telde 'm nog wél, maar het per-groep- en per-gebruiker-overzicht zocht naar de vertaalde naam en vond niks.
+- **Diagnose-knop uitgebreid** — de Diagnose in de footer geeft nu ook per project de rauwe toegangsregels van de projectroot terug plus een `hasAllProjectMembersOnRoot`-teller. Handig als er opnieuw een onbekende Trimble-conventie opduikt: één klik op Kopiëren en we hebben de fix binnen één iteratie te pakken.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.18 — 24 augustus 2026
 
 ### Zojuist geüploade bestanden verschijnen direct onder "Gewijzigd: vandaag"

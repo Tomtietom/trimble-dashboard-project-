@@ -13764,6 +13764,7 @@ const RV = (function(){
   let _hasChildrenIndex = new Set(); // welke paden hebben sub-mappen
   let _lastRenderedView = null;     // voor scroll-restore: alleen bij hetzelfde view herstellen
   let _prefetchProgress = null;     // (info)=>void — gezet door cockpit prefetch-orchestrator
+  let _lastRootPerms = null;        // rauwe /folders/fs/{rootId}/permissions response (voor diagnose)
 
   function getRoot(){ return document.getElementById('view-rechten-viewer'); }
 
@@ -13875,10 +13876,16 @@ const RV = (function(){
     }
 
     function resolveSubject(s){
-      if (s === '*') return 'Alle projectleden';
+      // Alle projectleden: TC gebruikt zowel de oude conventie '*' als de moderne
+      // 'tc-groups:*' (bevestigd via OpenAPI-spec). De v1.10-fix miste de tweede;
+      // gevolg was dat propagatie in row.read landde als raw "tc-groups:*" string,
+      // waar _getEffectiveAccessForGroup naar 'Alle projectleden' zocht → altijd 'none'.
+      if (s === '*' || s === 'tc-groups:*') return 'Alle projectleden';
       if (typeof s !== 'string') return String(s || '');
       if (s.startsWith('tc-groups:')) return groupById[s.replace('tc-groups:','')] || s;
+      // Users: moderne conventie is 'users:<uuid>'; ondersteun ook de oude 'tc-users:'-prefix.
       if (s.startsWith('tc-users:')) return userById[s.replace('tc-users:','')] || s;
+      if (s.startsWith('users:'))    return userById[s.replace('users:','')]    || s;
       return groupById[s] || userById[s] || s;
     }
 
@@ -14526,6 +14533,7 @@ const RV = (function(){
       let rootPerms = null;
       try { rootPerms = await _fetchUnwrapped('/folders/fs/' + rootId + '/permissions'); }
       catch(e){ console.warn('[RV] root-permissions mislukt:', e.message); }
+      _lastRootPerms = rootPerms; // voor Diagnose-rapport bij onduidelijke permissie-bugs
       const permsData = await _fetchPermissions(folders);
       if (typeof _prefetchProgress === 'function'){
         try { _prefetchProgress({ phase: 'team ophalen', unit: 'rechten' }); } catch(_){}
@@ -14566,9 +14574,30 @@ const RV = (function(){
 
   return {
     diagnostics: function(){
+      // Diagnose voor onduidelijke permissie-bugs (bv. subject-conventie die we niet
+      // herkennen). Kopieer via Diagnose-knop → mailt Tom → volgende iteratie meteen fix.
+      const root = _data && _data.csvData ? _data.csvData[0] : null;
+      // Verzamel raw subject-strings uit rootPerms.acl + directPermissions.acl (beide shapes)
+      const rootAclSubjects = [];
+      const rp = _lastRootPerms;
+      if (rp && typeof rp === 'object'){
+        const acls = [rp.acl, rp.directPermissions && rp.directPermissions.acl, rp.inheritedPermissions && rp.inheritedPermissions.acl];
+        for (const acl of acls){
+          if (!acl || typeof acl !== 'object') continue;
+          for (const level in acl){
+            const subs = acl[level];
+            if (Array.isArray(subs)) for (const s of subs) rootAclSubjects.push(level + ':' + String(s));
+          }
+        }
+      }
       return {
         geladen: _isLoaded, laadt: _isLoading,
-        mappen: _data && _data.csvData ? Math.max(0, _data.csvData.length - 1) : 0
+        mappen: _data && _data.csvData ? Math.max(0, _data.csvData.length - 1) : 0,
+        rootPermsAanwezig: !!_lastRootPerms,
+        rootPermsAclSubjects: rootAclSubjects,
+        rootRecordReadSubjects: root ? root.read.slice() : [],
+        rootRecordFullSubjects: root ? root.full.slice() : [],
+        hasAllProjectMembersOnRoot: !!(root && (root.read.indexOf('Alle projectleden') >= 0 || root.full.indexOf('Alle projectleden') >= 0)),
       };
     },
     activate: function(){
