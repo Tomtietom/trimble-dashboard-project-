@@ -691,6 +691,14 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-views-row.active .dl-views-name{font-weight:600;color:var(--af2)}
 .dl-views-name{flex:1;font-size:14px;color:var(--dk);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dl-views-count{color:var(--g4);font-size:12px}
+.dl-wp-new{display:inline-block;background:var(--af);color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:1px 6px;border-radius:var(--r-pill);vertical-align:1px}
+.wp-new-badge{display:inline-block;background:var(--af);color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:var(--r-pill);flex-shrink:0}
+/* Werkpakket-modal: ruimere ademruimte + acties rechts (klant-feedback aug 26) */
+#dl-wp-modal .dl-share-body{padding:var(--s5)}
+#dl-wp-modal .dl-share-sub{color:var(--g5);font-size:var(--fs-md);margin:0 0 var(--s4)}
+#dl-wp-modal .dl-share-label{margin-bottom:var(--s4)}
+#dl-wp-modal input[type=radio]{accent-color:var(--af)}
+.dl-share-actions{display:flex;gap:var(--s2);justify-content:flex-end;margin-top:var(--s5)}
 .dl-views-rel{font-size:11px;font-weight:600;color:var(--af);background:var(--afl);border-radius:var(--r-pill);padding:1px 7px;margin-left:6px;white-space:nowrap}
 .dl-views-acts{display:flex;gap:2px;opacity:0;transition:opacity .1s}
 .dl-views-row:hover .dl-views-acts,.dl-views-row.active .dl-views-acts{opacity:1}
@@ -8586,6 +8594,10 @@ const DL = (function(){
         v = url
           ? '<a class="dl-cell-link" href="' + _esc(url) + '" target="_blank" rel="noopener" title="Open in Trimble Connect (nieuw tabblad)">' + naam + '</a>'
           : naam;
+        // v1.23: markeer wat er sinds het vorige werkpakket-bezoek is veranderd
+        if (_wpNewVids && d._vid && _wpNewVids.has(d._vid)){
+          v += ' <span class="dl-wp-new" title="Nieuw sinds je vorige bezoek aan dit werkpakket">nieuw</span>';
+        }
         cls = 'dl-cell-name';
       }
       else if (c.k === 'file_location'){ v = _esc(v == null ? '' : v); cls = 'dl-cell-folder'; }
@@ -12952,6 +12964,11 @@ const DL = (function(){
           '<span class="dl-edit-banner-icon">🔓</span>' +
           '<span><strong>Bewerkmodus aan.</strong> Dubbelklik op een gemarkeerde cel om te wijzigen — <strong>elke wijziging wordt direct opgeslagen</strong> in Trimble Connect (Enter of ergens anders klikken bevestigt, Esc annuleert). Cellen met <span class="dl-edit-banner-mark">▾</span> hebben een keuzelijst; cellen met <span class="dl-edit-banner-mark">✎</span> zijn vrije tekst en kun je ook leegmaken. Klaar? Klik op <strong>🔓 Vergrendelen</strong> — dat beschermt alleen tegen per-ongeluk wijzigen, opslaan is al gebeurd.</span>' +
         '</div>' +
+        '<div id="dl-wp-new-banner" class="dl-updates-banner" style="display:none">' +
+          '<span class="dl-updates-icon">📌</span>' +
+          '<span class="dl-updates-text" id="dl-wp-new-text"></span>' +
+          '<button type="button" id="dl-wp-new-close" class="dl-updates-btn" title="Melding sluiten">×</button>' +
+        '</div>' +
         '<div id="dl-updates-banner" class="dl-updates-banner" style="display:none">' +
           '<span class="dl-updates-icon">↻</span>' +
           '<span class="dl-updates-text" id="dl-updates-text"></span>' +
@@ -13143,6 +13160,7 @@ const DL = (function(){
               '<h3 class="dl-share-title">📁 Werkpakket</h3>' +
               '<button type="button" id="dl-wp-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
             '</div>' +
+            '<div class="dl-share-body">' +
             '<p class="dl-share-sub" id="dl-wp-count"></p>' +
             '<label class="dl-share-label">Nieuw werkpakket' +
               '<input type="text" id="dl-wp-name" class="dl-share-input" placeholder="Bijv. Controle vloeren" autocomplete="off">' +
@@ -13160,6 +13178,7 @@ const DL = (function(){
             '<div class="dl-share-actions">' +
               '<button type="button" id="dl-wp-cancel" class="dl-share-btn dl-share-btn-secondary">Annuleren</button>' +
               '<button type="button" id="dl-wp-save" class="dl-share-btn dl-share-btn-primary">Opslaan</button>' +
+            '</div>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -13596,6 +13615,11 @@ const DL = (function(){
     const qrvToRel = root.querySelector('#dl-qrv-to-release');
     if (qrvToRel) qrvToRel.addEventListener('click', _qrvToRelease);
     // Add-to-release dialog
+    const wpNewClose = root.querySelector('#dl-wp-new-close');
+    if (wpNewClose) wpNewClose.addEventListener('click', function(){
+      const b = document.getElementById('dl-wp-new-banner');
+      if (b) b.style.display = 'none';
+    });
     const wpBtn = root.querySelector('#dl-wp-btn');
     if (wpBtn) wpBtn.addEventListener('click', _openWerkpakketDialog);
     const wpRmBtn = root.querySelector('#dl-wp-remove-btn');
@@ -13995,6 +14019,7 @@ const DL = (function(){
             id: v.id, name: v.name,
             updatedBy: v.updatedBy || '', updatedAt: v.updatedAt || 0,
             docCount: (v.state && Array.isArray(v.state.docVids)) ? v.state.docVids.length : 0,
+            newCount: _isLoaded ? _wpNewCountFor(v) : 0,
             release: (v.release && v.release.id) ? { id: v.release.id, name: v.release.name || '' } : null,
           };
         }
