@@ -690,6 +690,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-views-row.active{background:var(--afl);box-shadow:inset 3px 0 0 var(--af)}
 .dl-views-row.active .dl-views-name{font-weight:600;color:var(--af2)}
 .dl-views-name{flex:1;font-size:14px;color:var(--dk);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl-views-count{color:var(--g4);font-size:12px}
 .dl-views-rel{font-size:11px;font-weight:600;color:var(--af);background:var(--afl);border-radius:var(--r-pill);padding:1px 7px;margin-left:6px;white-space:nowrap}
 .dl-views-acts{display:flex;gap:2px;opacity:0;transition:opacity .1s}
 .dl-views-row:hover .dl-views-acts,.dl-views-row.active .dl-views-acts{opacity:1}
@@ -1438,7 +1439,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.21';
+const COCKPIT_VERSION = '1.22';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -2776,11 +2777,12 @@ async function renderWerkpakketten(forceReload){
       const rel = (w.release && w.release.id)
         ? '<span class="rel-tag wp-rel" data-rel-id="' + escapeHtml(w.release.id) + '" title="Open release &quot;' + escapeHtml(w.release.name || '') + '&quot; in Trimble Connect">' + escapeHtml(String(w.release.name || 'release').substring(0, 14)) + '</span>'
         : '';
-      return '<div class="activity-item clickable" data-wp-id="' + escapeHtml(w.id) + '" title="Open in Documentenlijst">'
-        + '<span class="ac-ico">▤</span>'
+      const isVast = w.docCount > 0;
+      return '<div class="activity-item clickable" data-wp-id="' + escapeHtml(w.id) + '" title="' + (isVast ? 'Vast werkpakket — ' + w.docCount + ' handgekozen documenten. ' : '') + 'Open in Documentenlijst">'
+        + '<span class="ac-ico">' + (isVast ? '📌' : '▤') + '</span>'
         + '<span class="name" title="' + escapeHtml(w.name) + '">' + escapeHtml(w.name) + '</span>'
         + rel
-        + '<span class="meta">' + escapeHtml(meta) + '</span>'
+        + '<span class="meta">' + escapeHtml(isVast ? w.docCount + ' docs' : meta) + '</span>'
         + '<span class="ext-link">→</span>'
         + '</div>';
     }).join('');
@@ -6905,6 +6907,9 @@ const DL = (function(){
   // Benoemde weergaves (v1.7). Twee scopes; zie _viewSnapshot voor wat erin zit.
   let _views = { shared: [], personal: [] };
   let _activeViewId = '';
+  // v1.22 — vast werkpakket: handgekozen documentset (op _vid, dus versie-stabiel).
+  // null = geen set actief; een Set beperkt _filt() tot precies deze documenten.
+  let _activeDocSet = null;
   // v1.11: dashboard-werkpakket klikt → setPendingView(id) → showView('documentenlijst');
   // activate() consumeert de pending id zodra de views er zijn.
   let _pendingViewId = '';
@@ -8140,6 +8145,11 @@ const DL = (function(){
   function _filt(){
     const q = (_searchQuery || '').toLowerCase().trim();
     let d = _docs;
+    // Vast werkpakket (v1.22): eerst beperken tot de handgekozen set; zoeken,
+    // filteren en groeperen werken daarbinnen gewoon door.
+    if (_activeDocSet){
+      d = d.filter(function(doc){ return doc._vid && _activeDocSet.has(doc._vid); });
+    }
     // Tree-mode: filter op geselecteerde map-prefix (incl. submappen)
     if (_viewMode === 'tree' && _selectedFolder){
       const pre = _selectedFolder;
@@ -8875,6 +8885,9 @@ const DL = (function(){
 
   // Selection-bar zichtbaar maken / teller bijwerken
   function _updateSelectionBar(){
+    // v1.22: ➖-knop alleen wanneer een vast werkpakket actief is
+    const wpRm = document.getElementById('dl-wp-remove-btn');
+    if (wpRm) wpRm.style.display = _activeDocSet ? '' : 'none';
     // Sprint 1: export-knop-label mee-updaten met selectie ("Exporteer Excel" ↔ "Exporteer selectie (N)")
     try { _updateExportBtnLabel(); } catch(_){}
     const bar = document.getElementById('dl-selection-bar');
@@ -9252,6 +9265,14 @@ const DL = (function(){
     };
   }
 
+  // v1.22: docVids gaan alleen mee wanneer er een vaste set actief is — een gewone
+  // weergave krijgt het veld niet en blijft byte-voor-byte gelijk aan vroeger.
+  function _viewSnapshotFull(){
+    const st = _viewSnapshot();
+    if (_activeDocSet) st.docVids = Array.from(_activeDocSet).sort();
+    return st;
+  }
+
   // Oude filter-vorm (platte string, van vóór de multi-select van v1.4) wordt
   // meegemigreerd zodat een weergave van eerder nu nog steeds toepasbaar is.
   function _viewNormalizeFilters(f){
@@ -9281,6 +9302,14 @@ const DL = (function(){
     if (st.sortD === 'asc' || st.sortD === 'desc') _sortD = st.sortD;
     _viewMode   = st.viewMode === 'tree' ? 'tree' : 'list';
     _selectedFolder = _viewMode === 'tree' ? (st.folder || '') : '';
+    // v1.22 — vaste documentset activeren/wissen
+    if (Array.isArray(st.docVids) && st.docVids.length){
+      _activeDocSet = new Set(st.docVids);
+      const missing = st.docVids.filter(function(v){ return !_docs.some(function(d){ return d._vid === v; }); }).length;
+      if (missing) console.warn('[DL] werkpakket: ' + missing + ' document(en) niet (meer) gevonden in dit project — overgeslagen');
+    } else {
+      _activeDocSet = null;
+    }
     // De mappen-split hangt aan een klasse op #dl-main die _renderTable() niet zet.
     const root = getRoot();
     const main = root && root.querySelector('#dl-main');
@@ -9313,7 +9342,7 @@ const DL = (function(){
   function _viewIsDirty(){
     const v = _viewFind(_activeViewId);
     if (!v) return false;
-    return _viewCanon(_viewSnapshot()) !== _viewCanon(v.state);
+    return _viewCanon(_viewSnapshotFull()) !== _viewCanon(v.state);
   }
 
   // Pas een via het dashboard aangevraagde weergave toe. Blijft staan zolang de
@@ -9464,7 +9493,7 @@ const DL = (function(){
     const backup = _viewsBackup(scope);
     const view = bestaand || { id: _viewNewId(), name: naam };
     view.name      = naam;
-    view.state     = _viewSnapshot();
+    view.state     = _viewSnapshotFull();
     view.updatedBy = currentUserEmail || '';
     view.updatedAt = Date.now();
     if (!bestaand) list.push(view);
@@ -9479,7 +9508,7 @@ const DL = (function(){
 
   async function _viewUpdate(v, scope){
     const backup = _viewsBackup(scope);
-    v.state     = _viewSnapshot();
+    v.state     = _viewSnapshotFull();
     v.updatedBy = currentUserEmail || '';
     v.updatedAt = Date.now();
     try { await _viewPersist(scope); }
@@ -9512,6 +9541,116 @@ const DL = (function(){
     _renderViewsPicker();
   }
 
+  // ---------- vaste werkpakketten (v1.22) ----------
+  //
+  //  Een vast werkpakket is een weergave met state.docVids: een handgekozen
+  //  documentset op _vid (file-id, stabiel over versies — nieuwe versies vallen
+  //  automatisch binnen het pakket). Opslag/deling/rollback loopt volledig via
+  //  het bestaande _views-mechanisme.
+
+  function _fixedWerkpakketten(){
+    const out = [];
+    ['shared', 'personal'].forEach(function(scope){
+      _views[scope].forEach(function(v){
+        if (v.state && Array.isArray(v.state.docVids) && v.state.docVids.length){
+          out.push({ v: v, scope: scope });
+        }
+      });
+    });
+    return out;
+  }
+
+  async function _saveSelectionAsWerkpakket(naam, scope, vids){
+    const list = _views[scope];
+    const bestaand = list.find(function(v){ return v.name.toLowerCase() === naam.toLowerCase(); });
+    if (bestaand && !window.confirm('"' + bestaand.name + '" bestaat al. Overschrijven met deze selectie?')) return false;
+    const backup = _viewsBackup(scope);
+    const view = bestaand || { id: _viewNewId(), name: naam };
+    const st = _viewSnapshot();          // huidige weergave-instellingen als vertrekpunt
+    st.docVids = vids.slice().sort();
+    view.name      = naam;
+    view.state     = st;
+    view.updatedBy = currentUserEmail || '';
+    view.updatedAt = Date.now();
+    if (!bestaand) list.push(view);
+    try { await _viewPersist(scope); }
+    catch(_){ _viewsRollback(scope, backup); _renderViewsPicker(); return false; }
+    _activeViewId = view.id;
+    _viewApply(view.state);
+    _renderViewsButton();
+    _renderViewsPicker();
+    console.log('[DL] werkpakket opgeslagen:', scope, naam, '(' + st.docVids.length + ' docs)');
+    return true;
+  }
+
+  async function _addToWerkpakket(viewId, vids){
+    const hit = _fixedWerkpakketten().find(function(x){ return x.v.id === viewId; });
+    if (!hit){ alert('Werkpakket niet gevonden.'); return false; }
+    const backup = _viewsBackup(hit.scope);
+    const merged = new Set(hit.v.state.docVids);
+    vids.forEach(function(v){ merged.add(v); });
+    hit.v.state.docVids = Array.from(merged).sort();
+    hit.v.updatedBy = currentUserEmail || '';
+    hit.v.updatedAt = Date.now();
+    try { await _viewPersist(hit.scope); }
+    catch(_){ _viewsRollback(hit.scope, backup); _renderViewsPicker(); return false; }
+    if (_activeViewId === hit.v.id){ _activeDocSet = new Set(hit.v.state.docVids); _renderTable(); }
+    _renderViewsButton();
+    _renderViewsPicker();
+    console.log('[DL] toegevoegd aan werkpakket:', hit.v.name, '→', hit.v.state.docVids.length, 'docs');
+    return true;
+  }
+
+  async function _removeFromActiveWerkpakket(vids){
+    const v = _viewFind(_activeViewId);
+    if (!v || !v.state || !Array.isArray(v.state.docVids)) return;
+    const scope = _views.shared.indexOf(v) >= 0 ? 'shared' : 'personal';
+    const backup = _viewsBackup(scope);
+    const remove = new Set(vids);
+    v.state.docVids = v.state.docVids.filter(function(x){ return !remove.has(x); });
+    v.updatedBy = currentUserEmail || '';
+    v.updatedAt = Date.now();
+    try { await _viewPersist(scope); }
+    catch(_){ _viewsRollback(scope, backup); _renderViewsPicker(); return; }
+    _activeDocSet = new Set(v.state.docVids);
+    _selectedVids.clear();
+    _renderViewsButton();
+    _renderViewsPicker();
+    _renderTable();
+    console.log('[DL] uit werkpakket verwijderd:', vids.length, '→ nog', v.state.docVids.length, 'docs');
+  }
+
+  function _openWerkpakketDialog(){
+    const vids = Array.from(_selectedVids);
+    if (!vids.length){ alert('Geen documenten geselecteerd.'); return; }
+    const modal = document.getElementById('dl-wp-modal');
+    if (!modal) return;
+    // Keuzelijst met bestaande vaste werkpakketten vullen
+    const sel = document.getElementById('dl-wp-existing');
+    const fixed = _fixedWerkpakketten();
+    if (sel){
+      sel.innerHTML = '<option value="">— kies werkpakket —</option>' + fixed.map(function(x){
+        const lbl = x.v.name + ' (' + x.v.state.docVids.length + ') — ' + (x.scope === 'shared' ? 'gedeeld' : 'persoonlijk');
+        return '<option value="' + _esc(x.v.id) + '"' + (x.scope === 'shared' && !_isProjectAdmin ? ' disabled' : '') + '>' + _esc(lbl) + '</option>';
+      }).join('');
+    }
+    const addRow = document.getElementById('dl-wp-add-row');
+    if (addRow) addRow.style.display = fixed.length ? '' : 'none';
+    const sharedRadio = document.getElementById('dl-wp-scope-shared');
+    if (sharedRadio) sharedRadio.parentElement.style.display = _isProjectAdmin ? '' : 'none';
+    const cnt = document.getElementById('dl-wp-count');
+    if (cnt) cnt.textContent = vids.length + ' geselecteerd(e) document(en)';
+    const nameEl = document.getElementById('dl-wp-name');
+    if (nameEl) nameEl.value = '';
+    modal.style.display = '';
+    if (nameEl) setTimeout(function(){ nameEl.focus(); }, 0);
+  }
+
+  function _closeWerkpakketDialog(){
+    const modal = document.getElementById('dl-wp-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
   // ---------- weergave ----------
 
   function _renderViewsButton(){
@@ -9520,8 +9659,9 @@ const DL = (function(){
     if (!btn) return;
     const v = _viewFind(_activeViewId);
     const dirty = v && _viewIsDirty();
-    btn.innerHTML = '<span class="dl-cols-icon">▤</span>'
-      + _esc(v ? v.name : 'Weergaves')
+    const setCount = (v && _activeDocSet) ? ' · ' + _activeDocSet.size : '';
+    btn.innerHTML = '<span class="dl-cols-icon">' + (v && _activeDocSet ? '📌' : '▤') + '</span>'
+      + _esc(v ? v.name + setCount : 'Weergaves')
       + (dirty ? '<span class="dl-views-dirty" title="Aangepast ten opzichte van de opgeslagen weergave">•</span>' : '');
     btn.classList.toggle('dl-views-on', !!v);
     btn.title = v
@@ -9546,7 +9686,12 @@ const DL = (function(){
           : 'Promoveer naar release: de bestanden die nu aan deze weergave voldoen';
         h += '<div class="dl-views-row' + (v.id === _activeViewId ? ' active' : '') + '"'
           + ' data-view-id="' + _esc(v.id) + '" data-view-scope="' + scope + '">'
-          + '<span class="dl-views-name" title="' + _esc(wie) + '">' + _esc(v.name)
+          + '<span class="dl-views-name" title="' + _esc(wie) + '">'
+          + ((v.state && Array.isArray(v.state.docVids) && v.state.docVids.length)
+              ? '<span title="Vast werkpakket: handgekozen set van ' + v.state.docVids.length + ' documenten">📌 </span>' : '')
+          + _esc(v.name)
+          + ((v.state && Array.isArray(v.state.docVids) && v.state.docVids.length)
+              ? ' <span class="dl-views-count">(' + v.state.docVids.length + ')</span>' : '')
           + ((v.release && v.release.id) ? ' <span class="dl-views-rel" title="Gekoppelde release">📦 ' + _esc(v.release.name || 'release') + '</span>' : '')
           + '</span>'
           + (mag || _qrvAllowed()
@@ -12729,6 +12874,8 @@ const DL = (function(){
           '<span class="dl-selection-count" id="dl-selection-count">0 geselecteerd</span>' +
           '<button type="button" id="dl-share-btn" class="dl-selection-btn dl-selection-btn-primary" title="Maak deel-links voor de geselecteerde bestanden">🔗 Deel-links maken</button>' +
           '<button type="button" id="dl-bulk-edit-btn" class="dl-selection-btn dl-selection-btn-primary">✏️ Bulk wijzigen</button>' +
+          '<button type="button" id="dl-wp-btn" class="dl-selection-btn dl-selection-btn-primary" title="Bewaar de selectie als vast werkpakket, of voeg toe aan een bestaand werkpakket">📁 Werkpakket</button>' +
+          '<button type="button" id="dl-wp-remove-btn" class="dl-selection-btn" style="display:none" title="Haal de geselecteerde documenten uit het actieve werkpakket (de bestanden zelf blijven gewoon in het project)">➖ Uit werkpakket</button>' +
           '<button type="button" id="dl-add-release-btn" class="dl-selection-btn dl-selection-btn-primary">📦 Naar release</button>' +
           '<button type="button" id="dl-zip-btn" class="dl-selection-btn dl-selection-btn-primary" title="Download de geselecteerde bestanden als ZIP, met mappenstructuur en metadata-CSV">💾 Download ZIP</button>' +
           '<button type="button" id="dl-qrv-btn" class="dl-selection-btn dl-selection-btn-primary" style="display:none" title="Genereer per document een QR-code voor op de print — scannen toont of de print nog de actuele versie is (zonder Trimble-account)">🏷️ Versie-QR</button>' +
@@ -12897,6 +13044,34 @@ const DL = (function(){
             '<div class="dl-share-foot">' +
               '<button type="button" id="dl-addrel-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
               '<button type="button" id="dl-addrel-submit" class="dl-share-btn dl-share-btn-primary">Toevoegen</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        // Werkpakket-modal (v1.22) — selectie opslaan als vast werkpakket of toevoegen aan bestaand
+        '<div id="dl-wp-modal" class="dl-share-modal" style="display:none">' +
+          '<div class="dl-share-backdrop" id="dl-wp-backdrop"></div>' +
+          '<div class="dl-share-panel" role="dialog" aria-label="Werkpakket opslaan">' +
+            '<div class="dl-share-head">' +
+              '<h3 class="dl-share-title">📁 Werkpakket</h3>' +
+              '<button type="button" id="dl-wp-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
+            '</div>' +
+            '<p class="dl-share-sub" id="dl-wp-count"></p>' +
+            '<label class="dl-share-label">Nieuw werkpakket' +
+              '<input type="text" id="dl-wp-name" class="dl-share-input" placeholder="Bijv. Controle vloeren" autocomplete="off">' +
+            '</label>' +
+            '<label class="dl-share-label" style="display:flex;gap:16px;align-items:center">' +
+              '<span style="display:flex;gap:5px;align-items:center"><input type="radio" name="dl-wp-scope" id="dl-wp-scope-personal" value="personal" checked> Alleen voor mij</span>' +
+              '<span style="display:flex;gap:5px;align-items:center"><input type="radio" name="dl-wp-scope" id="dl-wp-scope-shared" value="shared"> Gedeeld in dit project</span>' +
+            '</label>' +
+            '<div id="dl-wp-add-row" style="display:none">' +
+              '<div style="text-align:center;color:var(--g4);font-size:var(--fs-sm);margin:6px 0">— of —</div>' +
+              '<label class="dl-share-label">Toevoegen aan bestaand werkpakket' +
+                '<select id="dl-wp-existing" class="dl-share-input"></select>' +
+              '</label>' +
+            '</div>' +
+            '<div class="dl-share-actions">' +
+              '<button type="button" id="dl-wp-cancel" class="dl-share-btn dl-share-btn-secondary">Annuleren</button>' +
+              '<button type="button" id="dl-wp-save" class="dl-share-btn dl-share-btn-primary">Opslaan</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -13333,6 +13508,42 @@ const DL = (function(){
     const qrvToRel = root.querySelector('#dl-qrv-to-release');
     if (qrvToRel) qrvToRel.addEventListener('click', _qrvToRelease);
     // Add-to-release dialog
+    const wpBtn = root.querySelector('#dl-wp-btn');
+    if (wpBtn) wpBtn.addEventListener('click', _openWerkpakketDialog);
+    const wpRmBtn = root.querySelector('#dl-wp-remove-btn');
+    if (wpRmBtn) wpRmBtn.addEventListener('click', function(){
+      const vids = Array.from(_selectedVids);
+      if (!vids.length) return;
+      if (!confirm(vids.length + ' document(en) uit dit werkpakket halen? De bestanden zelf blijven gewoon in het project.')) return;
+      _removeFromActiveWerkpakket(vids);
+    });
+    ['dl-wp-close', 'dl-wp-cancel', 'dl-wp-backdrop'].forEach(function(id){
+      const el = root.querySelector('#' + id);
+      if (el) el.addEventListener('click', _closeWerkpakketDialog);
+    });
+    const wpSave = root.querySelector('#dl-wp-save');
+    if (wpSave) wpSave.addEventListener('click', async function(){
+      const vids = Array.from(_selectedVids);
+      if (!vids.length){ _closeWerkpakketDialog(); return; }
+      const existing = (document.getElementById('dl-wp-existing') || {}).value || '';
+      const naam = ((document.getElementById('dl-wp-name') || {}).value || '').trim();
+      wpSave.disabled = true;
+      let ok = false;
+      try {
+        if (existing && !naam){
+          ok = await _addToWerkpakket(existing, vids);
+        } else if (naam){
+          const shared = (document.getElementById('dl-wp-scope-shared') || {}).checked;
+          if (shared && !_isProjectAdmin){ alert('Alleen projectbeheerders kunnen gedeelde werkpakketten opslaan.'); }
+          else ok = await _saveSelectionAsWerkpakket(naam, shared ? 'shared' : 'personal', vids);
+        } else {
+          alert('Geef een naam op voor een nieuw werkpakket, óf kies een bestaand werkpakket.');
+        }
+      } finally {
+        wpSave.disabled = false;
+      }
+      if (ok) _closeWerkpakketDialog();
+    });
     const zipBtn = root.querySelector('#dl-zip-btn');
     if (zipBtn) zipBtn.addEventListener('click', function(){ _downloadSelectionZip(zipBtn); });
     const addRelBtn = root.querySelector('#dl-add-release-btn');
@@ -13402,9 +13613,11 @@ const DL = (function(){
       const vClear = root.querySelector('#dl-views-clear');
       if (vClear) vClear.addEventListener('click', function(){
         _activeViewId = '';
+        _activeDocSet = null; // vast werkpakket loslaten = volledige lijst terug
         _saveColsConfig();
         _renderViewsButton();
         _renderViewsPicker();
+        _renderTable();
       });
     }
 
@@ -13448,6 +13661,7 @@ const DL = (function(){
           _filters = {};
           _filterPeriod = '';
           _activeViewId = '';
+          _activeDocSet = null;
           _saveColsConfig();
           _renderViewsButton();
           _renderColPicker();
@@ -13692,6 +13906,7 @@ const DL = (function(){
           return {
             id: v.id, name: v.name,
             updatedBy: v.updatedBy || '', updatedAt: v.updatedAt || 0,
+            docCount: (v.state && Array.isArray(v.state.docVids)) ? v.state.docVids.length : 0,
             release: (v.release && v.release.id) ? { id: v.release.id, name: v.release.name || '' } : null,
           };
         }

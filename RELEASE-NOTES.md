@@ -2,6 +2,25 @@
 
 ---
 
+## Versie 1.22 — 26 augustus 2026
+
+### Vaste werkpakketten: jouw selectie, later weer oppakken
+
+Werkpakketten bestonden al als opgeslagen filters — handig, maar de inhoud beweegt mee met de metadata. Soms wil je juist een váste set: *deze* dertig tekeningen zijn mijn controlerondje, en daar wil ik morgen mee verder. Als een release, maar open.
+
+**Wat is er veranderd?**
+
+- **Selectie opslaan als werkpakket** — vink documenten aan en klik op **📁 Werkpakket** in de selectiebalk. Geef het pakket een naam (*"Controle vloeren"*) en kies: alleen voor jou, of gedeeld met het hele project (dat laatste kan alleen een projectbeheerder). Vaste werkpakketten herken je overal aan de 📌 met het aantal documenten erbij.
+- **Later weer oppakken** — via de Weergaves-knop of het blok *Werkpakketten* op het dashboard. De lijst toont dan precies jouw set — en zoeken, filteren en groeperen werken daarbinnen gewoon.
+- **Set aanpassen** — selecteer extra documenten en voeg ze via 📁 toe aan een bestaand pakket, of haal geselecteerde documenten eruit met **➖ Uit werkpakket** (de bestanden zelf blijven natuurlijk gewoon in het project). Met *Losmaken* keer je terug naar de volledige lijst.
+- **Nieuwe versies doen automatisch mee** — het pakket volgt het document, niet de versie. Upload iemand een nieuwe versie van een tekening in je pakket, dan zie je die meteen.
+- **Alles werkt ermee samen** — promoveer een vast werkpakket naar een release (pakt de nieuwste versies), genereer er Versie-QR's voor, of download de set als ZIP.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.21 — 26 augustus 2026
 
 ### Rechten Viewer: uitgezette overerving en uitgesloten groepen worden weer gerespecteerd
