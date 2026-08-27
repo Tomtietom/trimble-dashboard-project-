@@ -699,6 +699,17 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 #dl-wp-modal .dl-share-label{margin-bottom:var(--s4)}
 #dl-wp-modal input[type=radio]{accent-color:var(--af)}
 .dl-share-actions{display:flex;gap:var(--s2);justify-content:flex-end;margin-top:var(--s5)}
+/* Excel-import preview (v1.25) */
+.dl-xi-panel{width:640px}
+#dl-xi-body{max-height:46vh;overflow:auto}
+.dl-xi-groep{font-family:'Montserrat',sans-serif;font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--g4);margin:var(--s4) 0 var(--s2);border-bottom:1px solid var(--hl-light);padding-bottom:4px}
+.dl-xi-fout-kop{color:var(--warn)}
+.dl-xi-row{display:grid;grid-template-columns:minmax(140px,1.2fr) minmax(80px,.6fr) 2fr;gap:var(--s2);padding:4px 0;font-size:var(--fs-md);border-bottom:1px solid var(--g1);align-items:baseline}
+.dl-xi-naam{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dk)}
+.dl-xi-veld{color:var(--g4)}
+.dl-xi-delta{color:var(--g6);word-break:break-word}
+.dl-xi-fout .dl-xi-delta{color:var(--warn)}
+.dl-xi-meer{color:var(--g4);font-size:var(--fs-sm);margin-top:var(--s3)}
 .dl-views-rel{font-size:11px;font-weight:600;color:var(--af);background:var(--afl);border-radius:var(--r-pill);padding:1px 7px;margin-left:6px;white-space:nowrap}
 .dl-views-acts{display:flex;gap:2px;opacity:0;transition:opacity .1s}
 .dl-views-row:hover .dl-views-acts,.dl-views-row.active .dl-views-acts{opacity:1}
@@ -1400,17 +1411,17 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
         <div class="overline">Versiecontrole</div>
         <div class="sec-head"><h2>Versie-QR voor <em>tekeningen</em></h2></div>
         <p style="max-width:640px;color:var(--g5);margin:0 0 var(--s4);line-height:1.7">
-          Genereer per document een QR-code om óp de print te zetten. Wie hem scant ziet direct —
-          <strong>zonder Trimble-account</strong> — of die print nog de actuele versie is:
-          "print is revisie 3, actueel is revisie 5 — verouderd". Voor PDF-tekeningen stempelt de
-          <strong>Print-set</strong> de QR automatisch in de tekening (hoek en formaat instelbaar);
-          je download dan print-klare PDF's terwijl het origineel in Trimble Connect onaangeroerd blijft.
+          Genereer per document een QR-code om óp de print te zetten. Wie hem scant ziet een
+          <strong>groen of rood vlak</strong>: print actueel, of verouderd ("print is revisie 3,
+          actueel is revisie 5") — plus een knop die de tekening direct in Trimble Connect opent.
+          Voor PDF-tekeningen stempelt de <strong>Print-set</strong> de QR automatisch in de tekening
+          (positie bepaal je door te slepen); het origineel in Trimble Connect blijft onaangeroerd.
         </p>
         <p style="max-width:640px;color:var(--g4);font-size:var(--fs-sm);margin:0 0 var(--s4)">
-          Standaard toont de controle-pagina alléén de versie-status (het bestand zelf blijft afgeschermd);
-          daarvoor moet een projectbeheerder eenmalig het At Fielt controle-account als projectlid uitnodigen.
-          Een beheerder kan er per project voor kiezen om via de QR ook het bestand zelf te tonen — dat maakt
-          de documenten openbaar toegankelijk en wordt vóór activering uitgebreid uitgelegd.
+          De controleur logt op de controle-pagina eenmalig in met zijn <strong>eigen Trimble-account</strong> —
+          de projectrechten gelden dus automatisch en er is geen extra account of setup nodig.
+          Een beheerder kan er per project voor kiezen om via de QR ook het bestand zelf openbaar te tonen
+          (voor externen zonder account) — dat wordt vóór activering uitgebreid uitgelegd.
         </p>
         <button type="button" id="qrv-view-goto" class="qr-view-btn">🏷️ Versie-QR maken</button>
         <div style="margin-top:var(--s3);font-size:var(--fs-sm);color:var(--g4)">
@@ -1447,7 +1458,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.24';
+const COCKPIT_VERSION = '1.25';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -1896,6 +1907,7 @@ let tcToken = null;
 let tcProject = null;
 let tcRegion = 'europe';
 let currentUserEmail = null;
+let excelImportAllowed = false; // hub-slug 'excel-import' — losse add-on (v1.25), fail-closed
 
 // ============================================================
 //  Helpers
@@ -2349,7 +2361,17 @@ async function loadDashboard(){
       e.allowed = false;
     }
   }));
-  console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', '));
+  // excel-import: eigen hub-slug zonder tegel/view — feature-licentie binnen de Documentenlijst
+  try {
+    if (typeof window.atfieltHub.auth === 'function'){
+      const rx = await window.atfieltHub.auth('excel-import');
+      excelImportAllowed = !!(rx && rx.allowed === true);
+    }
+  } catch (err) {
+    console.warn('[Cockpit] auth-check faalde voor excel-import — fail-closed:', err.message);
+    excelImportAllowed = false;
+  }
+  console.log('[Cockpit] Toegangs-check:', EXTENSIONS.map(function(e){ return e.key+'='+(e.allowed?'ja':'nee'); }).join(', ') + ', excel-import=' + (excelImportAllowed?'ja':'nee'));
 
   renderTabs();
   renderTiles();
@@ -7715,6 +7737,7 @@ const DL = (function(){
         btn.title = 'Metadata bewerken — toggle aan/uit';
       }
     }
+    _updateXiButton();
     // Hint-balk: legt uit HOE je bewerkt en dat opslaan per cel direct gebeurt
     // (klant dacht dat vergrendelen = opslaan). Vergrendelen is alleen de
     // beveiliging tegen per-ongeluk-wijzigingen, geen save-knop.
@@ -8901,6 +8924,22 @@ const DL = (function(){
 
   // Bulk wijzigen schrijft metadata — dus alleen beschikbaar wanneer de bewerkmodus
   // aan staat, net als inline bewerken (klant: "dat is toch logisch gedrag?").
+  // 📥 Excel inlezen (v1.25): vereist de excel-import-licentie én de bewerkmodus.
+  function _updateXiButton(){
+    const b = document.getElementById('dl-xi-btn');
+    if (!b) return;
+    if (!excelImportAllowed){
+      b.disabled = true;
+      b.title = 'Excel terug-inlezen is een aparte module — vraag toegang aan via info@atfielt.nl';
+    } else if (!_editMode){
+      b.disabled = true;
+      b.title = 'Zet eerst 🔒 Bewerken aan — inlezen schrijft metadata naar Trimble Connect';
+    } else {
+      b.disabled = false;
+      b.title = 'Lees een bewerkte export terug in: je ziet eerst precies welke wijzigingen doorgevoerd gaan worden';
+    }
+  }
+
   function _updateBulkEditButton(){
     const b = document.getElementById('dl-bulk-edit-btn');
     if (!b) return;
@@ -10356,7 +10395,9 @@ const DL = (function(){
       })() : null;
       // Bij groepering: geen extra "Groep"-kolom vooraan (die zit al in de originele kolom).
       // In plaats daarvan: tussen-header-rijen met "━━━ GROEPNAAM (N) ━━━" + blank rij tussen groepen.
-      const finalHeaders = headers;
+      // v1.25: TC-ID als laatste, verborgen kolom — de sleutel waarmee "Excel inlezen"
+      // bewerkte rijen terugkoppelt aan documenten (sorteren/filteren in Excel kan geen kwaad).
+      const finalHeaders = headers.concat(['TC-ID']);
       // Sorteer rijen op groep-veld zodat groepen bij elkaar staan
       if (groupKey){
         rows = rows.slice().sort(function(a, b){
@@ -10397,6 +10438,7 @@ const DL = (function(){
           if (c.k === '_created' || c.k === '_modified') return _formatDate(v);
           return String(v);
         });
+        rowVals.push(d._vid || ''); // TC-ID (verborgen kolom, v1.25)
         aoa.push(rowVals);
       });
       // Genereer workbook (ExcelJS). aoa-rij-index r  =>  Excel-rij r+1, exact een-op-een:
@@ -10452,6 +10494,8 @@ const DL = (function(){
         }
         ws.getColumn(idx + 1).width = Math.min(60, Math.max(10, maxLen + 2));
       });
+      // TC-ID-kolom verbergen (v1.25) — blijft aanwezig voor het terug-inlezen
+      ws.getColumn(lastCol).hidden = true;
       // Freeze header-rij + auto-filter
       ws.views = [{ state: 'frozen', ySplit: 1 }];
       ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: lastRow, column: lastCol } };
@@ -10462,6 +10506,24 @@ const DL = (function(){
           ws.mergeCells(rowIdx + 1, 1, rowIdx + 1, lastCol);
         });
       }
+      // v1.25 — verborgen basis-werkblad: het vertrekpunt voor de three-way-diff
+      // van "Excel inlezen". Zonder dit blad kan de import Excel-bewerkingen niet
+      // onderscheiden van wijzigingen die intussen in TC zijn gedaan.
+      const editKeys = cols.map(function(c){ return c.k; }).filter(_isEditableField);
+      const wsB = wb.addWorksheet('_atfielt_basis');
+      wsB.state = 'veryHidden';
+      wsB.getCell(1, 1).value = '#atfielt-export';
+      wsB.getCell(1, 2).value = new Date().toISOString();
+      wsB.getCell(1, 3).value = COCKPIT_VERSION;
+      wsB.getCell(2, 1).value = 'vid';
+      editKeys.forEach(function(k, i){ wsB.getCell(2, i + 2).value = k; });
+      rows.forEach(function(d, i){
+        wsB.getCell(i + 3, 1).value = d._vid || '';
+        editKeys.forEach(function(k, j){
+          const v = d[k];
+          wsB.getCell(i + 3, j + 2).value = v == null ? '' : String(v);
+        });
+      });
       // Filename: projectnaam + datum
       const projName = (tcProject && tcProject.name) || 'project';
       const safeProj = projName.replace(/[\/\\:*?"<>|]/g, '_').slice(0, 60);
@@ -10480,6 +10542,299 @@ const DL = (function(){
       alert('Excel-export mislukt: ' + (e.message || e));
       if (btn) { btn.disabled = false; _updateExportBtnLabel(); }
     }
+  }
+
+
+  // ============================================================
+  //  Excel terug-inlezen (v1.25, eigen hub-module 'excel-import')
+  //
+  //  Harde grens: alléén waarden wijzigen van metadatavelden die het
+  //  projectschema al kent, op documenten die al in het project staan.
+  //  Geen nieuwe velden, geen nieuwe documenten, geen systeemvelden.
+  //
+  //  Three-way-diff tegen het verborgen basis-werkblad uit de export:
+  //  zo onderscheiden we Excel-bewerkingen van tussentijdse TC-wijzigingen
+  //  ("wat als mensen tegelijk exporteren en wijzigen").
+  // ============================================================
+
+  // Celwaarde → platte string. ExcelJS geeft formules als {formula,result},
+  // rijke tekst als {richText:[...]}, datums als Date.
+  function _xiCellText(cell){
+    let v = cell && cell.value;
+    if (v == null) return '';
+    if (typeof v === 'object'){
+      if (v.result != null) v = v.result;
+      else if (Array.isArray(v.richText)) v = v.richText.map(function(p){ return p.text; }).join('');
+      else if (v.text != null) v = v.text;
+    }
+    if (v instanceof Date){
+      // Excel-datum → jjjj-mm-dd (lokaal, anders schuift de dag door de tijdzone)
+      const p = function(n){ return String(n).padStart(2, '0'); };
+      return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate());
+    }
+    return String(v);
+  }
+
+  // Uniforme normalisatie voor de vergelijking — moet voor basis, Excel én
+  // huidige TC-waarde identiek zijn, anders zie je spookverschillen.
+  function _xiNorm(v){
+    const s = String(v == null ? '' : v).trim();
+    return s === '--' ? '' : s;
+  }
+
+  // Leest het verborgen basis-werkblad. null = geen geldig basis-blad.
+  function _xiReadBasis(wb){
+    const ws = wb.getWorksheet('_atfielt_basis');
+    if (!ws) return null;
+    if (_xiCellText(ws.getCell(1, 1)) !== '#atfielt-export') return null;
+    const keys = [];
+    for (let c = 2; c <= ws.columnCount; c++){
+      const k = _xiCellText(ws.getCell(2, c));
+      if (k) keys.push(k);
+    }
+    const byVid = {};
+    for (let r = 3; r <= ws.rowCount; r++){
+      const vid = _xiCellText(ws.getCell(r, 1));
+      if (!vid) continue;
+      const vals = {};
+      keys.forEach(function(k, i){ vals[k] = _xiNorm(_xiCellText(ws.getCell(r, i + 2))); });
+      byVid[vid] = vals;
+    }
+    return { ts: _xiCellText(ws.getCell(1, 2)), keys: keys, byVid: byVid };
+  }
+
+  // Bestand → geclassificeerde diff. Schrijft niets; dat doet _xiApply na de preview.
+  async function _xiParseFile(file){
+    const ExcelJS = await _ensureExcelJS();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await file.arrayBuffer());
+    const basis = _xiReadBasis(wb);
+    if (!basis){
+      throw new Error('Dit bestand komt niet uit de Excel-export van deze versie. Exporteer opnieuw en bewerk dát bestand — de export bevat onzichtbare informatie die het veilig terug-inlezen mogelijk maakt.');
+    }
+    const ws = wb.getWorksheet('Documenten') || wb.worksheets.find(function(w){ return w.name !== '_atfielt_basis'; });
+    if (!ws) throw new Error('Geen documenten-werkblad gevonden in dit bestand.');
+
+    // Header-rij → kolomindex per veldkey (labels zoals de export ze schrijft)
+    const labelToKey = {};
+    ALL_COLS.forEach(function(c){ labelToKey[(c.l || c.k).toLowerCase()] = c.k; });
+    let vidCol = -1;
+    const colMap = {};        // excel-kolomindex → veldkey (alleen bewerkbaar)
+    const onbekend = [];
+    for (let c = 1; c <= ws.columnCount; c++){
+      const label = _xiCellText(ws.getCell(1, c)).trim();
+      if (!label) continue;
+      if (label === 'TC-ID'){ vidCol = c; continue; }
+      const key = labelToKey[label.toLowerCase()];
+      if (!key){ onbekend.push(label); continue; }
+      if (_isEditableField(key)) colMap[c] = key;
+      // niet-bewerkbare bekende kolommen (bestandsnaam, map, versie…) zijn per
+      // definitie alleen-lezen: bewust géén entry in colMap
+    }
+    if (vidCol < 0) throw new Error('De verborgen TC-ID-kolom ontbreekt — exporteer opnieuw vanuit deze versie.');
+
+    const wijzigingen = [];   // {vid, doc, key, label, oud, nieuw}
+    const conflicten = [];    // idem + tc (huidige TC-waarde)
+    const fouten = [];        // {naam, label, waarde, reden}
+    let skippedNoMatch = 0, skippedNoBasis = 0;
+
+    const keyLabel = {};
+    ALL_COLS.forEach(function(c){ keyLabel[c.k] = c.l || c.k; });
+
+    for (let r = 2; r <= ws.rowCount; r++){
+      const vid = _xiCellText(ws.getCell(r, vidCol)).trim();
+      if (!vid) continue; // groepskop-, blanco- of vreemde rij
+      const doc = _docs.find(function(d){ return d._vid === vid; });
+      if (!doc){ skippedNoMatch++; continue; }
+      const basisRij = basis.byVid[vid];
+      if (!basisRij){ skippedNoBasis++; continue; }
+      for (const cStr in colMap){
+        const c = parseInt(cStr, 10);
+        const key = colMap[c];
+        if (!(key in basisRij)) continue; // veld zat niet in deze export
+        const excel = _xiNorm(_xiCellText(ws.getCell(r, c)));
+        const basisVal = basisRij[key];
+        if (excel === basisVal) continue; // niet aangeraakt in Excel → nooit schrijven
+        // Validatie binnen het projectschema
+        const enumVals = ENUM_VALUES[key];
+        if (excel && enumVals && enumVals.length && enumVals.indexOf(excel) < 0){
+          fouten.push({ naam: doc.bestandsnaam, label: keyLabel[key], waarde: excel,
+            reden: 'geen geldige waarde voor dit veld (kies uit: ' + enumVals.slice(0, 6).join(', ') + (enumVals.length > 6 ? ', …' : '') + ')' });
+          continue;
+        }
+        if (excel && /datum/.test(key) && !/^\d{4}-\d{2}-\d{2}$/.test(excel)){
+          fouten.push({ naam: doc.bestandsnaam, label: keyLabel[key], waarde: excel, reden: 'geen geldige datum (jjjj-mm-dd)' });
+          continue;
+        }
+        const huidig = _xiNorm(doc[key]);
+        const item = { vid: vid, doc: doc, key: key, label: keyLabel[key], oud: huidig, nieuw: excel };
+        if (huidig === basisVal) wijzigingen.push(item);
+        else if (huidig === excel) continue; // TC staat al op de Excel-waarde
+        else { item.tc = huidig; item.basis = basisVal; conflicten.push(item); }
+      }
+    }
+    return { wijzigingen: wijzigingen, conflicten: conflicten, fouten: fouten,
+             onbekend: onbekend, skippedNoMatch: skippedNoMatch, skippedNoBasis: skippedNoBasis };
+  }
+
+  // Goedgekeurde wijzigingen doorvoeren — zelfde changeset-pad als bulk wijzigen:
+  // volledige props per doc (vervang-semantiek) uit de HUIDIGE doc-waarden + de
+  // wijzigingen; per-item error-check (HTTP-ok ≠ functioneel ok).
+  async function _xiApply(items){
+    const perDoc = new Map();
+    items.forEach(function(it){
+      if (!perDoc.has(it.vid)) perDoc.set(it.vid, { doc: it.doc, changes: {} });
+      perDoc.get(it.vid).changes[it.key] = it.nieuw;
+    });
+    const libId = 'tcproject:prod:' + tcProject.id;
+    const entries = Array.from(perDoc.values());
+    let ok = 0, fout = 0;
+    const failedNames = [];
+    for (let i = 0; i < entries.length; i += 100){
+      const batch = entries.slice(i, i + 100);
+      const payload = batch.map(function(e){
+        const props = {};
+        for (const id in PROP_MAP){
+          const fn = PROP_MAP[id];
+          if (!fn) continue;
+          const val = (fn in e.changes) ? e.changes[fn] : e.doc[fn];
+          if (val != null && String(val) !== '') props[id] = String(val);
+        }
+        return { link: e.doc._psetLink || ('frn:tcfile:' + e.doc._vid), libId: libId, defId: 'tcfiles', props: props };
+      });
+      let resp;
+      try { resp = await _dlPostPSet('/psets/changeset', { items: payload }); }
+      catch(err){
+        fout += batch.length;
+        batch.forEach(function(e){ failedNames.push(e.doc.bestandsnaam); });
+        console.warn('[DL] excel-import batch mislukt:', err.message);
+        continue;
+      }
+      const respItems = (resp && resp.items) || [];
+      batch.forEach(function(e, j){
+        const ri = respItems[j];
+        const itemErr = ri && (ri.error || ri.errorMessage);
+        if (itemErr){
+          fout++; failedNames.push(e.doc.bestandsnaam);
+          console.warn('[DL] excel-import geweigerd:', e.doc.bestandsnaam, itemErr);
+          return;
+        }
+        ok++;
+        for (const k in e.changes){
+          e.doc[k] = e.changes[k];
+          try { _recentSavedAdd(e.doc._vid, k, e.changes[k]); } catch(_){}
+        }
+        try { _updateCacheEntryForDoc(e.doc); } catch(_){}
+      });
+    }
+    if (typeof DIAG !== 'undefined') DIAG.note('excel-import: ' + ok + ' documenten bijgewerkt, ' + fout + ' mislukt');
+    console.log('[DL] excel-import klaar:', ok, 'documenten ok,', fout, 'mislukt', failedNames.length ? failedNames : '');
+    _renderTable();
+    return { ok: ok, fout: fout, failedNames: failedNames };
+  }
+
+  let _xiResult = null; // uitkomst van _xiParseFile, levend zolang de preview open is
+
+  function _xiCloseModal(){
+    const m = document.getElementById('dl-xi-modal');
+    if (m) m.style.display = 'none';
+    _xiResult = null;
+    const inp = document.getElementById('dl-xi-file');
+    if (inp) inp.value = ''; // zelfde bestand opnieuw kiezen moet gewoon werken
+  }
+
+  function _xiSelectedCount(){
+    if (!_xiResult) return 0;
+    let n = _xiResult.wijzigingen.length;
+    document.querySelectorAll('#dl-xi-body input[data-xi-conflict]:checked').forEach(function(){ n++; });
+    return n;
+  }
+
+  function _xiUpdateApplyBtn(){
+    const b = document.getElementById('dl-xi-apply');
+    if (!b) return;
+    const n = _xiSelectedCount();
+    b.textContent = 'Doorvoeren (' + n + ')';
+    b.disabled = n === 0;
+  }
+
+  function _xiRenderPreview(r){
+    _xiResult = r;
+    const modal = document.getElementById('dl-xi-modal');
+    const sum = document.getElementById('dl-xi-summary');
+    const body = document.getElementById('dl-xi-body');
+    if (!modal || !body) return;
+    const docsGeraakt = new Set(r.wijzigingen.map(function(w){ return w.vid; })).size;
+    const delen = [];
+    delen.push(r.wijzigingen.length + ' wijziging' + (r.wijzigingen.length === 1 ? '' : 'en') + ' in ' + docsGeraakt + ' document' + (docsGeraakt === 1 ? '' : 'en'));
+    if (r.conflicten.length) delen.push(r.conflicten.length + ' conflict(en)');
+    if (r.fouten.length) delen.push(r.fouten.length + ' ongeldige waarde(n)');
+    if (sum) sum.textContent = delen.join(' · ') + '. Er wordt pas geschreven na Doorvoeren.';
+    let h = '';
+    function rij(w, extra){
+      return '<div class="dl-xi-row">'
+        + '<span class="dl-xi-naam" title="' + _esc(w.naam || (w.doc && w.doc.bestandsnaam) || '') + '">' + _esc(w.naam || (w.doc && w.doc.bestandsnaam) || '') + '</span>'
+        + '<span class="dl-xi-veld">' + _esc(w.label) + '</span>'
+        + (extra || '<span class="dl-xi-delta">' + _esc(w.oud || '(leeg)') + ' → <strong>' + _esc(w.nieuw || '(leeg)') + '</strong></span>')
+        + '</div>';
+    }
+    if (r.wijzigingen.length){
+      h += '<div class="dl-xi-groep">Wijzigingen</div>';
+      r.wijzigingen.slice(0, 400).forEach(function(w){ h += rij(w); });
+      if (r.wijzigingen.length > 400) h += '<div class="dl-xi-meer">… en ' + (r.wijzigingen.length - 400) + ' meer</div>';
+    }
+    if (r.conflicten.length){
+      h += '<div class="dl-xi-groep">Conflicten — iemand wijzigde dit veld in Trimble Connect ná jouw export. Vink aan wat je tóch wilt overschrijven:</div>';
+      r.conflicten.forEach(function(c, i){
+        h += rij(c, '<span class="dl-xi-delta"><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-xi-conflict="' + i + '"> TC heeft nu: <em>' + _esc(c.tc || '(leeg)') + '</em> · jouw Excel: <strong>' + _esc(c.nieuw || '(leeg)') + '</strong></label></span>');
+      });
+    }
+    if (r.fouten.length){
+      h += '<div class="dl-xi-groep dl-xi-fout-kop">Ongeldige waarden — worden niet doorgevoerd</div>';
+      r.fouten.forEach(function(f){
+        h += '<div class="dl-xi-row dl-xi-fout"><span class="dl-xi-naam">' + _esc(f.naam) + '</span><span class="dl-xi-veld">' + _esc(f.label) + '</span><span class="dl-xi-delta">"' + _esc(f.waarde) + '" — ' + _esc(f.reden) + '</span></div>';
+      });
+    }
+    const voetjes = [];
+    if (r.skippedNoMatch) voetjes.push(r.skippedNoMatch + ' rij(en) overgeslagen (document niet in dit project)');
+    if (r.skippedNoBasis) voetjes.push(r.skippedNoBasis + ' rij(en) overgeslagen (niet in deze export)');
+    if (r.onbekend.length) voetjes.push('kolommen niet herkend en genegeerd: ' + r.onbekend.join(', '));
+    if (voetjes.length) h += '<div class="dl-xi-meer">' + _esc(voetjes.join(' · ')) + '</div>';
+    if (!h) h = '<div class="dl-xi-meer">Geen verschillen gevonden — het bestand komt overeen met de huidige metadata.</div>';
+    body.innerHTML = h;
+    body.querySelectorAll('input[data-xi-conflict]').forEach(function(cb){
+      cb.addEventListener('change', _xiUpdateApplyBtn);
+    });
+    modal.style.display = '';
+    _xiUpdateApplyBtn();
+  }
+
+  async function _xiHandleFile(file, btn){
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ Lezen…'; }
+    try {
+      const r = await _xiParseFile(file);
+      _xiRenderPreview(r);
+    } catch(e){
+      alert('Inlezen mislukt: ' + e.message);
+    } finally {
+      if (btn){ btn.textContent = '📥 Excel inlezen'; _updateXiButton(); }
+    }
+  }
+
+  async function _xiConfirmApply(){
+    if (!_xiResult) return;
+    const items = _xiResult.wijzigingen.slice();
+    document.querySelectorAll('#dl-xi-body input[data-xi-conflict]:checked').forEach(function(cb){
+      items.push(_xiResult.conflicten[parseInt(cb.getAttribute('data-xi-conflict'), 10)]);
+    });
+    if (!items.length) return;
+    const b = document.getElementById('dl-xi-apply');
+    if (b){ b.disabled = true; b.textContent = '⏳ Doorvoeren…'; }
+    const res = await _xiApply(items);
+    _xiCloseModal();
+    alert(res.fout
+      ? res.ok + ' document(en) bijgewerkt; ' + res.fout + ' mislukt — zie console (F12).'
+      : res.ok + ' document(en) bijgewerkt.');
   }
 
   // Update export-knop-label op basis van selectie (zowel header als footer)
@@ -11987,11 +12342,10 @@ const DL = (function(){
   //                        een bekijk-knop. Documenten worden daarmee blijvend
   //                        openbaar — daarom admin-only met typ-bevestiging.
   const QRV_HUB_BASE = 'https://atfielt-extension-hub.tom-da0.workers.dev';
-  const QRV_SERVICE_EMAIL = 'connect-service@atfielt.nl';
+  // (v1.26: service-account vervallen — scanner logt in met eigen Trimble-account)
   let _qrvMode = 'status';
   let _qrvModeLoaded = false;
   let _qrvItems = [];            // [{d, code, url, revision, versionId}]
-  let _qrvServiceMember = null;  // null = nog niet gecheckt
   let _qrvBusy = false;
   let _qrvCtx = null;            // {docs, view, scope} | null — gezet door de bron-select (werkpakket)
   let _qrvRegistry = null;       // Map fileId → hub-registratie (null = nog niet geladen)
@@ -12132,43 +12486,18 @@ const DL = (function(){
     });
   }
 
-  // Pre-flight: is het At Fielt controle-account al projectlid? Zo niet, dan
-  // kan de scanpagina in status-mode (nog) geen live check doen. Genereren mag
-  // gewoon — de check gaat vanzelf werken zodra het account is uitgenodigd,
-  // opnieuw printen is niet nodig. Zelfde Range-paginatie als _checkProjectAdmin.
-  async function _qrvPreflight(){
+  // Uitleg-banner over de live controle (fase 3 herzien: geen service-account
+  // meer — de controleur logt op de scanpagina in met zijn EIGEN Trimble-account,
+  // want die is doorgaans al TC-gebruiker; rechten kloppen daarmee automatisch).
+  function _qrvPreflight(){
     const el = document.getElementById('dl-qrv-preflight');
-    if (!el || !tcProject || !tcProject.id) return;
-    if (_qrvServiceMember === null){
-      try {
-        let found = false;
-        let start = 0; const pageSize = 100; let safety = 0;
-        while (safety++ < 30){
-          const headers = { 'Authorization': 'Bearer ' + tcToken, 'Accept': 'application/json', 'Range': 'items=' + start + '-' + (start + pageSize - 1) };
-          const r = await fetch(TC_API_BASE + '/projects/' + encodeURIComponent(tcProject.id) + '/users', { headers: headers });
-          if (!r.ok) break;
-          const users = await r.json();
-          if (!Array.isArray(users) || !users.length) break;
-          if (users.some(function(u){ return (u.email || '').toLowerCase() === QRV_SERVICE_EMAIL; })){ found = true; break; }
-          if (users.length < pageSize) break;
-          start += pageSize;
-        }
-        _qrvServiceMember = found;
-      } catch(e){
-        console.warn('[DL] qrv-preflight mislukt:', e.message);
-        return; // onbekend laten — geen banner op basis van een fetch-fout
-      }
-    }
-    if (_qrvServiceMember === true){
-      el.innerHTML = '<div class="dl-qrv-banner dl-qrv-banner-ok">✓ Het At Fielt controle-account is projectlid — de live versiecontrole werkt.</div>';
-    } else if (_qrvServiceMember === false && _qrvMode === 'status'){
-      el.innerHTML = '<div class="dl-qrv-banner dl-qrv-banner-warn"><strong>Voorwaarde voor live controle:</strong> ' +
-        'het At Fielt controle-account (<code>' + QRV_SERVICE_EMAIL + '</code>) is nog geen lid van dit project. ' +
-        'Vraag een projectbeheerder het account uit te nodigen — <em>leesrechten volstaan</em>. ' +
-        'Je kunt nu al QR’s genereren en printen: zodra het account lid is werkt de controle direct, opnieuw printen is niet nodig. ' +
-        'Tot die tijd toont de scanpagina alleen de geprinte gegevens met de melding dat live controle nog niet mogelijk is.</div>';
+    if (!el) return;
+    if (_qrvMode === 'share'){
+      el.innerHTML = ''; // share-modus: iedereen met de QR ziet status + bestand, geen login nodig
     } else {
-      el.innerHTML = '';
+      el.innerHTML = '<div class="dl-qrv-banner dl-qrv-banner-ok">ℹ️ <strong>Live controle:</strong> ' +
+        'wie de QR scant logt eenmalig in met zijn eigen Trimble Connect-account en ziet dan direct groen (actueel) of rood (verouderd), ' +
+        'plus een knop naar de tekening in Trimble Connect. Zonder projecttoegang blijft het bestand afgeschermd — de rechten van het project gelden automatisch.</div>';
     }
   }
 
@@ -12970,6 +13299,8 @@ const DL = (function(){
             '<button type="button" id="dl-cols-btn" class="dl-cols-btn" title="Kolommen kiezen"><span class="dl-cols-icon">☰</span>Kolommen</button>' +
             '<button type="button" id="dl-releases-btn" class="dl-cols-btn" title="Toon releases van dit project">📦 Releases</button>' +
             '<button type="button" id="dl-export-btn" class="dl-cols-btn" title="Exporteer huidige weergave als Excel (respecteert kolommen, volgorde, filters, groepering)">📊 Excel</button>' +
+            '<button type="button" id="dl-xi-btn" class="dl-cols-btn">📥 Excel inlezen</button>' +
+            '<input type="file" id="dl-xi-file" accept=".xlsx" style="display:none">' +
             '<button type="button" id="dl-refresh" class="dl-refresh-btn" title="Cache wissen en opnieuw laden (forceert verse metadata-fetch)"><span class="dl-refresh-icon">↻</span>Vernieuwen</button>' +
             '<input type="search" id="dl-search" class="dl-search" placeholder="Zoek op naam, map, versie…" autocomplete="off">' +
             '<div id="dl-views-picker" class="dl-cols-picker dl-views-picker" style="display:none">' +
@@ -13184,6 +13515,24 @@ const DL = (function(){
             '<div class="dl-share-foot">' +
               '<button type="button" id="dl-addrel-cancel" class="dl-share-btn dl-share-btn-secondary">Sluiten</button>' +
               '<button type="button" id="dl-addrel-submit" class="dl-share-btn dl-share-btn-primary">Toevoegen</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        // Excel-import preview-modal (v1.25) — niets wordt geschreven vóór "Doorvoeren"
+        '<div id="dl-xi-modal" class="dl-share-modal" style="display:none">' +
+          '<div class="dl-share-backdrop" id="dl-xi-backdrop"></div>' +
+          '<div class="dl-share-panel dl-xi-panel" role="dialog" aria-label="Excel inlezen — controle">' +
+            '<div class="dl-share-head">' +
+              '<h3 class="dl-share-title">📥 Excel inlezen — controle</h3>' +
+              '<button type="button" id="dl-xi-close" class="dl-share-close" aria-label="Sluiten">×</button>' +
+            '</div>' +
+            '<div class="dl-share-body">' +
+              '<p class="dl-share-sub" id="dl-xi-summary"></p>' +
+              '<div id="dl-xi-body"></div>' +
+              '<div class="dl-share-actions">' +
+                '<button type="button" id="dl-xi-cancel" class="dl-share-btn dl-share-btn-secondary">Annuleren</button>' +
+                '<button type="button" id="dl-xi-apply" class="dl-share-btn dl-share-btn-primary">Doorvoeren</button>' +
+              '</div>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -13537,6 +13886,25 @@ const DL = (function(){
     const hdrExport = root.querySelector('#dl-export-btn');
     if (hdrExport){
       hdrExport.addEventListener('click', _exportExcel);
+    const xiBtn = root.querySelector('#dl-xi-btn');
+    const xiFile = root.querySelector('#dl-xi-file');
+    if (xiBtn && xiFile){
+      _updateXiButton();
+      xiBtn.addEventListener('click', function(){
+        if (xiBtn.disabled) return;
+        xiFile.click();
+      });
+      xiFile.addEventListener('change', function(){
+        const f = xiFile.files && xiFile.files[0];
+        if (f) _xiHandleFile(f, xiBtn);
+      });
+    }
+    ['dl-xi-close', 'dl-xi-cancel', 'dl-xi-backdrop'].forEach(function(id){
+      const el = root.querySelector('#' + id);
+      if (el) el.addEventListener('click', _xiCloseModal);
+    });
+    const xiApply = root.querySelector('#dl-xi-apply');
+    if (xiApply) xiApply.addEventListener('click', _xiConfirmApply);
     }
     // Edit-mode toggle in header
     const editBtn = root.querySelector('#dl-edit-mode-btn');

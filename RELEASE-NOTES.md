@@ -2,6 +2,25 @@
 
 ---
 
+## Versie 1.25 — 27 augustus 2026
+
+### Metadata bewerken in Excel en veilig terug inlezen
+
+Voor bulk-metadatawerk is Excel nu eenmaal sneller dan welke web-app ook. Daarom kan het nu allebei: exporteer de lijst, werk de metadata bij in Excel, en lees het bestand terug in. *(Aparte module — vraag naar toegang.)*
+
+**Wat is er veranderd?**
+
+- **📥 Excel inlezen** — nieuwe knop naast de Excel-export (werkt met de bewerkmodus aan). Kies je bewerkte export en de cockpit leest hem in.
+- **Eerst controleren, dan pas schrijven** — je krijgt altijd eerst een controlescherm: welke wijzigingen zijn er gevonden, per document en per veld, met oud → nieuw. Pas na *Doorvoeren* wordt er iets naar Trimble Connect geschreven, en elke schrijfactie wordt gecontroleerd.
+- **Veilig bij gelijktijdig werken** — de export onthoudt onzichtbaar zijn vertrekpunt. Cellen die jij niet aanraakte worden nóóit geschreven, ook niet als een collega ze intussen wijzigde — een oude export kan dus niemands werk terugdraaien. Wijzigden jullie allebei hetzelfde veld, dan toont het controlescherm beide waarden en kies jij bewust.
+- **Alleen bestaande metadata** — de import wijzigt uitsluitend waarden van velden die het projectschema kent, op documenten die al in het project staan. Typefouten in keuzelijst-velden worden geweigerd met uitleg; onbekende kolommen en eigen notities in de Excel worden genegeerd; bestandsnaam, map en versie zijn altijd alleen-lezen.
+- **Sorteren en filteren in Excel kan geen kwaad** — elke rij draagt een onzichtbaar kenmerk waarmee hij feilloos aan het juiste document wordt gekoppeld.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. Let op: terug-inlezen werkt met exports die vanaf deze versie zijn gemaakt.
+
+---
+
 ## Versie 1.24 — 27 augustus 2026
 
 ### Werkpakket-tellers verklaren zichzelf
