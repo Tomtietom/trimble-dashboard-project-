@@ -1439,7 +1439,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.22';
+const COCKPIT_VERSION = '1.23';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -2781,6 +2781,7 @@ async function renderWerkpakketten(forceReload){
       return '<div class="activity-item clickable" data-wp-id="' + escapeHtml(w.id) + '" title="' + (isVast ? 'Vast werkpakket — ' + w.docCount + ' handgekozen documenten. ' : '') + 'Open in Documentenlijst">'
         + '<span class="ac-ico">' + (isVast ? '📌' : '▤') + '</span>'
         + '<span class="name" title="' + escapeHtml(w.name) + '">' + escapeHtml(w.name) + '</span>'
+        + (w.newCount > 0 ? '<span class="wp-new-badge" title="Nieuw sinds je vorige bezoek aan dit werkpakket">' + w.newCount + ' nieuw</span>' : '')
         + rel
         + '<span class="meta">' + escapeHtml(isVast ? w.docCount + ' docs' : meta) + '</span>'
         + '<span class="ext-link">→</span>'
@@ -9309,6 +9310,7 @@ const DL = (function(){
       if (missing) console.warn('[DL] werkpakket: ' + missing + ' document(en) niet (meer) gevonden in dit project — overgeslagen');
     } else {
       _activeDocSet = null;
+      _wpClearNew();
     }
     // De mappen-split hangt aan een klasse op #dl-main die _renderTable() niet zet.
     const root = getRoot();
@@ -9362,8 +9364,10 @@ const DL = (function(){
     _pendingViewId = '';
     _activeViewId = v.id;
     _viewApply(v.state);
+    _wpCheckNew(v);
     _renderViewsButton();
     _renderViewsPicker();
+    _renderTable();
     console.log('[DL] klaargezette weergave toegepast:', v.name);
   }
 
@@ -9577,6 +9581,8 @@ const DL = (function(){
     catch(_){ _viewsRollback(scope, backup); _renderViewsPicker(); return false; }
     _activeViewId = view.id;
     _viewApply(view.state);
+    _wpMarkSeen(view);
+    _wpClearNew();
     _renderViewsButton();
     _renderViewsPicker();
     console.log('[DL] werkpakket opgeslagen:', scope, naam, '(' + st.docVids.length + ' docs)');
@@ -9618,6 +9624,86 @@ const DL = (function(){
     _renderViewsPicker();
     _renderTable();
     console.log('[DL] uit werkpakket verwijderd:', vids.length, '→ nog', v.state.docVids.length, 'docs');
+  }
+
+  // ---------- nieuwe-versie-melding per werkpakket (v1.23) ----------
+  //
+  //  Per gebruiker (localStorage) een "laatst gezien"-snapshot per vast
+  //  werkpakket: vid → versienummer op het moment van openen. Bij een volgend
+  //  bezoek is het verschil de melding: nieuwe versies + toegevoegde documenten.
+  //  Openen = gezien (snapshot wordt direct ververst); de banner blijft staan
+  //  tot je hem sluit of het pakket verlaat.
+
+  let _wpNewVids = null; // Set van vids met iets nieuws in het actieve pakket (null = geen melding)
+
+  function _wpSeenKey(){ return 'dl-wpseen-' + (tcProject && tcProject.id || 'unknown'); }
+  function _wpSeenLoad(){
+    try { return JSON.parse(localStorage.getItem(_wpSeenKey()) || '{}'); }
+    catch(_){ return {}; }
+  }
+  function _wpSeenSave(all){
+    try { localStorage.setItem(_wpSeenKey(), JSON.stringify(all)); } catch(_){}
+  }
+  function _wpCurrentVersions(docVids){
+    const m = {};
+    docVids.forEach(function(vid){
+      const d = _docs.find(function(x){ return x._vid === vid; });
+      if (d) m[vid] = String(d._versie == null ? '' : d._versie);
+    });
+    return m;
+  }
+  // Verschil t.o.v. het seen-snapshot, zonder het snapshot aan te raken.
+  function _wpDiffFor(view){
+    if (!view || !view.state || !Array.isArray(view.state.docVids) || !view.state.docVids.length) return null;
+    const prev = _wpSeenLoad()[view.id];
+    if (!prev || !prev.v) return null; // eerste bezoek: niets te melden
+    const cur = _wpCurrentVersions(view.state.docVids);
+    const nieuwVersie = [], toegevoegd = [];
+    for (const vid in cur){
+      if (!(vid in prev.v)) toegevoegd.push(vid);
+      else if (prev.v[vid] !== cur[vid]) nieuwVersie.push(vid);
+    }
+    if (!nieuwVersie.length && !toegevoegd.length) return null;
+    return { nieuwVersie: nieuwVersie, toegevoegd: toegevoegd, sinds: prev.ts || 0 };
+  }
+  function _wpMarkSeen(view){
+    if (!view || !view.state || !Array.isArray(view.state.docVids)) return;
+    const all = _wpSeenLoad();
+    all[view.id] = { ts: Date.now(), v: _wpCurrentVersions(view.state.docVids) };
+    _wpSeenSave(all);
+  }
+  // Bij activeren van een vast werkpakket: verschil bepalen, banner + rij-chips
+  // zetten, en het snapshot direct verversen (openen = gezien).
+  function _wpCheckNew(view){
+    const banner = document.getElementById('dl-wp-new-banner');
+    _wpNewVids = null;
+    const diff = _wpDiffFor(view);
+    _wpMarkSeen(view);
+    if (diff){
+      _wpNewVids = new Set(diff.nieuwVersie.concat(diff.toegevoegd));
+      if (banner){
+        const delen = [];
+        if (diff.nieuwVersie.length) delen.push(diff.nieuwVersie.length + ' document' + (diff.nieuwVersie.length === 1 ? '' : 'en') + ' met een nieuwe versie');
+        if (diff.toegevoegd.length) delen.push(diff.toegevoegd.length + ' toegevoegd aan dit werkpakket');
+        const sinds = diff.sinds ? new Date(diff.sinds).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' }) : '';
+        const txt = document.getElementById('dl-wp-new-text');
+        if (txt) txt.textContent = 'Sinds je vorige bezoek' + (sinds ? ' (' + sinds + ')' : '') + ': ' + delen.join(' en ') + '. Gemarkeerd met "nieuw".';
+        banner.style.display = '';
+      }
+      console.log('[DL] werkpakket-melding:', diff.nieuwVersie.length, 'nieuwe versies,', diff.toegevoegd.length, 'toegevoegd');
+    } else if (banner){
+      banner.style.display = 'none';
+    }
+  }
+  function _wpClearNew(){
+    _wpNewVids = null;
+    const banner = document.getElementById('dl-wp-new-banner');
+    if (banner) banner.style.display = 'none';
+  }
+  // Teller voor dashboard-badges (leest alleen, verandert het seen-snapshot niet)
+  function _wpNewCountFor(view){
+    const diff = _wpDiffFor(view);
+    return diff ? (diff.nieuwVersie.length + diff.toegevoegd.length) : 0;
   }
 
   function _openWerkpakketDialog(){
@@ -9723,8 +9809,10 @@ const DL = (function(){
         if (e.target.closest('.dl-views-act')) return;
         _activeViewId = v.id;
         _viewApply(v.state);
+        _wpCheckNew(v);
         _renderViewsButton();
         _renderViewsPicker();
+        _renderTable();
         // Popover sluiten: je hebt gekozen, je wilt de tabel zien.
         const pick = root.querySelector('#dl-views-picker');
         const pbtn = root.querySelector('#dl-views-btn');

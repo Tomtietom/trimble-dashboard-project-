@@ -2,6 +2,24 @@
 
 ---
 
+## Versie 1.23 — 26 augustus 2026
+
+### Werkpakketten melden nieuwe versies
+
+Direct vervolg op de vaste werkpakketten van versie 1.22: je ziet nu meteen wat er veranderd is sinds je vorige bezoek.
+
+**Wat is er veranderd?**
+
+- **Melding bij het openen** — open je een vast werkpakket, dan verschijnt bovenaan een melding wanneer er sinds je vorige bezoek documenten een nieuwe versie kregen of aan het pakket zijn toegevoegd, met de datum van dat vorige bezoek erbij.
+- **"Nieuw"-label per document** — de betreffende documenten zijn in de lijst gemarkeerd, zodat je in een controlerondje direct ziet waar je opnieuw naar moet kijken.
+- **Teller op het dashboard** — het blok *Werkpakketten* toont een oranje "N nieuw"-badge bij pakketten waarin iets veranderd is. Openen = gezien: daarna is de teller weg tot er weer iets verandert.
+- **Per persoon** — wat jij al gezien hebt staat los van wat je collega's gezien hebben; iedereen krijgt zijn eigen meldingen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. De eerste keer dat je een werkpakket opent wordt je vertrekpunt vastgelegd; meldingen verschijnen vanaf het bezoek daarna.
+
+---
+
 ## Versie 1.22 — 26 augustus 2026
 
 ### Vaste werkpakketten: jouw selectie, later weer oppakken
