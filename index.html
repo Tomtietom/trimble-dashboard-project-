@@ -1458,7 +1458,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.26';
+const COCKPIT_VERSION = '1.27';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -10524,6 +10524,64 @@ const DL = (function(){
           wsB.getCell(i + 3, j + 2).value = v == null ? '' : String(v);
         });
       });
+      // ============================================================
+      // v1.27 — de Excel zelf voorkomt fouten (Tom: "status is geen pull-down,
+      // ik kan versies aanpassen"):
+      //   1. keuzelijsten (datavalidatie) op enum-velden, uit het projectschema
+      //   2. alleen-lezen-kolommen vergrendeld via werkbladbeveiliging
+      // De import-validatie blijft de echte poort — dit is de vangrail in Excel.
+      // ============================================================
+
+      // Lijsten-werkblad + defined names. Named ranges i.p.v. inline lijsten:
+      // inline kent een 255-tekens-limiet en breekt op komma's in waarden.
+      const wsL = wb.addWorksheet('_atfielt_lijsten');
+      wsL.state = 'veryHidden';
+      const enumKeys = editKeys.filter(function(k){ return ENUM_VALUES[k] && ENUM_VALUES[k].length; });
+      enumKeys.forEach(function(k, i){
+        const vals = ENUM_VALUES[k];
+        wsL.getCell(1, i + 1).value = k;
+        vals.forEach(function(v, j){ wsL.getCell(j + 2, i + 1).value = v; });
+        const colLetter = wsL.getColumn(i + 1).letter;
+        wb.definedNames.add("'_atfielt_lijsten'!$" + colLetter + '$2:$' + colLetter + '$' + (vals.length + 1), 'lst_' + k);
+      });
+
+      // Keuzelijst per enum-kolom over alle datarijen (groepskoppen zijn locked,
+      // dus dat de range ze meepakt is onschadelijk).
+      enumKeys.forEach(function(k){
+        const ci = cols.findIndex(function(c){ return c.k === k; });
+        if (ci < 0) return;
+        const colLetter = ws.getColumn(ci + 1).letter;
+        ws.dataValidations.add(colLetter + '2:' + colLetter + lastRow, {
+          type: 'list', allowBlank: true, formulae: ['lst_' + k],
+          showErrorMessage: true, errorStyle: 'stop',
+          errorTitle: 'Ongeldige waarde',
+          error: 'Kies een waarde uit de lijst — deze opties komen uit het metadata-schema van het project.',
+        });
+      });
+
+      // Vergrendeling: alles staat standaard op locked; alleen de bewerkbare
+      // metadata-cellen in datarijen worden vrijgegeven. Versie, bestandsnaam,
+      // map, datums-systeemvelden en TC-ID blijven zo onaanpasbaar.
+      const editColIdx = [];
+      cols.forEach(function(c, i){ if (_isEditableField(c.k)) editColIdx.push(i); });
+      let unlockCursor = 0;
+      for (let rowI = 1; rowI < aoa.length; rowI++){
+        if (groupHeaderRows.indexOf(rowI) !== -1) continue;
+        const arr = aoa[rowI];
+        if (!arr || arr.length === 0) continue;
+        unlockCursor++;
+        editColIdx.forEach(function(ci){
+          ws.getCell(rowI + 1, ci + 1).protection = { locked: false };
+        });
+      }
+      // Zonder wachtwoord: opheffen kan altijd via Controleren → Beveiliging
+      // opheffen (nodig als iemand wil sorteren). De import blijft de echte
+      // controle — dit voorkomt alleen per-ongeluk-schade.
+      await ws.protect('', {
+        selectLockedCells: true, selectUnlockedCells: true,
+        autoFilter: true, sort: true, formatColumns: true, formatRows: true,
+      });
+
       // Filename: projectnaam + datum
       const projName = (tcProject && tcProject.name) || 'project';
       const safeProj = projName.replace(/[\/\\:*?"<>|]/g, '_').slice(0, 60);

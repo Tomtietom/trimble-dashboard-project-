@@ -2,6 +2,22 @@
 
 ---
 
+## Versie 1.27 — 27 augustus 2026
+
+### De Excel-export voorkomt nu zelf fouten
+
+Vervolg op het Excel terug-inlezen van versie 1.25, na de eerste testronde: het exportbestand beschermt je nu tijdens het bewerken, in plaats van fouten pas bij het inlezen te melden.
+
+**Wat is er veranderd?**
+
+- **Keuzevelden zijn echte keuzelijsten in Excel** — Status, Fase, Discipline en de andere keuzevelden tonen in Excel een pull-down met precies de opties uit het metadata-schema van je project. Typ je toch iets anders, dan weigert Excel het meteen.
+- **Vaste kolommen zijn vergrendeld** — versie, bestandsnaam, map en andere systeemkolommen zijn niet meer aanpasbaar; alleen de metadata-cellen staan open. Filteren werkt gewoon. Wil je sorteren, hef dan eerst de bladbeveiliging op (Controleren → Beveiliging opheffen, er is geen wachtwoord) — de controle bij het inlezen blijft daarna onverminderd gelden.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw, en maak een verse export — de keuzelijsten en vergrendeling zitten in bestanden die vanaf nu geëxporteerd worden.
+
+---
+
 ## Versie 1.26 — 27 augustus 2026
 
 ### Versie-QR scannen: groen of rood vlak, met je eigen Trimble-account
