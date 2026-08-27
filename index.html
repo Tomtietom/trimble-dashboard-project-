@@ -1447,7 +1447,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.23';
+const COCKPIT_VERSION = '1.24';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -8712,6 +8712,20 @@ const DL = (function(){
     _renderTableHeader();
     const filtered = _filt();
     count.textContent = filtered.length + ' bestand' + (filtered.length === 1 ? '' : 'en');
+    // v1.24: leg het verschil uit tussen de opgeslagen werkpakket-set en wat er zichtbaar is
+    const gapNote = root.querySelector('#dl-wp-gap-note');
+    if (gapNote){
+      const st = _activeDocSet ? _wpSetStats() : null;
+      if (st && (st.found < st.total || st.visible < st.found)){
+        const delen = [];
+        if (st.found < st.total) delen.push((st.total - st.found) + ' niet gevonden in dit project (verwijderd, of geen leesrechten)');
+        if (st.visible < st.found) delen.push((st.found - st.visible) + ' verborgen door je huidige map, zoekterm of filters');
+        gapNote.innerHTML = '📌 <strong>Werkpakket: ' + st.visible + ' van ' + st.total + ' documenten zichtbaar.</strong> ' + _esc(delen.join(' · ')) + '.';
+        gapNote.style.display = '';
+      } else {
+        gapNote.style.display = 'none';
+      }
+    }
     // Sprint 1 UX-fix: footer inline count "X van Y" — mensen verwachten telling-info onderaan
     const ftrCount = root.querySelector('#dl-ftr-count');
     if (ftrCount) {
@@ -9712,6 +9726,17 @@ const DL = (function(){
     const banner = document.getElementById('dl-wp-new-banner');
     if (banner) banner.style.display = 'none';
   }
+  // Uitsplitsing van het teller-verschil (klantvraag aug 27: "19 en 22 matcht niet").
+  // total  = opgeslagen set; found = daarvan aanwezig in dit project (rest is
+  // verwijderd óf onleesbaar voor deze gebruiker); visible = wat er na map/zoek/
+  // filters daadwerkelijk in de lijst staat.
+  function _wpSetStats(){
+    if (!_activeDocSet) return null;
+    let found = 0;
+    _docs.forEach(function(d){ if (d._vid && _activeDocSet.has(d._vid)) found++; });
+    return { total: _activeDocSet.size, found: found, visible: _filt().length };
+  }
+
   // Teller voor dashboard-badges (leest alleen, verandert het seen-snapshot niet)
   function _wpNewCountFor(view){
     const diff = _wpDiffFor(view);
@@ -9757,13 +9782,22 @@ const DL = (function(){
     if (!btn) return;
     const v = _viewFind(_activeViewId);
     const dirty = v && _viewIsDirty();
-    const setCount = (v && _activeDocSet) ? ' · ' + _activeDocSet.size : '';
+    let setCount = '', setTitle = '';
+    if (v && _activeDocSet){
+      const st = _wpSetStats();
+      if (st.found < st.total){
+        setCount = ' · ' + st.found + '/' + st.total;
+        setTitle = ' — ' + (st.total - st.found) + ' van de ' + st.total + ' documenten niet gevonden in dit project (verwijderd, of je hebt er geen leesrechten op)';
+      } else {
+        setCount = ' · ' + st.total;
+      }
+    }
     btn.innerHTML = '<span class="dl-cols-icon">' + (v && _activeDocSet ? '📌' : '▤') + '</span>'
       + _esc(v ? v.name + setCount : 'Weergaves')
       + (dirty ? '<span class="dl-views-dirty" title="Aangepast ten opzichte van de opgeslagen weergave">•</span>' : '');
     btn.classList.toggle('dl-views-on', !!v);
     btn.title = v
-      ? 'Actieve weergave: ' + v.name + (dirty ? ' (aangepast)' : '')
+      ? 'Actieve weergave: ' + v.name + (dirty ? ' (aangepast)' : '') + setTitle
       : 'Kolommen, filters, groepering en sortering samen bewaren onder een naam';
   }
 
@@ -12964,6 +12998,7 @@ const DL = (function(){
           '<span class="dl-edit-banner-icon">🔓</span>' +
           '<span><strong>Bewerkmodus aan.</strong> Dubbelklik op een gemarkeerde cel om te wijzigen — <strong>elke wijziging wordt direct opgeslagen</strong> in Trimble Connect (Enter of ergens anders klikken bevestigt, Esc annuleert). Cellen met <span class="dl-edit-banner-mark">▾</span> hebben een keuzelijst; cellen met <span class="dl-edit-banner-mark">✎</span> zijn vrije tekst en kun je ook leegmaken. Klaar? Klik op <strong>🔓 Vergrendelen</strong> — dat beschermt alleen tegen per-ongeluk wijzigen, opslaan is al gebeurd.</span>' +
         '</div>' +
+        '<div id="dl-wp-gap-note" class="dl-meta-banner" style="display:none"></div>' +
         '<div id="dl-wp-new-banner" class="dl-updates-banner" style="display:none">' +
           '<span class="dl-updates-icon">📌</span>' +
           '<span class="dl-updates-text" id="dl-wp-new-text"></span>' +

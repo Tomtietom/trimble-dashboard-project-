@@ -2,6 +2,22 @@
 
 ---
 
+## Versie 1.24 — 27 augustus 2026
+
+### Werkpakket-tellers verklaren zichzelf
+
+Het aantal op de werkpakket-knop (de opgeslagen set) kon afwijken van het aantal in de lijst — bijvoorbeeld doordat je in de Mappen-weergave één map hebt gekozen, een filter aanstaat, of documenten uit het pakket verwijderd zijn. Dat verschil wordt nu uitgelegd in plaats van je te laten raden.
+
+**Wat is er veranderd?**
+
+- **Eerlijke teller op de knop** — zijn alle documenten van het pakket aanwezig, dan zie je het totaal ("Controle vloeren · 22"). Ontbreken er documenten in het project (verwijderd, of jij hebt er geen leesrechten op), dan toont de knop "19/22" met uitleg als je eroverheen beweegt.
+- **Uitleg-regel boven de lijst** — zodra er verschil is tussen de opgeslagen set en wat je ziet, verschijnt een regel die het verschil uitsplitst: *"Werkpakket: 19 van 22 documenten zichtbaar — 3 verborgen door je huidige map, zoekterm of filters."*
+
+**Wat moet je doen?**
+Niets — sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.23 — 26 augustus 2026
 
 ### Werkpakketten melden nieuwe versies
