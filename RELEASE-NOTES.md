@@ -2,6 +2,24 @@
 
 ---
 
+## Versie 1.28 — 27 augustus 2026
+
+### Versie-QR: groen of rood, ook zonder inloggen
+
+De controle-pagina van versie 1.26 kon pas een oordeel geven nadat de scanner met zijn Trimble-account inlogde. Dat blijft de meest betrouwbare route, maar nu is er ook een antwoord zónder die stap.
+
+**Wat is er veranderd?**
+
+- **Direct groen of rood bij het scannen** — de Cockpit geeft de actuele revisie van documenten met een Versie-QR door aan de controle-pagina. Wie scant ziet daardoor meteen een oordeel, zonder in te loggen en zonder Trimble-account.
+- **Nooit een misleidend groen vlak** — bij het oordeel telt hoe vers de laatste controle is. *Verouderd* blijft altijd rood: er komen alleen nieuwere versies bij. *Actueel* wordt alleen groen getoond als er in de afgelopen 24 uur nog gekeken is; is dat langer geleden, dan verschijnt oranje met "bij de laatste controle op … was dit de nieuwste versie" — zodat je weet dat je het zelf even moet nakijken in plaats van er blind op te varen.
+- **Altijd het moment erbij** — op het vlak staat wanneer de controle plaatsvond ("volgens de laatste controle vandaag om 14:44").
+- **Gebeurt vanzelf** — de stand wordt bijgewerkt zodra iemand van het projectteam de Documentenlijst opent. Er zijn geen extra handelingen, instellingen of Trimble-aanroepen voor nodig.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. Bestaande QR-codes werken direct mee — opnieuw printen is niet nodig.
+
+---
+
 ## Versie 1.27 — 27 augustus 2026
 
 ### De Excel-export voorkomt nu zelf fouten

@@ -1458,7 +1458,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.27';
+const COCKPIT_VERSION = '1.28';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -8066,7 +8066,10 @@ const DL = (function(){
       // Versie-QR-registry (kolom 🏷): niet-blokkerend; no-op zolang de
       // EXTENSIONS-allowlist nog niet opgelost is (vangnet zit in _qrvOpenDialog
       // en _updateSelectionBar).
-      _qrvRegistryLoad().catch(function(e){ console.warn('[DL] qr-registry laden mislukt:', e.message); });
+      _qrvSyncDone = false; // verse doc-stand → opnieuw melden wat er veranderd is
+      _qrvRegistryLoad()
+        .then(function(){ return _qrvSyncPush(); })
+        .catch(function(e){ console.warn('[DL] qr-registry/sync mislukt:', e.message); });
 
       // Cache-check: als geldig (≤24u oud), direct toepassen en bulk+deep-scan skippen
       const cache = _readCache();
@@ -12580,11 +12583,52 @@ const DL = (function(){
         _qrvApplyRegistry();
         _renderTable();
         _qrvRenderFiles(); // modal-lijst verversen als die open is
+        _qrvSyncPush().catch(function(e){ console.warn('[DL] qr-sync mislukt:', e.message); });
       }
     } catch(e){
       console.warn('[DL] qr-registry laden mislukt:', e.message);
     }
     _qrvRegistryBusy = false;
+  }
+
+  // Sync-terugval: meld de hub de actuele revisie van documenten met een QR,
+  // zodat de scanpagina groen/rood kan tonen zonder dat de scanner inlogt.
+  // Kost geen extra TC-calls — d._versie hebben we al uit de mappen-listing
+  // (zelfde bron die _relFileStatus gebruikt om releases te beoordelen).
+  const QRV_SYNC_REFRESH_MS = 6 * 60 * 60 * 1000; // hartslag: houdt "vers" vers
+  const QRV_SYNC_MAX = 1000;                      // server-cap per aanroep
+  let _qrvSyncDone = false;
+  async function _qrvSyncPush(force){
+    if (!_qrvAllowed() || !_qrvRegistry || !_isLoaded) return;
+    if (_qrvSyncDone && !force) return;
+    const session = _getHubSessionTokenDL();
+    if (!session || !tcProject || !tcProject.id) return;
+    const byVid = new Map();
+    _docs.forEach(function(d){ if (d._vid) byVid.set(d._vid, d); });
+    const nu = Date.now();
+    const gewijzigd = [], hartslag = [];
+    _qrvRegistry.forEach(function(reg, fileId){
+      const d = byVid.get(fileId);
+      const rev = d && d._versie != null ? String(d._versie) : '';
+      if (!rev) return; // revisie onbekend → niets te melden
+      if (rev !== String(reg.currentRevision == null ? '' : reg.currentRevision)) gewijzigd.push({ fileId: fileId, revision: rev });
+      else if (!reg.syncedAt || (nu - Number(reg.syncedAt)) > QRV_SYNC_REFRESH_MS) hartslag.push({ fileId: fileId, revision: rev });
+    });
+    const items = gewijzigd.concat(hartslag).slice(0, QRV_SYNC_MAX);
+    if (!items.length){ _qrvSyncDone = true; return; }
+    const r = await fetch(QRV_HUB_BASE + '/api/qr-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Session': session, 'Accept': 'application/json' },
+      body: JSON.stringify({ project: tcProject.id, items: items }),
+    });
+    if (!r.ok) throw new Error('hub gaf ' + r.status);
+    const res = await r.json();
+    items.forEach(function(it){
+      const reg = _qrvRegistry.get(it.fileId);
+      if (reg){ reg.currentRevision = it.revision; reg.syncedAt = res.syncedAt || nu; }
+    });
+    _qrvSyncDone = true;
+    console.log('[DL] qr-sync:', items.length, 'document(en) bijgewerkt (' + gewijzigd.length + ' gewijzigd)');
   }
   function _qrvApplyRegistry(){
     if (!_qrvRegistry) return;
@@ -12817,6 +12861,9 @@ const DL = (function(){
       _qrvApplyRegistry();
       _renderTable();
       _qrvRenderFiles();
+      // Verse QR's meteen als "actueel" bij de hub melden, zodat een scan
+      // direct groen geeft ook als de scanner niet inlogt.
+      _qrvSyncPush(true).catch(function(e){ console.warn('[DL] qr-sync na genereren mislukt:', e.message); });
       _qrLog('qrv-generate', _qrvItems.length);
     } catch(e){
       console.error('[DL] versie-QR genereren mislukt:', e);
