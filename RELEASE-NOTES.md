@@ -2,6 +2,23 @@
 
 ---
 
+## Versie 1.26 — 27 augustus 2026
+
+### Versie-QR scannen: groen of rood vlak, met je eigen Trimble-account
+
+Wie op de bouwplaats een controle-ronde loopt met de Versie-QR's is meestal zelf al Trimble Connect-gebruiker. Daarom is de controle-pagina daarop ingericht — en vervalt het eerder aangekondigde aparte controle-account volledig.
+
+**Wat is er veranderd?**
+
+- **Groen of rood vlak** — bij het scannen kleurt de hele pagina mee: groen = print actueel, rood = verouderd (met de actuele revisie en wijzigingsdatum erbij), oranje = nog niet gecontroleerd. In één oogopslag te zien, ook buiten in de zon.
+- **Inloggen met je eigen Trimble-account** — voor de live controle log je eenmalig in met je eigen account (op de telefoon wordt dat onthouden). De projectrechten gelden daarmee automatisch: wie geen toegang tot het project heeft, ziet het bestand niet. Er hoeft géén extra account meer uitgenodigd te worden — die stap is geschrapt.
+- **Direct door naar de tekening** — op het vlak staat een knop **Openen in Trimble Connect** die de tekening in de TC-app of webclient opent, altijd in de nieuwste versie.
+
+**Wat moet je doen?**
+Niets aan bestaande QR's — al geprinte codes gaan automatisch mee in het nieuwe gedrag. *(De inlog-knop verschijnt zodra de eenmalige Trimble-registratie door At Fielt is afgerond.)*
+
+---
+
 ## Versie 1.25 — 27 augustus 2026
 
 ### Metadata bewerken in Excel en veilig terug inlezen
