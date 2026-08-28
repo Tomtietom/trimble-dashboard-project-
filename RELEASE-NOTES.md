@@ -2,6 +2,17 @@
 
 ---
 
+## Versie 1.29 — 27 augustus 2026
+
+### Excel inlezen-knop legt uit wat hij nodig heeft
+
+De knop **📥 Excel inlezen** leek niets te doen wanneer de bewerkmodus uit stond: hij negeerde de klik zonder enige melding. Nu is de knop zichtbaar gedimd zolang hij nog niet kan, en een klik vertelt precies wat er nodig is — de bewerkmodus aanzetten, of toegang tot de module aanvragen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. Daarna: 🔒 Bewerken aan → 📥 Excel inlezen.
+
+---
+
 ## Versie 1.28 — 27 augustus 2026
 
 ### Versie-QR: groen of rood, ook zonder inloggen

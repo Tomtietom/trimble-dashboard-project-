@@ -662,6 +662,8 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 @keyframes dlSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 .dl-cols-btn{padding:8px 12px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;background:#fff;color:var(--dk);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s,background .15s}
 .dl-cols-btn:hover,.dl-cols-btn.active{border-color:var(--af);background:var(--afl)}
+.dl-cols-btn.dl-btn-off{opacity:.5}
+.dl-cols-btn.dl-btn-off:hover{border-color:var(--hl);background:#fff}
 .dl-cols-icon{font-size:14px;line-height:1}
 .dl-app-head-right{position:relative}
 .dl-cols-picker{position:absolute;top:100%;right:0;margin-top:8px;background:#fff;border:1px solid var(--hl);border-radius:var(--r-md);box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:240px;max-height:60vh;overflow:hidden;z-index:50;font:14px 'Poppins',sans-serif;display:flex;flex-direction:column}
@@ -1458,7 +1460,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.28';
+const COCKPIT_VERSION = '1.29';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -8928,19 +8930,20 @@ const DL = (function(){
   // Bulk wijzigen schrijft metadata — dus alleen beschikbaar wanneer de bewerkmodus
   // aan staat, net als inline bewerken (klant: "dat is toch logisch gedrag?").
   // 📥 Excel inlezen (v1.25): vereist de excel-import-licentie én de bewerkmodus.
+  // Bewust GEEN disabled-attribuut: een disabled knop vuurt geen click-event,
+  // dus de gebruiker krijgt nul feedback over waaróm er niets gebeurt (Tom-melding
+  // 27 aug: "knopje excel inlezen werkt niet" — knop stond stil-disabled zonder
+  // zichtbaar verschil). Nu: gedimde klasse + uitleg bij de klik zelf.
   function _updateXiButton(){
     const b = document.getElementById('dl-xi-btn');
     if (!b) return;
-    if (!excelImportAllowed){
-      b.disabled = true;
-      b.title = 'Excel terug-inlezen is een aparte module — vraag toegang aan via info@atfielt.nl';
-    } else if (!_editMode){
-      b.disabled = true;
-      b.title = 'Zet eerst 🔒 Bewerken aan — inlezen schrijft metadata naar Trimble Connect';
-    } else {
-      b.disabled = false;
-      b.title = 'Lees een bewerkte export terug in: je ziet eerst precies welke wijzigingen doorgevoerd gaan worden';
-    }
+    const off = !excelImportAllowed || !_editMode;
+    b.classList.toggle('dl-btn-off', off);
+    b.title = !excelImportAllowed
+      ? 'Excel terug-inlezen is een aparte module — vraag toegang aan via info@atfielt.nl'
+      : (!_editMode
+          ? 'Zet eerst 🔒 Bewerken aan — inlezen schrijft metadata naar Trimble Connect'
+          : 'Lees een bewerkte export terug in: je ziet eerst precies welke wijzigingen doorgevoerd gaan worden');
   }
 
   function _updateBulkEditButton(){
@@ -13996,7 +13999,14 @@ const DL = (function(){
     if (xiBtn && xiFile){
       _updateXiButton();
       xiBtn.addEventListener('click', function(){
-        if (xiBtn.disabled) return;
+        if (!excelImportAllowed){
+          alert('Excel terug-inlezen is een aparte module.\n\nVraag toegang aan via info@atfielt.nl.');
+          return;
+        }
+        if (!_editMode){
+          alert('Zet eerst 🔒 Bewerken aan.\n\nInlezen schrijft metadata naar Trimble Connect, dus het valt onder dezelfde beveiliging als bewerken en bulk wijzigen.');
+          return;
+        }
         xiFile.click();
       });
       xiFile.addEventListener('change', function(){
