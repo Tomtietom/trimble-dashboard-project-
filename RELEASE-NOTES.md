@@ -2,6 +2,22 @@
 
 ---
 
+## Versie 1.30 — 27 augustus 2026
+
+### Filter "Gewijzigd" werkt weer na de Trimble-update
+
+Vanochtend heeft Trimble Connect een update uitgerold (5.92). Daarna kon het filter *Gewijzigd: vandaag / 7 / 30 dagen* in sommige projecten ineens niets meer vinden — nul resultaten bij elke keuze, terwijl de documenten er gewoon stonden.
+
+**Wat is er veranderd?**
+
+- **Oorzaak weggenomen** — door de Trimble-update kwamen documentgegevens via een andere route binnen, waarbij de wijzigingsdatum onder een andere naam of in een ander formaat kan staan. De cockpit herkent nu alle varianten, ook de datumnotaties waar sommige browsers (Safari) moeite mee hebben.
+- **Nooit meer stilletjes nul** — mochten er ooit tóch documenten zonder bruikbare datum binnenkomen, dan meldt de cockpit dat voortaan in het Diagnose-rapport in plaats van geruisloos een lege lijst te tonen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.29 — 27 augustus 2026
 
 ### Excel inlezen-knop legt uit wat hij nodig heeft

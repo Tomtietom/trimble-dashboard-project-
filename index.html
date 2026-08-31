@@ -1460,7 +1460,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.29';
+const COCKPIT_VERSION = '1.30';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -6906,6 +6906,7 @@ const DL = (function(){
   let _searchQuery = '';
   let _filters = {};                          // dynamisch: { kolomKey: 'gekozen waarde', ... }
   let _filterPeriod = '';                     // '' = alles | 'today' | '7' | '30' (dagen, op wijzigingsdatum)
+  let _periodDiagDone = false;                // 1× per sessie loggen of er docs zonder datum zijn
   let _visibleColKeys = new Set(DEFAULT_VISIBLE);
   let _colOrder = [];                         // [] = default volgorde uit ALL_COLS; anders keys in custom volgorde
   let _colWidths = {};                        // { key: '120px' } overrides van default percentages
@@ -7050,10 +7051,26 @@ const DL = (function(){
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
+  // TC-datums robuust parsen. Date.parse-verschillen tussen engines (Safari
+  // weigert "+0000" zonder dubbele punt; spaties i.p.v. 'T') en endpoint-wissels
+  // (v2.0 ↔ v2.1 na TC-updates) mogen het periode-filter nooit meer op 0 zetten.
+  function _parseTcDate(v){
+    if (v == null || v === '') return NaN;
+    if (typeof v === 'number') return v;
+    let s = String(v).trim();
+    let t = Date.parse(s);
+    if (isFinite(t)) return t;
+    s = s.replace(' ', 'T')
+         .replace(/([+-]\d{2})(\d{2})$/, '$1:$2'); // +0000 → +00:00
+    t = Date.parse(s);
+    return isFinite(t) ? t : NaN;
+  }
+
   function _formatDate(s){
     if (!s) return '';
     try {
-      const d = new Date(s);
+      const t = _parseTcDate(s);
+      const d = new Date(isFinite(t) ? t : s);
       if (isNaN(d.getTime())) return _esc(s);
       return d.toLocaleDateString('nl-NL', { day:'2-digit', month:'short', year:'numeric' });
     } catch(_){ return _esc(s); }
@@ -7092,9 +7109,10 @@ const DL = (function(){
           file_location: pad || '(projectroot)',
           bestandsnaam:  naam,
           _vid:          item.id || '',
-          _created:      item.createdOn || '',
-          _modified:     item.modifiedOn || item.createdOn || '',
-          _versie:       item.revision || item.version || '',
+          _created:      item.createdOn || item.createdDate || item.created || '',
+          _modified:     item.modifiedOn || item.modifiedDate || item.modified || item.updatedOn
+                           || item.createdOn || item.createdDate || item.created || '',
+          _versie:       item.revision || item.version || item.versionNumber || '',
         });
       }
     }
@@ -8205,6 +8223,17 @@ const DL = (function(){
     // Periode-filter: recent gewijzigd/geüpload (klantvraag aug 2026). Werkt op
     // _modified met _created als vangnet. 'today' = sinds middernacht lokaal.
     if (_filterPeriod){
+      // Diagnose (klant-incident 27 aug: 0 resultaten bij elke periode doordat een
+      // TC-update het items-schema wijzigde): meld één keer per sessie hoeveel
+      // documenten geen bruikbare datum hebben, mét de echte item-veldnamen.
+      if (!_periodDiagDone){
+        _periodDiagDone = true;
+        const zonder = d.filter(function(doc){ return !isFinite(_parseTcDate(doc._modified || doc._created)); }).length;
+        if (zonder > 0){
+          console.warn('[DL] periode-filter: ' + zonder + ' van ' + d.length + ' documenten zonder parseerbare wijzigingsdatum — het filter kan die nooit tonen. Voorbeeld _modified:', JSON.stringify((d[0] || {})._modified));
+          if (typeof DIAG !== 'undefined') DIAG.note('Periode-filter: ' + zonder + '/' + d.length + ' documenten zonder bruikbare datum');
+        }
+      }
       let cutoff;
       if (_filterPeriod === 'today'){
         cutoff = new Date(); cutoff.setHours(0, 0, 0, 0); cutoff = cutoff.getTime();
@@ -8212,7 +8241,7 @@ const DL = (function(){
         cutoff = Date.now() - parseInt(_filterPeriod, 10) * 24 * 60 * 60 * 1000;
       }
       d = d.filter(function(doc){
-        const t = Date.parse(doc._modified || doc._created || '');
+        const t = _parseTcDate(doc._modified || doc._created);
         return isFinite(t) && t >= cutoff;
       });
     }
@@ -9113,7 +9142,7 @@ const DL = (function(){
       if (!entry || typeof entry.ts !== 'number' || entry.ts < cutoff){ delete all[vid]; continue; }
       const doc = _docs.find(function(d){ return d._vid === vid; });
       if (!doc) continue;  // nieuwe file nog niet zichtbaar in _docs — volgende reload
-      const tcTs = Date.parse(doc._modified || doc._created || '') || 0;
+      const tcTs = _parseTcDate(doc._modified || doc._created) || 0;
       if (tcTs < entry.ts){
         doc._modified = new Date(entry.ts).toISOString();
         merged++;
