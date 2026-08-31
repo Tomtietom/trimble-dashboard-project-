@@ -2,6 +2,22 @@
 
 ---
 
+## Versie 1.32 — 31 augustus 2026
+
+### Datums definitief hersteld na de Trimble-update
+
+De vorige versie ving andere veldnamen op, maar in sommige projecten blijkt Trimbles nieuwe gegevensroute helemaal géén datums mee te sturen. Daar is nu een sluitende oplossing voor.
+
+**Wat is er veranderd?**
+
+- **Automatische terugval** — merkt de cockpit dat documentgegevens zonder datums binnenkomen, dan schakelt hij voor de rest van de sessie terug naar de oude, bewezen route. Het filter *Gewijzigd*, de datumkolommen en de dashboard-blokken werken dan gewoon weer.
+- **Zelf-diagnosticerend** — het Diagnose-rapport vermeldt voortaan wanneer deze terugval actief is, inclusief de technische details die wij nodig hebben om de nieuwe route later alsnog volledig te ondersteunen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.31 — 27 augustus 2026
 
 ### Dashboard-datums ook beschermd tegen de Trimble-update

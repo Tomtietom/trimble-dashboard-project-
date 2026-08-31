@@ -1460,7 +1460,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.31';
+const COCKPIT_VERSION = '1.32';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -2088,9 +2088,32 @@ async function tcFetchAll(path, maxPages){
 }
 
 // v2.1+skipToken folder-items pagination. Fallback naar v2.0 als v2.1 ontbreekt (legacy projects).
+// v1.32 — sinds TC 5.92 antwoordt v2.1 in sommige projecten wél, maar ZONDER
+// datumvelden (klant: 0/435 bij elk periode-filter, ook na de veldnaam-fallbacks
+// van v1.30/31). Detectie: levert een geslaagde v2.1-respons items zonder enige
+// bekende datum, dan keuren we v2.1 voor de hele sessie af en halen we alles via
+// v2.0 (dat aantoonbaar datums levert). De echte v2.1-veldnamen loggen we mét
+// Object.keys in console + Diagnose-rapport, zodat één klant-rapport het schema
+// verraadt en we v2.1 later alsnog correct kunnen mappen.
+let _tc21ZonderDatums = false; // sessie-vlag: v2.1 afgekeurd wegens ontbrekende datums
+
+function _tcItemsHebbenDatums(items){
+  const VELDEN = ['modifiedOn','modifiedDate','modified','updatedOn','createdOn','createdDate','created'];
+  for (const it of items){
+    for (const v of VELDEN){ if (it && it[v]) return true; }
+  }
+  return false;
+}
+
 async function tcFetchFolderItems(folderId){
   const base21 = TC_API_BASE.replace(/\/2\.0$/, '/2.1');
   const headers = { Authorization: 'Bearer ' + tcToken, Accept: 'application/json' };
+  async function via20(){
+    const data = await tcFetch('/folders/' + folderId + '/items');
+    const body = data && data._partial ? data._data : data;
+    return Array.isArray(body) ? body : (body && body.items) || [];
+  }
+  if (_tc21ZonderDatums) return via20();
   const all = [];
   let skipToken = null;
   let safety = 0;
@@ -2103,21 +2126,23 @@ async function tcFetchFolderItems(folderId){
       if (r.ok) {
         resp = await r.json();
       } else if ((r.status === 404 || r.status === 400) && safety === 1) {
-        const data = await tcFetch('/folders/' + folderId + '/items');
-        const body = data && data._partial ? data._data : data;
-        return Array.isArray(body) ? body : (body && body.items) || [];
+        return via20();
       } else {
         throw new Error('HTTP ' + r.status);
       }
     } catch(e){
-      if (safety === 1){
-        const data = await tcFetch('/folders/' + folderId + '/items');
-        const body = data && data._partial ? data._data : data;
-        return Array.isArray(body) ? body : (body && body.items) || [];
-      }
+      if (safety === 1) return via20();
       throw e;
     }
     const items = (resp && Array.isArray(resp.items)) ? resp.items : [];
+    const fileItems = items.filter(function(it){ return it && (it.type || '').toUpperCase() !== 'FOLDER'; });
+    if (safety === 1 && fileItems.length && !_tcItemsHebbenDatums(fileItems)){
+      _tc21ZonderDatums = true;
+      const voorbeeld = fileItems[0];
+      console.warn('[TC] v2.1 items dragen GEEN datumvelden — sessie-terugval naar v2.0. v2.1-schema keys:', Object.keys(voorbeeld || {}).join(', '));
+      try { if (typeof DIAG !== 'undefined') DIAG.note('v2.1 zonder datums → v2.0-terugval. Schema: ' + Object.keys(voorbeeld || {}).join(', ')); } catch(_){}
+      return via20();
+    }
     if (items.length) all.push.apply(all, items);
     const nextHref = resp && resp.links && resp.links.next && resp.links.next.href;
     if (!nextHref) break;
