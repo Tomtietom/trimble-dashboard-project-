@@ -1460,7 +1460,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.30';
+const COCKPIT_VERSION = '1.31';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -2446,7 +2446,7 @@ async function _loadProjectContext(){
   // Laatste-upload datum (voor Upload-tegel)
   let latestUpload = null;
   rootList.forEach(function(it){
-    const d = new Date(it.modifiedOn || it.updatedOn || 0);
+    const d = new Date(tcItemDate(it) || 0);
     if (it.type === 'FILE' && d > 0 && (!latestUpload || d > latestUpload)) latestUpload = d;
   });
   const lastUploadStr = latestUpload ? formatDate(latestUpload.toISOString()) : 'nog geen uploads';
@@ -2707,6 +2707,14 @@ function updateTileStat(key, text){
 
 // Helper: open een resource in TC-web in een nieuwe tab (uit cockpit-iframe).
 // Path-arg is relatief aan /projects/{id}/; leeg = project-home.
+// v1.31 — TC-item-datum veldnaam-tolerant lezen (zelfde klasse als de v1.30-fix
+// in de Documentenlijst: TC 5.92 activeerde v2.1-responses met andere veldnamen).
+function tcItemDate(it){
+  if (!it) return '';
+  return it.modifiedOn || it.modifiedDate || it.modified || it.updatedOn
+      || it.createdOn || it.createdDate || it.created || '';
+}
+
 function openInTC(path){
   if (!tcProject || !tcProject.id) return;
   const url = 'https://web.connect.trimble.com/projects/' + tcProject.id + (path ? '/' + path : '');
@@ -2728,11 +2736,11 @@ function renderActivity(rootList){
   if (periodDays > 0){
     const cutoff = Date.now() - periodDays * 86400000;
     items = items.filter(function(it){
-      const d = new Date(it.modifiedOn || it.updatedOn || 0).getTime();
+      const d = new Date(tcItemDate(it) || 0).getTime();
       return d >= cutoff;
     });
   }
-  items.sort(function(a,b){ return new Date(b.modifiedOn||b.updatedOn||0) - new Date(a.modifiedOn||a.updatedOn||0); });
+  items.sort(function(a,b){ return new Date(tcItemDate(b)||0) - new Date(tcItemDate(a)||0); });
   const top = items.slice(0, getRecentCount());
 
   if (top.length === 0){
@@ -2742,7 +2750,7 @@ function renderActivity(rootList){
   const favs = loadFavorites();
   el.innerHTML = top.map(function(it){
     const name = it.name || it.title || 'Onbekend';
-    const when = formatDate(it.modifiedOn || it.updatedOn);
+    const when = formatDate(tcItemDate(it));
     const isFolder = it.type === 'FOLDER';
     const id = it.id || '';
     const isFav = favs[id] ? 'active' : '';
@@ -2888,7 +2896,7 @@ function renderReleases(releases){
 function renderUploads(rootList){
   const el = $('uploads');
   const items = (Array.isArray(rootList) ? rootList : []).filter(function(it){ return it.type === 'FILE'; });
-  items.sort(function(a,b){ return new Date(b.createdOn||b.modifiedOn||0) - new Date(a.createdOn||a.modifiedOn||0); });
+  items.sort(function(a,b){ return new Date(b.createdOn||b.createdDate||tcItemDate(b)||0) - new Date(a.createdOn||a.createdDate||tcItemDate(a)||0); });
   const top = items.slice(0, getRecentCount());
   if (top.length === 0){
     el.innerHTML = '<div class="activity-empty">Nog geen uploads in dit project.</div>';
@@ -2896,7 +2904,7 @@ function renderUploads(rootList){
   }
   el.innerHTML = top.map(function(it){
     const name = it.name || 'Onbekend';
-    const when = formatDate(it.createdOn || it.modifiedOn);
+    const when = formatDate(it.createdOn || it.createdDate || tcItemDate(it));
     const uploader = it.createdBy?.firstName ? (it.createdBy.firstName + ' ' + (it.createdBy.lastName || '')).trim() : '';
     const meta = uploader ? when + ' · ' + uploader : when;
     const id = it.id || '';

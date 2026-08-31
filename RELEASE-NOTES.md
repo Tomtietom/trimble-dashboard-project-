@@ -2,6 +2,17 @@
 
 ---
 
+## Versie 1.31 — 27 augustus 2026
+
+### Dashboard-datums ook beschermd tegen de Trimble-update
+
+Aanvulling op versie 1.30: dezelfde bescherming geldt nu ook voor het dashboard. De blokken *Laatste bestanden* en *Laatst geüpload* en de teller op de Upload-tegel lezen documentdatums voortaan net zo tolerant als de documentenlijst — ongeacht via welke route Trimble ze aanlevert.
+
+**Wat moet je doen?**
+Niets — sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.30 — 27 augustus 2026
 
 ### Filter "Gewijzigd" werkt weer na de Trimble-update
