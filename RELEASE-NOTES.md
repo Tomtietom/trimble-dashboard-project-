@@ -2,6 +2,22 @@
 
 ---
 
+## Versie 1.33 — 31 augustus 2026
+
+### Trimble Connect 5.92: nieuwe datum-veldnamen worden nu gelezen
+
+Vervolg op v1.30 t/m v1.32. De klant-melding *"nog steeds 0 van 435 documenten in het periode-filter"* na de Trimble-update bleef aanhouden ondanks de terugval naar de oudere endpoint. De laatste stap heb ik nu opgepakt: Trimble Connect 5.92 heeft de datum-velden in het nieuwe endpoint hernoemd — `modifiedOn`/`createdOn` heten daar sinds kort `updatedAt`/`createdAt`. De cockpit las die twee nieuwe namen niet, waardoor élk document een lege wijzigingsdatum leek te hebben.
+
+**Wat is er veranderd?**
+
+- **`updatedAt` en `createdAt` erbij** in alle veldnaam-lijsten die datums uit Trimble-items lezen (documentenlijst, dashboard-widgets, item-datum-helper). De cockpit werkt nu weer op zowel het oudere endpoint (dat `modifiedOn`/`createdOn` gebruikt) als het nieuwe (`updatedAt`/`createdAt`) — de terugval uit v1.32 wordt daarmee overbodig maar blijft als vangnet staan.
+- **Root folder — extra vangnet bij een Trimble-hik.** Onder bepaalde omstandigheden gaf Trimble's project-endpoint incidenteel geen root-map-ID terug; de documentenlijst crashte dan met *"Root folder niet gevonden in project-info"*. Nu wordt de call één keer opnieuw geprobeerd na een halve seconde, en als vangnet wordt de laatst-succesvolle root-map-ID uit deze sessie hergebruikt. Alleen als alle drie geen resultaat geven zie je nog de foutmelding — met concrete uitleg wat je zelf kunt doen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.32 — 31 augustus 2026
 
 ### Datums definitief hersteld na de Trimble-update

@@ -1460,7 +1460,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.32';
+const COCKPIT_VERSION = '1.33';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -2098,7 +2098,9 @@ async function tcFetchAll(path, maxPages){
 let _tc21ZonderDatums = false; // sessie-vlag: v2.1 afgekeurd wegens ontbrekende datums
 
 function _tcItemsHebbenDatums(items){
-  const VELDEN = ['modifiedOn','modifiedDate','modified','updatedOn','createdOn','createdDate','created'];
+  // v1.33: TC 5.92 v2.1 gebruikt updatedAt/createdAt (Camelcase-At) i.p.v. modifiedOn/createdOn.
+  // Zonder deze twee valt _tcItemsHebbenDatums op v2.1 altijd false → onnodige terugval naar v2.0.
+  const VELDEN = ['modifiedOn','modifiedDate','modified','updatedOn','updatedAt','createdOn','createdDate','createdAt','created'];
   for (const it of items){
     for (const v of VELDEN){ if (it && it[v]) return true; }
   }
@@ -2736,8 +2738,9 @@ function updateTileStat(key, text){
 // in de Documentenlijst: TC 5.92 activeerde v2.1-responses met andere veldnamen).
 function tcItemDate(it){
   if (!it) return '';
-  return it.modifiedOn || it.modifiedDate || it.modified || it.updatedOn
-      || it.createdOn || it.createdDate || it.created || '';
+  // v1.33: v2.1-veldnamen updatedAt/createdAt óók dekken (TC 5.92).
+  return it.modifiedOn || it.modifiedDate || it.modified || it.updatedOn || it.updatedAt
+      || it.createdOn || it.createdDate || it.createdAt || it.created || '';
 }
 
 function openInTC(path){
@@ -7142,9 +7145,13 @@ const DL = (function(){
           file_location: pad || '(projectroot)',
           bestandsnaam:  naam,
           _vid:          item.id || '',
-          _created:      item.createdOn || item.createdDate || item.created || '',
-          _modified:     item.modifiedOn || item.modifiedDate || item.modified || item.updatedOn
-                           || item.createdOn || item.createdDate || item.created || '',
+          // v1.33: TC 5.92 v2.1 items dragen createdAt/updatedAt (Camelcase-At). v1.30's
+          // veldnaam-lijst dekte alleen -On/-Date/updatedOn. Toevoegen van deze twee
+          // laat _modified/_created weer een echte datum bevatten op v2.1, zodat het
+          // periode-filter (r8276) en de recent-uploaded-buffer weer werken.
+          _created:      item.createdOn || item.createdDate || item.createdAt || item.created || '',
+          _modified:     item.modifiedOn || item.modifiedDate || item.modified || item.updatedOn || item.updatedAt
+                           || item.createdOn || item.createdDate || item.createdAt || item.created || '',
           _versie:       item.revision || item.version || item.versionNumber || '',
         });
       }
@@ -8068,20 +8075,51 @@ const DL = (function(){
     });
   }
 
+  // v1.22 — Root-ID uit projects/{id} kan incidenteel leeg terugkomen (TC-hik
+  // of eventual-consistency). Retry één keer, en val terug op sessionStorage
+  // waar we een succesvolle rootId van eerdere load(s) bewaren. Zolang de
+  // gebruiker die project-tab niet ververst gaat de fallback nooit stale voelen.
+  const _DL_ROOTID_KEY = 'dl-rootid-';
+  function _dlRootIdCacheGet(projId){
+    if (!projId) return '';
+    try { return sessionStorage.getItem(_DL_ROOTID_KEY + projId) || ''; }
+    catch(_){ return ''; }
+  }
+  function _dlRootIdCacheSet(projId, rid){
+    if (!projId || !rid) return;
+    try { sessionStorage.setItem(_DL_ROOTID_KEY + projId, rid); } catch(_){}
+  }
+  async function _resolveProjectRootId(){
+    async function tryOnce(){
+      try {
+        const proj = await tcFetch('/projects/' + tcProject.id);
+        return proj.rootId || proj.rootFolderId
+          || (proj.rootFolder && proj.rootFolder.id)
+          || (proj.root && proj.root.id) || '';
+      } catch(e){
+        console.warn('[DL] /projects/{id} mislukt:', e.message);
+        return '';
+      }
+    }
+    let rootId = await tryOnce();
+    if (rootId){ _dlRootIdCacheSet(tcProject.id, rootId); return rootId; }
+    // Retry één keer na 500ms; dekt intermitterende TC-hik.
+    await new Promise(function(r){ setTimeout(r, 500); });
+    rootId = await tryOnce();
+    if (rootId){ _dlRootIdCacheSet(tcProject.id, rootId); return rootId; }
+    // Fallback: eerder-in-sessie geziene rootId hergebruiken.
+    const cached = _dlRootIdCacheGet(tcProject.id);
+    if (cached){ console.warn('[DL] /projects/{id} gaf geen rootId; val terug op session-cache:', cached); return cached; }
+    return '';
+  }
+
   async function _loadDocs(){
     if (_isLoaded || _isLoading) return;
     _isLoading = true;
     _renderLoading(true);
     try {
-      // Root folder ID via project-info
-      let rootId = null;
-      try {
-        const proj = await tcFetch('/projects/' + tcProject.id);
-        rootId = proj.rootId || proj.rootFolderId
-          || (proj.rootFolder && proj.rootFolder.id)
-          || (proj.root && proj.root.id);
-      } catch(e){ console.warn('[DL] /projects/{id} mislukt:', e.message); }
-      if (!rootId) throw new Error('Root folder niet gevonden in project-info');
+      const rootId = await _resolveProjectRootId();
+      if (!rootId) throw new Error('Root folder niet gevonden in project-info — probeer de Trimble Connect-tab volledig te sluiten en opnieuw te openen.');
 
       _folderIdByPath = {}; // reset bij elke fresh fetch
       _folderWalkErrors = []; // Sprint 1 backlog: reset per-sessie diagnose-collector
