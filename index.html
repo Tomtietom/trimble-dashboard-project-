@@ -1514,7 +1514,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.39';
+const COCKPIT_VERSION = '1.40';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -10884,6 +10884,21 @@ const DL = (function(){
         if (c.k !== '_created' && c.k !== '_modified' && _isDateField(c.k)) dateColIdx.push(i);
       });
       dateColIdx.forEach(function(ci){ ws.getColumn(ci + 1).numFmt = 'dd mmm yyyy;@'; });
+      // v1.40 — invul-hulp op de datumcellen zelf: tooltip bij selectie plus een
+      // zachte waarschuwing (Ja = toch bewaren) wanneer Excel de invoer niet als
+      // datum herkent. Het terug-inlezen blijft de echte controle.
+      dateColIdx.forEach(function(ci){
+        const colLetter = ws.getColumn(ci + 1).letter;
+        ws.dataValidations.add(colLetter + '2:' + colLetter + lastRow, {
+          type: 'date', operator: 'between',
+          formulae: ['DATE(1900,1,1)', 'DATE(2200,12,31)'], allowBlank: true,
+          showInputMessage: true, promptTitle: 'Datum',
+          prompt: 'Typ bv. 02-09-2026 of 2 sep 2026. Leeg laten mag; leegmaken wist het veld ook in Trimble Connect.',
+          showErrorMessage: true, errorStyle: 'warning',
+          errorTitle: 'Is dit een datum?',
+          error: 'Excel herkent dit niet als datum. Typ bv. 02-09-2026 of 2 sep 2026, of kies Ja om het toch te bewaren — bij het inlezen wordt het dan opnieuw gecontroleerd.',
+        });
+      });
       if (dateColIdx.length){
         for (let rowI = 1; rowI < aoa.length; rowI++){
           if (groupHeaderRows.indexOf(rowI) !== -1) continue;
@@ -10968,6 +10983,8 @@ const DL = (function(){
         const colLetter = ws.getColumn(ci + 1).letter;
         ws.dataValidations.add(colLetter + '2:' + colLetter + lastRow, {
           type: 'list', allowBlank: true, formulae: ['lst_' + k],
+          showInputMessage: true, promptTitle: 'Keuzelijst',
+          prompt: 'Kies een waarde uit de lijst (pijltje rechts van de cel). De opties komen uit het metadata-schema van dit project. Leeg laten mag.',
           showErrorMessage: true, errorStyle: 'stop',
           errorTitle: 'Ongeldige waarde',
           error: 'Kies een waarde uit de lijst — deze opties komen uit het metadata-schema van het project.',
@@ -10996,6 +11013,31 @@ const DL = (function(){
         selectLockedCells: true, selectUnlockedCells: true,
         autoFilter: true, sort: true, formatColumns: true, formatRows: true,
       });
+
+      // v1.40 — zichtbaar Uitleg-tabblad (Tom: "neem een waarschuwing op in de
+      // excel over het invullen van de cellen"). Documenten blijft het eerste,
+      // actieve tabblad; dit blad is vergrendeld zodat de uitleg intact blijft.
+      const wsU = wb.addWorksheet('Uitleg', { properties: { tabColor: { argb: 'FFD4821A' } } });
+      const uitleg = [
+        ['Zo vul je deze documentenlijst in', true],
+        [''],
+        ['Alleen de ontgrendelde metadatacellen zijn bedoeld om in te vullen. Bestandsnaam, map, versie en de systeemdatums zijn vergrendeld en gaan niet mee terug.'],
+        ['Cellen met een keuzelijst: klik op de cel en kies via het pijltje. De opties komen uit het metadata-schema van dit project.'],
+        ['Datums typ je bijvoorbeeld als 02-09-2026 of 2 sep 2026. Niet-bestaande dagen (zoals 31-02) worden bij het inlezen geweigerd.'],
+        ['Een cel leegmaken betekent: bij het inlezen wordt dat veld ook in Trimble Connect leeggemaakt.'],
+        ['Sorteren en filteren mag gewoon. De koppeling loopt via een verborgen kolom, niet via de rijvolgorde.'],
+        ['Laat de verborgen kolom TC-ID en de verborgen tabbladen staan — die maken het veilige terug-inlezen mogelijk.'],
+        ['Terug-inlezen: open de Documentenlijst, zet de bewerkmodus aan en kies "Excel inlezen". Je ziet eerst een voorbeeld van alle wijzigingen; er wordt pas geschreven na Doorvoeren.'],
+        ['Heeft een collega intussen hetzelfde veld in Trimble Connect aangepast, dan zie je dat bij het inlezen als conflict en bepaal je zelf wat er gebeurt.'],
+      ];
+      uitleg.forEach(function(rij, i){
+        const cell = wsU.getCell(i + 1, 1);
+        cell.value = rij[0];
+        cell.alignment = { wrapText: true, vertical: 'top' };
+        if (rij[1]){ cell.font = { bold: true, size: 14, color: { argb: 'FFD4821A' } }; }
+      });
+      wsU.getColumn(1).width = 110;
+      await wsU.protect('', { selectLockedCells: true, selectUnlockedCells: true });
 
       // Filename: projectnaam + datum
       const projName = (tcProject && tcProject.name) || 'project';

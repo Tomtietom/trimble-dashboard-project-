@@ -2,6 +2,22 @@
 
 ---
 
+## Versie 1.40 — 2 september 2026
+
+### De Excel legt nu zelf uit hoe je hem invult
+
+De export bevat voortaan een zichtbaar tabblad **Uitleg** met in gewone taal wat wel en niet kan: welke cellen bedoeld zijn om in te vullen, hoe keuzelijsten en datums werken, dat een leeggemaakte cel het veld ook in Trimble Connect leegmaakt, dat sorteren en filteren gewoon mag, en hoe het terug-inlezen verloopt.
+
+Daarnaast helpen de cellen zelf mee:
+
+- **Keuzelijst-cellen** tonen bij selectie een korte uitleg ("kies via het pijltje").
+- **Datumcellen** tonen bij selectie de verwachte notatie, en als Excel de invoer niet als datum herkent krijg je direct een waarschuwing met voorbeelden — nog vóór het inlezen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. Het uitleg-tabblad zit in elke nieuwe export.
+
+---
+
 ## Versie 1.39 — 2 september 2026
 
 ### Datumherkenning: niet-bestaande dagen worden geweigerd
