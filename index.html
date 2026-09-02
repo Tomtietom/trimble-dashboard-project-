@@ -1460,7 +1460,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.34';
+const COCKPIT_VERSION = '1.35';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -9602,6 +9602,15 @@ const DL = (function(){
       const arr = (val && Array.isArray(val.views)) ? val.views : (Array.isArray(val) ? val : []);
       _views.shared = arr.filter(function(v){ return v && v.id && v.name && v.state; });
       console.log('[DL] gedeelde weergaves geladen:', _views.shared.length);
+      // v1.35 — wijst de bewaarde actieve weergave naar een (elders) verwijderd
+      // pakket, ruim hem dan op en laat een eventuele docset los. Alleen hier,
+      // ná een geslaagde load — bij een hub-storing zou opruimen onterecht zijn.
+      if (_activeViewId && !_viewFind(_activeViewId)){
+        console.warn('[DL] actieve weergave bestaat niet meer — losgelaten:', _activeViewId);
+        _activeViewId = '';
+        if (_activeDocSet){ _activeDocSet = null; _wpClearNew(); _renderTable(); }
+        _saveColsConfig();
+      }
       _renderViewsButton();
       _renderViewsPicker();
       _consumePendingView(true); // race-vangnet: pending gezet terwijl deze fetch liep
@@ -9729,7 +9738,15 @@ const DL = (function(){
     _views[scope] = _views[scope].filter(function(x){ return x.id !== v.id; });
     try { await _viewPersist(scope); }
     catch(_){ _viewsRollback(scope, backup); _renderViewsPicker(); return; }
-    if (_activeViewId === v.id){ _activeViewId = ''; _saveColsConfig(); }
+    if (_activeViewId === v.id){
+      // v1.35 — Tom: "ik had het werkpakket gewist" maar de lijst bleef beperkt:
+      // de docset werd hier nooit losgelaten. Wissen = terug naar de volledige lijst.
+      _activeViewId = '';
+      _activeDocSet = null;
+      _wpClearNew();
+      _saveColsConfig();
+      _renderTable();
+    }
     _renderViewsButton();
     _renderViewsPicker();
   }

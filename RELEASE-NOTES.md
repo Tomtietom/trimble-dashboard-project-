@@ -2,6 +2,24 @@
 
 ---
 
+## Versie 1.35 — 2 september 2026
+
+### Werkpakket verwijderen laat de lijst nu ook echt los
+
+Vervolg op v1.34. De statusbalk maakte zichtbaar dát er een werkpakket actief stond, maar er zat nog een gat achter: wie het actieve werkpakket **verwijderde**, bleef toch naar de beperkte lijst kijken. De verwijdering haalde het pakket wel uit de lijst met weergaves, maar liet de actieve documentselectie staan.
+
+**Wat is er veranderd?**
+
+- **Verwijderen = loslaten.** Verwijder je het werkpakket dat op dat moment actief is, dan keert de volledige documentenlijst direct terug en verdwijnen statusbalk en meldingsbadge mee.
+- **Opruiming bij het opstarten.** Verwijdert een collega een gedeeld werkpakket terwijl jij het actief had staan, dan merkt de cockpit dat bij de eerstvolgende start op: de verwijzing wordt opgeruimd en je ziet weer de volledige lijst, in plaats van een beperking zonder bijbehorend pakket.
+
+**Goed om te weten:** een gedeeld werkpakket staat op de server en is voor het hele project tegelijk verwijderd; een persoonlijk werkpakket alleen op je eigen browser. Mislukt het verwijderen van een gedeeld pakket (bijvoorbeeld door een haperende verbinding), dan komt er een foutmelding en blijft het pakket bestaan — het verdwijnt dus nooit stilletjes half.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.34 — 1 september 2026
 
 ### Een actief werkpakket is nu altijd zichtbaar
