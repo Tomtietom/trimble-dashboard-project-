@@ -870,6 +870,12 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-share-input{display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;background:#fff;box-sizing:border-box}
 .dl-share-input:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 3px var(--afl)}
 .dl-share-field-note{font-size:11px;line-height:1.4;margin:-4px 0 10px;color:var(--g5)}
+.dl-exp-menu{position:fixed;z-index:99999;background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);box-shadow:0 8px 28px rgba(0,0,0,.16);padding:6px;min-width:250px;font-family:'Poppins',sans-serif}
+.dl-exp-menu button{display:block;width:100%;text-align:left;background:none;border:none;border-radius:var(--r-sm);padding:9px 12px;font-size:13px;color:var(--dk);cursor:pointer;font-family:inherit}
+.dl-exp-menu button:hover{background:var(--gr)}
+.dl-exp-menu button.dl-exp-off{opacity:.45}
+.dl-exp-menu .dl-exp-sub{font-size:11px;color:var(--g5);margin-top:2px}
+.dl-exp-menu hr{border:none;border-top:1px solid var(--hl-light);margin:5px 4px}
 .dl-share-mode-info{padding:8px 12px;border-radius:var(--r-sm);font-size:13px;margin:-4px 0 var(--s3) 0;line-height:1.4}
 .dl-share-files{margin-top:var(--s3);padding:var(--s3);background:var(--gr);border-radius:var(--r-sm);border:1px solid var(--hl-light)}
 .dl-share-files-head{font-size:12px;color:var(--g5);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
@@ -1515,7 +1521,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.42';
+const COCKPIT_VERSION = '1.43';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -11062,6 +11068,307 @@ const DL = (function(){
 
 
   // ============================================================
+  //  Projectsjabloon-export (v1.43) — export in het eigen documentenlijst-
+  //  format van het bedrijf. Het sjabloon (een .xlsx) is BEWUST bedrijfs-/
+  //  projectspecifiek: opslag per project-id in de hub, nooit hergebruik in
+  //  andere projecten (Tom, 2 sep). ExcelJS behoudt logo's, opmaak en
+  //  printinstellingen (round-trip bewezen op de aangeleverde sjablonen).
+  // ============================================================
+
+  let _tpl = null;          // {naam, door, ts, b64} — null = geen sjabloon voor dít project
+  let _tplGeladen = false;
+
+  async function _tplLoad(){
+    if (_tplGeladen) return;
+    const session = _getHubSessionTokenDL();
+    if (!session || !tcProject || !tcProject.id){ _tplGeladen = true; return; }
+    try {
+      const url = HUB_CONFIG_URL_DL + '?slug=' + encodeURIComponent(EXTENSION_SLUG_DL)
+        + '&project=' + encodeURIComponent(tcProject.id) + '&key=excel_template';
+      const r = await fetch(url, { headers: { 'X-Session': session, 'Accept': 'application/json' } });
+      if (r.ok){
+        const data = await r.json();
+        const val = data && data.found ? data.value : null;
+        if (val && val.b64) _tpl = val;
+        if (_tpl) console.log('[DL] projectsjabloon geladen:', _tpl.naam, '(' + Math.round(_tpl.b64.length * 3 / 4 / 1024) + ' KB)');
+      }
+    } catch(e){ console.warn('[DL] projectsjabloon laden mislukt:', e.message); }
+    _tplGeladen = true;
+  }
+
+  async function _tplSave(value){
+    const session = _getHubSessionTokenDL();
+    if (!session) throw new Error('Geen hub-sessie — herlaad de cockpit.');
+    const r = await fetch(HUB_CONFIG_URL_DL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Session': session, 'Accept': 'application/json' },
+      body: JSON.stringify({
+        slug: EXTENSION_SLUG_DL, project: tcProject.id, key: 'excel_template',
+        value: value, tcToken: tcToken,
+      }),
+    });
+    if (r.status === 403) throw new Error('Alleen projectbeheerders kunnen het sjabloon beheren.');
+    if (!r.ok){
+      const d = await r.json().catch(function(){ return {}; });
+      throw new Error((d && d.error) || ('hub gaf ' + r.status));
+    }
+  }
+
+  function _tplB64VanBuffer(buf){
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000){
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
+  }
+  function _tplBufferVanB64(b64){
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
+
+  // Zoek in een sjabloon-werkblad de kopregel: de rij met de meeste herkende
+  // kolomkoppen (≥2). Geeft {rij, kolommen: {excelKol → veldkey}} of null.
+  function _tplVindKop(ws){
+    let beste = null;
+    for (let r = 1; r <= Math.min(ws.rowCount + 5, 40); r++){
+      const kolommen = {};
+      let n = 0;
+      for (let c = 1; c <= Math.max(ws.columnCount, 20); c++){
+        const key = _xlLabelToKey(_xiCellText(ws.getCell(r, c)));
+        if (key && !Object.values(kolommen).includes(key)){ kolommen[c] = key; n++; }
+      }
+      if (n >= 2 && (!beste || n > beste.n)) beste = { rij: r, kolommen: kolommen, n: n };
+    }
+    return beste;
+  }
+
+  async function _tplUploadFile(file){
+    if (file.size > 600 * 1024){
+      alert('Sjabloon is te groot (' + Math.round(file.size / 1024) + ' KB, maximum 600 KB). Verwijder grote afbeeldingen of tabbladen die niet nodig zijn.');
+      return;
+    }
+    try {
+      const buf = await file.arrayBuffer();
+      // Valideer vóór opslaan: is het een xlsx en herkennen we kolomkoppen?
+      const ExcelJS = await _ensureExcelJS();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buf.slice(0));
+      const ws = wb.worksheets.find(function(w){ return w.state === 'visible'; }) || wb.worksheets[0];
+      if (!ws) throw new Error('geen werkblad gevonden');
+      const kop = _tplVindKop(ws);
+      if (!kop){
+        alert('Geen kolomkoppen herkend in dit sjabloon.\n\nZet in één rij de kolomnamen die de cockpit kent, bijvoorbeeld: Bestandsnaam, Document nummer, Project fase, Document datum, Revisie, Document status. Daaronder vult de export de documenten in.');
+        return;
+      }
+      const velden = Object.values(kop.kolommen).join(', ');
+      if (!window.confirm('Sjabloon "' + file.name + '" instellen voor dít project?\n\nHerkende kolommen (rij ' + kop.rij + '): ' + velden + '\n\nHet sjabloon geldt alleen voor dit project en wordt niet in andere projecten gebruikt.')) return;
+      const value = { naam: file.name, door: currentUserEmail || '', ts: new Date().toISOString(), b64: _tplB64VanBuffer(buf) };
+      await _tplSave(value);
+      _tpl = value;
+      alert('Sjabloon ingesteld. De export biedt nu "In projectsjabloon" aan.');
+    } catch(e){
+      console.error('[DL] sjabloon-upload:', e);
+      alert('Sjabloon instellen mislukt: ' + (e.message || e));
+    }
+  }
+
+  // ---------- exportmenu (één knop, meerdere smaken) ----------
+  function _exportMenuClose(){
+    const m = document.getElementById('dl-exp-menu');
+    if (m) m.remove();
+  }
+  function _exportMenuOpen(anchorBtn){
+    _exportMenuClose();
+    const rect = anchorBtn.getBoundingClientRect();
+    const m = document.createElement('div');
+    m.id = 'dl-exp-menu';
+    m.className = 'dl-exp-menu';
+    const items = [];
+    items.push('<button type="button" data-exp="std">📊 Standaard export</button>');
+    if (_tpl){
+      const off = !excelImportAllowed;
+      items.push('<button type="button" data-exp="tpl" class="' + (off ? 'dl-exp-off' : '') + '">🏢 In projectsjabloon'
+        + '<div class="dl-exp-sub">' + _esc(_tpl.naam) + '</div></button>');
+    }
+    if (_isProjectAdmin){
+      items.push('<hr>');
+      items.push('<button type="button" data-exp="upload">⬆️ Sjabloon ' + (_tpl ? 'vervangen' : 'instellen') + '…'
+        + '<div class="dl-exp-sub">Geldt alleen voor dit project</div></button>');
+      if (_tpl) items.push('<button type="button" data-exp="del">🗑 Sjabloon verwijderen</button>');
+    }
+    m.innerHTML = items.join('');
+    document.body.appendChild(m);
+    const top = Math.max(8, rect.top - m.offsetHeight - 6);
+    m.style.left = Math.max(8, Math.min(window.innerWidth - m.offsetWidth - 8, rect.left)) + 'px';
+    m.style.top = (top > 8 ? top : rect.bottom + 6) + 'px';
+    m.addEventListener('click', function(ev){
+      const b = ev.target.closest('button[data-exp]');
+      if (!b) return;
+      const wat = b.getAttribute('data-exp');
+      _exportMenuClose();
+      if (wat === 'std'){ _exportExcel(); }
+      else if (wat === 'tpl'){
+        if (!excelImportAllowed){
+          alert('Export in projectsjabloon hoort bij de Excel-module.\n\nVraag toegang aan via info@atfielt.nl.');
+          return;
+        }
+        _exportExcelSjabloon();
+      }
+      else if (wat === 'upload'){
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.xlsx';
+        inp.addEventListener('change', function(){ if (inp.files && inp.files[0]) _tplUploadFile(inp.files[0]); });
+        inp.click();
+      }
+      else if (wat === 'del'){
+        if (!window.confirm('Sjabloon "' + _tpl.naam + '" verwijderen voor dit project?')) return;
+        _tplSave({ b64: '' }).then(function(){ _tpl = null; alert('Sjabloon verwijderd.'); })
+          .catch(function(e){ alert('Verwijderen mislukt: ' + e.message); });
+      }
+    });
+    setTimeout(function(){
+      document.addEventListener('click', function weg(ev){
+        if (!m.contains(ev.target)){ _exportMenuClose(); document.removeEventListener('click', weg); }
+      });
+    }, 0);
+  }
+
+  async function _exportExcelKnop(ev){
+    const btn = ev.currentTarget;
+    try { await _tplLoad(); } catch(_){}
+    if (!_tpl && !_isProjectAdmin){ _exportExcel(); return; }
+    _exportMenuOpen(btn);
+  }
+
+  // ---------- de vulmotor: sjabloon laden, kop vinden, documenten schrijven ----------
+  async function _exportExcelSjabloon(){
+    const btn = document.getElementById('dl-ftr-export');
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ Exporteren…'; }
+    try {
+      if (!_tpl || !_tpl.b64) throw new Error('geen sjabloon voor dit project');
+      const hasSelection = _selectedVids && _selectedVids.size > 0;
+      const rows = hasSelection
+        ? _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); })
+        : _filt();
+      const ExcelJS = await _ensureExcelJS();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(_tplBufferVanB64(_tpl.b64));
+      const ws = wb.worksheets.find(function(w){ return w.state === 'visible'; }) || wb.worksheets[0];
+      if (!ws) throw new Error('sjabloon bevat geen werkblad');
+      const kop = _tplVindKop(ws);
+      if (!kop) throw new Error('geen kolomkoppen herkend in het sjabloon — stel het opnieuw in');
+      const headerRow = kop.rij;
+
+      // Benoemde cellen + tekst-placeholders in het titelblok invullen
+      const vandaag = _formatDate(new Date().toISOString());
+      const vulling = { ProjectName: (tcProject && tcProject.name) || '', PrintDate: vandaag, CreatedBy: currentUserEmail || '' };
+      for (const naam in vulling){
+        try {
+          const ranges = wb.definedNames.getRanges(naam);
+          const r0 = ranges && ranges.ranges && ranges.ranges[0];
+          if (!r0) continue;
+          const mm = /^'?([^'!]+)'?!\$?([A-Z]+)\$?(\d+)/.exec(r0);
+          if (!mm) continue;
+          const wsN = wb.getWorksheet(mm[1]);
+          if (wsN) wsN.getCell(mm[2] + mm[3]).value = vulling[naam];
+        } catch(_){}
+      }
+      const placeholders = [
+        [/\[project ?naam\]/i, vulling.ProjectName],
+        [/\[print ?datum\]/i, vulling.PrintDate],
+        [/\[opgesteld door\]/i, vulling.CreatedBy],
+      ];
+      for (let r = 1; r < headerRow; r++){
+        for (let c = 1; c <= Math.max(ws.columnCount, 20); c++){
+          const cel = ws.getCell(r, c);
+          if (typeof cel.value !== 'string') continue;
+          let v = cel.value;
+          placeholders.forEach(function(p){ v = v.replace(p[0], p[1]); });
+          if (v !== cel.value) cel.value = v;
+        }
+      }
+
+      // TC-ID-kolom (verborgen) direct ná de laatste herkende kolom
+      const kolIdx = Object.keys(kop.kolommen).map(function(x){ return parseInt(x, 10); });
+      const vidCol = Math.max.apply(null, kolIdx) + 1;
+      ws.getCell(headerRow, vidCol).value = 'TC-ID';
+      ws.getColumn(vidCol).hidden = true;
+
+      // Documentrijen schrijven (en oude voorbeeld-inhoud onder de kop wissen)
+      const laatsteOudeRij = ws.rowCount;
+      rows.forEach(function(d, i){
+        const r = headerRow + 1 + i;
+        for (const cStr in kop.kolommen){
+          const c = parseInt(cStr, 10);
+          const key = kop.kolommen[cStr];
+          let v = d[key];
+          if (key === '_created' || key === '_modified'){ ws.getCell(r, c).value = _formatDate(v); continue; }
+          if (v == null || v === ''){ ws.getCell(r, c).value = null; continue; }
+          const cel = ws.getCell(r, c);
+          if (_isDateField(key) && /^\d{4}-\d{2}-\d{2}/.test(String(v))){
+            const dm = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
+            cel.value = new Date(Date.UTC(+dm[1], +dm[2] - 1, +dm[3]));
+            cel.numFmt = 'dd mmm yyyy;@';
+          } else if (key === 'bestandsnaam'){
+            const url = _tcFileUrl(d);
+            const naam = String(v);
+            cel.value = url
+              ? { formula: 'HYPERLINK("' + url.replace(/"/g, '""') + '","' + naam.replace(/"/g, '""') + '")', result: naam }
+              : naam;
+          } else {
+            cel.value = String(v);
+          }
+        }
+        ws.getCell(r, vidCol).value = d._vid || '';
+      });
+      for (let r = headerRow + 1 + rows.length; r <= laatsteOudeRij; r++){
+        kolIdx.forEach(function(c){ ws.getCell(r, c).value = null; });
+        ws.getCell(r, vidCol).value = null;
+      }
+
+      // Verborgen basis-werkblad zodat "Excel inlezen" ook op sjabloon-exports werkt
+      const editKeys = Object.values(kop.kolommen).filter(_isEditableField);
+      const oudBasis = wb.getWorksheet('_atfielt_basis');
+      if (oudBasis) wb.removeWorksheet(oudBasis.id);
+      const wsB = wb.addWorksheet('_atfielt_basis');
+      wsB.state = 'veryHidden';
+      wsB.getCell(1, 1).value = '#atfielt-export';
+      wsB.getCell(1, 2).value = new Date().toISOString();
+      wsB.getCell(1, 3).value = COCKPIT_VERSION;
+      wsB.getCell(2, 1).value = 'vid';
+      editKeys.forEach(function(k, i){ wsB.getCell(2, i + 2).value = k; });
+      rows.forEach(function(d, i){
+        wsB.getCell(i + 3, 1).value = d._vid || '';
+        editKeys.forEach(function(k, j){
+          const v = d[k];
+          wsB.getCell(i + 3, j + 2).value = v == null ? '' : String(v);
+        });
+      });
+
+      const projName = (tcProject && tcProject.name) || 'project';
+      const safeProj = projName.replace(/[\/\\:*?"<>|]/g, '_').slice(0, 60);
+      const today = new Date().toISOString().slice(0, 10);
+      const filename = 'documentenlijst_' + safeProj + '_' + today + '_sjabloon.xlsx';
+      const buf = await wb.xlsx.writeBuffer();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      a.download = filename;
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+      console.log('[DL] sjabloon-export:', rows.length, 'rijen via "' + _tpl.naam + '" →', filename);
+      if (btn){ btn.textContent = '✓ Gedownload'; setTimeout(function(){ if (btn){ btn.disabled = false; _updateExportBtnLabel(); } }, 2500); }
+    } catch(e){
+      console.error('[DL] sjabloon-export fout:', e);
+      alert('Sjabloon-export mislukt: ' + (e.message || e));
+      if (btn){ btn.disabled = false; _updateExportBtnLabel(); }
+    }
+  }
+
+  // ============================================================
   //  Excel terug-inlezen (v1.25, eigen hub-module 'excel-import')
   //
   //  Harde grens: alléén waarden wijzigen van metadatavelden die het
@@ -11072,6 +11379,24 @@ const DL = (function(){
   //  zo onderscheiden we Excel-bewerkingen van tussentijdse TC-wijzigingen
   //  ("wat als mensen tegelijk exporteren en wijzigen").
   // ============================================================
+
+  // v1.43 — kolomkop → veldkey, ruimhartig: label óf veldkey, haakjes-inhoud
+  // genegeerd, hoofdletters/leestekens genegeerd. Zo matcht een klantsjabloon
+  // met "Document nummer" of "IFC timestamp (handmatig)" net zo goed als onze
+  // eigen exportlabels ("Doc.nr", "IFC timestamp").
+  function _xlNorm(s){ return String(s == null ? '' : s).toLowerCase().replace(/\([^)]*\)/g, '').replace(/[^a-z0-9]/g, ''); }
+  let _xlLabelMap = null;
+  function _xlLabelToKey(label){
+    if (!_xlLabelMap){
+      _xlLabelMap = {};
+      ALL_COLS.forEach(function(c){
+        _xlLabelMap[_xlNorm(c.l || c.k)] = c.k;
+        _xlLabelMap[_xlNorm(c.k)] = c.k;
+      });
+    }
+    const genorm = _xlNorm(label);
+    return (genorm && _xlLabelMap[genorm]) || null;
+  }
 
   // Celwaarde → platte string. ExcelJS geeft formules als {formula,result},
   // rijke tekst als {richText:[...]}, datums als Date.
@@ -11161,23 +11486,28 @@ const DL = (function(){
     const ws = wb.getWorksheet('Documenten') || wb.worksheets.find(function(w){ return w.name !== '_atfielt_basis'; });
     if (!ws) throw new Error('Geen documenten-werkblad gevonden in dit bestand.');
 
-    // Header-rij → kolomindex per veldkey (labels zoals de export ze schrijft)
-    const labelToKey = {};
-    ALL_COLS.forEach(function(c){ labelToKey[(c.l || c.k).toLowerCase()] = c.k; });
-    let vidCol = -1;
+    // Header-rij zoeken via de TC-ID-kolomkop — bij een projectsjabloon-export
+    // (v1.43) staat de kop niet op rij 1 maar bv. op rij 11. Standaard-exports
+    // hebben hem op rij 1, dus die vinden hem meteen.
+    let headerRow = 0, vidCol = -1;
+    for (let hr = 1; hr <= Math.min(ws.rowCount, 40) && vidCol < 0; hr++){
+      for (let c = 1; c <= ws.columnCount; c++){
+        if (_xiCellText(ws.getCell(hr, c)).trim() === 'TC-ID'){ headerRow = hr; vidCol = c; break; }
+      }
+    }
+    if (vidCol < 0) throw new Error('De verborgen TC-ID-kolom ontbreekt — exporteer opnieuw vanuit deze versie.');
     const colMap = {};        // excel-kolomindex → veldkey (alleen bewerkbaar)
     const onbekend = [];
     for (let c = 1; c <= ws.columnCount; c++){
-      const label = _xiCellText(ws.getCell(1, c)).trim();
+      if (c === vidCol) continue;
+      const label = _xiCellText(ws.getCell(headerRow, c)).trim();
       if (!label) continue;
-      if (label === 'TC-ID'){ vidCol = c; continue; }
-      const key = labelToKey[label.toLowerCase()];
+      const key = _xlLabelToKey(label);
       if (!key){ onbekend.push(label); continue; }
       if (_isEditableField(key)) colMap[c] = key;
       // niet-bewerkbare bekende kolommen (bestandsnaam, map, versie…) zijn per
       // definitie alleen-lezen: bewust géén entry in colMap
     }
-    if (vidCol < 0) throw new Error('De verborgen TC-ID-kolom ontbreekt — exporteer opnieuw vanuit deze versie.');
 
     const wijzigingen = [];   // {vid, doc, key, label, oud, nieuw}
     const conflicten = [];    // idem + tc (huidige TC-waarde)
@@ -11187,7 +11517,7 @@ const DL = (function(){
     const keyLabel = {};
     ALL_COLS.forEach(function(c){ keyLabel[c.k] = c.l || c.k; });
 
-    for (let r = 2; r <= ws.rowCount; r++){
+    for (let r = headerRow + 1; r <= ws.rowCount; r++){
       const vid = _xiCellText(ws.getCell(r, vidCol)).trim();
       if (!vid) continue; // groepskop-, blanco- of vreemde rij
       const doc = _docs.find(function(d){ return d._vid === vid; });
@@ -14633,12 +14963,12 @@ const DL = (function(){
     }
     const ftrExport = root.querySelector('#dl-ftr-export');
     if (ftrExport){
-      ftrExport.addEventListener('click', _exportExcel);
+      ftrExport.addEventListener('click', _exportExcelKnop);
     }
     // Sprint 1 fix: Excel-knop ook in header (naast Vernieuwen) — footer was buiten beeld bij lange tabellen
     const hdrExport = root.querySelector('#dl-export-btn');
     if (hdrExport){
-      hdrExport.addEventListener('click', _exportExcel);
+      hdrExport.addEventListener('click', _exportExcelKnop);
     const xiBtn = root.querySelector('#dl-xi-btn');
     const xiFile = root.querySelector('#dl-xi-file');
     if (xiBtn && xiFile){

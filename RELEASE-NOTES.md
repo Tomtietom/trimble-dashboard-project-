@@ -2,6 +2,26 @@
 
 ---
 
+## Versie 1.43 — 2 september 2026
+
+### Exporteren in het eigen documentenlijst-sjabloon van je project
+
+De Excel-export kan nu het eigen sjabloon van een bedrijf of project gebruiken: het vertrouwde format met eigen logo, titelblok en kolomindeling, automatisch gevuld met de actuele documentenlijst.
+
+**Hoe werkt het?**
+
+- **Eenmalig instellen (projectbeheerder).** Klik op de Excel-exportknop en kies "Sjabloon instellen…". Upload het eigen sjabloon-bestand (.xlsx). De cockpit controleert direct of de kolomkoppen herkend worden en laat zien welke velden gevuld gaan worden. Het sjabloon geldt uitsluitend voor dít project — het wordt nooit in andere projecten gebruikt.
+- **Daarna voor iedereen.** De exportknop biedt vanaf dat moment twee smaken: de standaard export en "In projectsjabloon". Bij het sjabloon vult de cockpit het titelblok automatisch in (projectnaam, datum, opsteller), schrijft de documenten onder de kopregel, maakt bestandsnamen klikbaar naar Trimble Connect en zet datums in de nette datumweergave. Logo, opmaak en printinstellingen van het sjabloon blijven onaangetast.
+- **Kolomherkenning is ruimhartig.** Koppen als "Document nummer", "Project fase" of "IFC timestamp (handmatig)" worden net zo goed herkend als de eigen cockpit-labels.
+- **Terug-inlezen werkt ook op sjabloon-exports.** De onzichtbare koppeling wordt meegeschreven, dus metadata wijzigen in een sjabloon-export en terug-inlezen werkt precies zoals bij de standaard export.
+
+De sjabloon-export hoort bij de Excel-module (net als het terug-inlezen).
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. Projectbeheerders zien de nieuwe keuzes onder de bestaande Excel-exportknop.
+
+---
+
 ## Versie 1.42 — 2 september 2026
 
 ### Delen met "Alleen projectleden": ook het meesturen van e-mails werkt nu
