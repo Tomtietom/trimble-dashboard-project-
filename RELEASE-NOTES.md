@@ -2,6 +2,17 @@
 
 ---
 
+## Versie 1.36 — 2 september 2026
+
+### Deel-links op het dashboard tonen nu de bestandsnaam
+
+De widget "Open shares" toonde een technische code als er geen naam op de deel-link stond — en die staat er vrijwel nooit. Voortaan zie je gewoon **welk bestand er gedeeld is**: de bestandsnaam bij één bestand, of bijvoorbeeld *"A.pdf +2 meer"* bij meerdere (alle namen staan dan in de tooltip). Alleen als Trimble Connect de bestandsnamen echt niet meegeeft valt de widget terug op een neutrale omschrijving zoals *"3 gedeelde bestanden"* — nooit meer een code.
+
+**Wat moet je doen?**
+Niets — sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.35 — 2 september 2026
 
 ### Werkpakket verwijderen laat de lijst nu ook echt los

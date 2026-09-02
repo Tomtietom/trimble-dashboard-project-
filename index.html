@@ -1460,7 +1460,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.35';
+const COCKPIT_VERSION = '1.36';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -2952,6 +2952,21 @@ function renderUploads(rootList){
 }
 
 // Openstaande gedeelde links
+// v1.36 — leesbare share-titel. TC's share-list heeft geen naam-veld op de share
+// zelf; de bestandsnamen zitten in objects[] (zelfde shape als /shares/token/…).
+// De rauwe share-id tonen we nooit meer — die zegt niemand iets.
+function shareTitle(s){
+  const objs = Array.isArray(s.objects) ? s.objects : [];
+  const names = objs.map(function(o){ return o && (o.name || o.fileName); }).filter(Boolean);
+  if (names.length === 1) return { text: names[0], tip: names[0] };
+  if (names.length > 1) return { text: names[0] + ' +' + (names.length - 1) + ' meer', tip: names.join('\n') };
+  const eigen = s.name || s.fileName || s.title || '';
+  if (eigen) return { text: eigen, tip: eigen };
+  if (objs.length) return { text: objs.length + ' gedeelde bestanden', tip: 'Bestandsnamen niet beschikbaar in de share-lijst' };
+  return { text: 'Gedeelde link', tip: 'Bestandsnaam niet beschikbaar in de share-lijst' };
+}
+let _shareShapeLogged = false;
+
 function renderShares(shares){
   const el = $('shares');
   const list = Array.isArray(shares) ? shares : (shares && Array.isArray(shares.items) ? shares.items : []);
@@ -2973,17 +2988,25 @@ function renderShares(shares){
     el.innerHTML = '<div class="activity-empty">Alleen verlopen shares — geen openstaande.</div>';
     return;
   }
+  // Eénmalige shape-log: als de bestandsnamen tóch ontbreken zien we in de
+  // console van de klant meteen welke velden de share-lijst wél levert.
+  if (!_shareShapeLogged && top.length){
+    _shareShapeLogged = true;
+    const s0 = top[0];
+    console.log('[Cockpit] share-shape:', Object.keys(s0).join(','),
+      '| objects:', Array.isArray(s0.objects) ? s0.objects.length + 'x [' + Object.keys(s0.objects[0] || {}).join(',') + ']' : 'geen');
+  }
   el.innerHTML = top.map(function(s){
-    const name = s.name || s.fileName || s.title || s.id || 'Gedeeld bestand';
+    const titel = shareTitle(s);
     const exp = s.expiresOn || s.expiryDate;
     const expStr = exp ? 'Verloopt ' + formatDate(exp) : 'Geen einddatum';
     const tag = s.permission || (s.isPublic ? 'PUBLIEK' : 'LINK');
     const link = s.link || s.url || '';
     return '<div class="release-item clickable" data-share-link="'+escapeHtml(link)+'" title="'+(link ? 'Open share-link' : 'Open shares-overzicht in Trimble Connect')+'">'
       + '<span class="rel-tag">'+escapeHtml(String(tag).substring(0,10))+'</span>'
-      + '<span class="rel-name" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'
+      + '<span class="rel-name" title="'+escapeHtml(titel.tip)+'">'+escapeHtml(titel.text)+'</span>'
       + '<span class="rel-meta">'+escapeHtml(expStr)+'</span>'
-      + (s.id ? '<button type="button" class="share-revoke-btn" data-share-revoke="'+escapeHtml(s.id)+'" data-share-name="'+escapeHtml(name)+'" title="Deel-link intrekken — ontvangers verliezen direct toegang">✕</button>' : '')
+      + (s.id ? '<button type="button" class="share-revoke-btn" data-share-revoke="'+escapeHtml(s.id)+'" data-share-name="'+escapeHtml(titel.text)+'" title="Deel-link intrekken — ontvangers verliezen direct toegang">✕</button>' : '')
       + '<span class="ext-link">↗ TC</span>'
       + '</div>';
   }).join('');
