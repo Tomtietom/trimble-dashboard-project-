@@ -14,3 +14,6 @@ REVIEW-PU-MODULE.md
 REVIEW-vs-OpenAPI.md
 _internal/
 _archief/
+
+# Klant-sjablonen en andere Excel-bestanden horen niet in de publieke Pages-repo
+*.xlsx
