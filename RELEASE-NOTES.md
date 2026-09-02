@@ -2,6 +2,17 @@
 
 ---
 
+## Versie 1.39 — 2 september 2026
+
+### Datumherkenning: niet-bestaande dagen worden geweigerd
+
+Aanvulling op v1.38. Een getypte datum als 31-02-2026 (31 februari bestaat niet) werd nog stilletjes geaccepteerd; zulke dagen krijgen nu dezelfde duidelijke foutmelding als andere onherkenbare datums. Schrikkeljaren worden daarbij correct herkend: 29-02-2028 is geldig, 29-02-2026 niet. Een datum zonder jaartal (zoals 01-06) werd al geweigerd — er wordt nooit geraden tussen 1 juni en 6 januari; voluit geschreven geldt de Nederlandse volgorde dag-maand-jaar.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.38 — 2 september 2026
 
 ### Datums: één weergave overal, en datums typen in Excel werkt nu gewoon

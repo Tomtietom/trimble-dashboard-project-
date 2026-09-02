@@ -1514,7 +1514,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.38';
+const COCKPIT_VERSION = '1.39';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -11063,6 +11063,10 @@ const DL = (function(){
     jun:6, jul:7, aug:8, sep:9, okt:10, oct:10, nov:11, dec:12 };
   function _xiIsoDate(y, mo, d){
     if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    // Kalender-check: 31-02 e.d. rolt in Date door naar maart — dat verraadt
+    // een niet-bestaande dag, dus weigeren i.p.v. stilletjes doorschuiven.
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCMonth() + 1 !== mo || dt.getUTCDate() !== d) return null;
     const p = function(n){ return String(n).padStart(2, '0'); };
     return y + '-' + p(mo) + '-' + p(d);
   }
