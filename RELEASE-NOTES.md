@@ -2,6 +2,22 @@
 
 ---
 
+## Versie 1.34 — 1 september 2026
+
+### Een actief werkpakket is nu altijd zichtbaar
+
+"Alle filters staan uit, toch zie ik maar 51 bestanden" — dat was een werkpakket dat nog actief stond uit een vorige sessie. Een werkpakket is geen filter, dus de filterbalk verraadde er niets van.
+
+**Wat is er veranderd?**
+
+- **Vaste statusbalk** — zolang een werkpakket actief is staat er een balk boven de lijst: *"Werkpakket 'Controle vloeren' actief: je ziet 51 van de 926 documenten in dit project"*, met daarin de link **Toon alle documenten** die je met één klik terugbrengt naar de volledige lijst.
+- **De Weergaves-knop kan niet meer 'kaal' zijn** — ook als de bijbehorende weergave tijdelijk niet gevonden wordt, toont de knop 📌 met het aantal documenten van de actieve set.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.33 — 31 augustus 2026
 
 ### Trimble Connect 5.92: nieuwe datum-veldnamen worden nu gelezen

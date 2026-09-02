@@ -1460,7 +1460,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.33';
+const COCKPIT_VERSION = '1.34';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -8844,12 +8844,30 @@ const DL = (function(){
     const gapNote = root.querySelector('#dl-wp-gap-note');
     if (gapNote){
       const st = _activeDocSet ? _wpSetStats() : null;
-      if (st && (st.found < st.total || st.visible < st.found)){
+      if (st){
+        // v1.34: balk staat ALTIJD aan bij een actief werkpakket — de set-beperking
+        // is geen filter en was verder nergens zichtbaar ("alle filters staan uit,
+        // toch maar 51 bestanden"). Inclusief één-klik-uitweg naar de volledige lijst.
+        const v = _viewFind(_activeViewId);
+        const naam = v ? '"' + _esc(v.name) + '"' : '';
         const delen = [];
         if (st.found < st.total) delen.push((st.total - st.found) + ' niet gevonden in dit project (verwijderd, of geen leesrechten)');
         if (st.visible < st.found) delen.push((st.found - st.visible) + ' verborgen door je huidige map, zoekterm of filters');
-        gapNote.innerHTML = '📌 <strong>Werkpakket: ' + st.visible + ' van ' + st.total + ' documenten zichtbaar.</strong> ' + _esc(delen.join(' · ')) + '.';
+        gapNote.innerHTML = '📌 <strong>Werkpakket ' + naam + ' actief:</strong> je ziet ' + st.visible + ' van de ' + _docs.length + ' documenten in dit project'
+          + (delen.length ? ' — ' + _esc(delen.join(' · ')) : '')
+          + '. <a href="#" id="dl-wp-note-clear">Toon alle documenten</a>';
         gapNote.style.display = '';
+        const clr = gapNote.querySelector('#dl-wp-note-clear');
+        if (clr) clr.addEventListener('click', function(ev){
+          ev.preventDefault();
+          _activeViewId = '';
+          _activeDocSet = null;
+          _wpClearNew();
+          _saveColsConfig();
+          _renderViewsButton();
+          _renderViewsPicker();
+          _renderTable();
+        });
       } else {
         gapNote.style.display = 'none';
       }
@@ -9927,6 +9945,14 @@ const DL = (function(){
     if (!btn) return;
     const v = _viewFind(_activeViewId);
     const dirty = v && _viewIsDirty();
+    // v1.34: docset actief maar view onvindbaar (bv. hub-herladen/verwijderd) →
+    // toon dan tóch de werkpakket-staat, nooit een kale "Weergaves"-knop.
+    if (!v && _activeDocSet){
+      btn.innerHTML = '<span class="dl-cols-icon">📌</span>Werkpakket · ' + _activeDocSet.size;
+      btn.classList.add('dl-views-on');
+      btn.title = 'Er is een vast werkpakket actief (' + _activeDocSet.size + ' documenten) — via Losmaken of de balk hierboven keer je terug naar de volledige lijst';
+      return;
+    }
     let setCount = '', setTitle = '';
     if (v && _activeDocSet){
       const st = _wpSetStats();
