@@ -164,6 +164,51 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .bstat .val.small{font-size:16px;font-weight:700}
 .bstat .val .muted{color:var(--g3);font-weight:600}
 
+/* v1.37 — metadata-schema-statuskaart onder de big-stats */
+.meta-card{
+  display:flex;align-items:center;gap:var(--s3);width:100%;
+  background:#fff;border:1px solid var(--hl-light);border-radius:var(--r-md);
+  padding:var(--s3) var(--s4);margin:calc(-1 * var(--s4)) 0 var(--s5);
+  box-shadow:0 2px 8px rgba(0,0,0,.03);cursor:pointer;text-align:left;
+  font-family:'Poppins',sans-serif;transition:border-color .15s, box-shadow .15s;
+}
+.meta-card:hover{border-color:var(--af);box-shadow:0 4px 14px rgba(0,0,0,.07)}
+.meta-card:focus-visible{outline:2px solid var(--af);outline-offset:2px}
+.meta-card .mc-icon{
+  width:30px;height:30px;border-radius:var(--r-md);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+  background:var(--gr);color:var(--g4);
+}
+.meta-card.is-on .mc-icon{background:var(--okbg);color:var(--ok)}
+.meta-card.is-off .mc-icon{background:var(--gr);color:var(--g4)}
+.meta-card .mc-body{flex:1;min-width:0}
+.meta-card .mc-title{
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:var(--fs-md);
+  color:var(--dk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.meta-card.is-on .mc-title{color:var(--ok)}
+.meta-card .mc-sub{
+  font-size:var(--fs-sm);color:var(--g5);line-height:1.35;margin-top:1px;
+  display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.meta-card .mc-chevron{color:var(--g4);font-size:14px;flex-shrink:0}
+.meta-card.is-loading{cursor:default;opacity:.75}
+.meta-card.is-loading:hover{border-color:var(--hl-light);box-shadow:0 2px 8px rgba(0,0,0,.03)}
+
+/* Veldenlijst-tabel in de schema-modal */
+.meta-fields-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm);margin-top:var(--s3)}
+.meta-fields-table th{
+  text-align:left;padding:6px 10px;font-family:'Montserrat',sans-serif;font-weight:700;
+  font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.4px;color:var(--g5);
+  border-bottom:2px solid var(--af);
+}
+.meta-fields-table td{padding:6px 10px;border-bottom:1px solid var(--hl-light);color:var(--dk)}
+.meta-fields-table tr:nth-child(even) td{background:var(--gr)}
+.meta-req-badge{
+  display:inline-block;padding:1px 8px;border-radius:var(--r-pill);font-size:10px;
+  font-weight:700;letter-spacing:.4px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;
+}
+
 /* =========================================
    Tiles — extension-card pattern
    ========================================= */
@@ -1328,6 +1373,15 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
           <div class="bstat"><div class="lab">Groepen</div><div class="val" id="st-groups">–</div></div>
           <div class="bstat"><div class="lab">Regio</div><div class="val small" id="st-region">–</div></div>
         </div>
+        <!-- v1.37: metadata-schema-status. Vult via PU.ensureSchemaInfo() → renderSchemaCard() -->
+        <button type="button" id="metaSchemaCard" class="meta-card is-loading" aria-label="Metadata-schema status">
+          <span class="mc-icon">📋</span>
+          <span class="mc-body">
+            <span class="mc-title">Metadata-schema</span>
+            <span class="mc-sub">Controleren…</span>
+          </span>
+          <span class="mc-chevron">›</span>
+        </button>
       </section>
 
       <section class="sec">
@@ -1460,7 +1514,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.36';
+const COCKPIT_VERSION = '1.37';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -1611,6 +1665,29 @@ const DIAG = (function(){
     try { host = new URL(TC_API_BASE).host; } catch(_){}
     add('Regio', 'ok', tcRegion + ' → ' + host
         + (tcProject && tcProject.location ? ' (project: ' + tcProject.location + ')' : ''));
+
+    // v1.37: metadata-schema aanwezig? TC regelt dit per project op licentieniveau;
+    // zonder schema staan alle metadata-features uit — de nummer-1 verklaring voor
+    // "alle kolommen zijn leeg". Bounded wait: sanity her-draait bij elke panel-open.
+    if (tcToken && tcProject && typeof PU !== 'undefined' && typeof PU.ensureSchemaInfo === 'function'){
+      try {
+        const si = await Promise.race([
+          PU.ensureSchemaInfo(),
+          new Promise(function(resolve){ setTimeout(function(){ resolve(undefined); }, 4000); }),
+        ]);
+        if (si === undefined){
+          add('Metadata-schema', 'warn', 'nog niet geladen — open Diagnose opnieuw voor de definitieve status');
+        } else if (si.hasSchema){
+          add('Metadata-schema', 'ok', 'actief — ' + si.fieldCount + ' velden'
+              + (si.requiredCount > 0 ? ' (' + si.requiredCount + ' verplicht)' : '')
+              + (si.name ? ' · ' + si.name : ''));
+        } else {
+          add('Metadata-schema', 'warn', 'geen schema in dit project — metadata-kolommen, upload-velden en filters staan uit (Trimble regelt dit op licentieniveau)');
+        }
+      } catch(e){
+        add('Metadata-schema', 'warn', 'status onbekend: ' + (e && e.message || '?'));
+      }
+    }
 
     // De check die het vaakst "werkt bij ons, niet bij de klant" verklaart:
     // een bedrijfsproxy die de directe TC-call blokkeert waardoor alles via
@@ -2408,6 +2485,13 @@ async function loadDashboard(){
   renderPlaceholders();
   bindTopbar(); // moet ná de access-check zodat .allowed correct in tabs landt
 
+  // v1.37: schema-kaart klikbaar — eenmalige binding (loadDashboard draait 1× per sessie)
+  const schemaCard = $('metaSchemaCard');
+  if (schemaCard) schemaCard.addEventListener('click', function(){
+    if (schemaCard.classList.contains('is-loading')) return;
+    openSchemaFieldsModal();
+  });
+
   // Eerste data-load van project-context (widgets + tile-stats + user-rol)
   await _loadProjectContext();
 
@@ -2489,6 +2573,16 @@ async function _loadProjectContext(){
   renderReleases(releases);
   renderShares(shares);
   renderFavorites();
+
+  // v1.37: metadata-schema-status. Fire-and-forget, bewust NIET in de Promise.all
+  // hierboven — de kaart mag laat binnenkomen zonder de dashboard-render te blokkeren.
+  // Idempotent: PU's _schemaLoaded-guard voorkomt dubbele fetches bij dashboard-refresh.
+  if (typeof PU !== 'undefined' && typeof PU.ensureSchemaInfo === 'function'){
+    PU.ensureSchemaInfo().then(renderSchemaCard).catch(function(e){
+      console.warn('[Cockpit] schema-status ophalen mislukt:', e && e.message);
+      renderSchemaCard(null);
+    });
+  }
 }
 
 // ============================================================
@@ -3130,6 +3224,87 @@ function renderFavorites(){
       if (star) star.classList.remove('active');
     });
   });
+}
+
+// ============================================================
+//  v1.37 — Metadata-schema-statuskaart (Tom: "zien of en welk schema actief is")
+//  TC regelt op licentieniveau of een project een PSet-schema heeft. Zonder
+//  schema doen metadata-kolommen, upload-velden en filters niets — dat was
+//  onzichtbaar en leidde tot "de cockpit is stuk"-meldingen.
+// ============================================================
+let _schemaCardInfo = null; // laatst-ontvangen info; gebruikt door click-handler
+
+function renderSchemaCard(info){
+  const card = $('metaSchemaCard');
+  if (!card) return;
+  _schemaCardInfo = info;
+  card.classList.remove('is-loading','is-on','is-off');
+  const title = card.querySelector('.mc-title');
+  const sub = card.querySelector('.mc-sub');
+  const icon = card.querySelector('.mc-icon');
+  if (!title || !sub) return;
+  if (!info){
+    // Error-state: fetch mislukt — status onbekend, geen alarm
+    card.classList.add('is-off');
+    if (icon) icon.textContent = '📋';
+    title.textContent = 'Metadata-schema — status onbekend';
+    sub.textContent = 'Kon de schemastatus niet ophalen. Open het Diagnose-paneel voor details.';
+    return;
+  }
+  if (info.hasSchema){
+    card.classList.add('is-on');
+    if (icon) icon.textContent = '✓';
+    title.textContent = 'Metadata-schema actief — ' + info.fieldCount + ' velden'
+      + (info.name ? ' (' + info.name + ')' : '');
+    sub.textContent = (info.requiredCount > 0 ? info.requiredCount + ' verplicht in schema · ' : '')
+      + 'klik voor de veldenlijst';
+  } else {
+    card.classList.add('is-off');
+    if (icon) icon.textContent = '📋';
+    title.textContent = 'Geen metadata-schema in dit project';
+    sub.textContent = 'Trimble stelt dit per project op licentieniveau in — metadata-kolommen, upload-velden en filters staan nu uit. Klik voor uitleg.';
+  }
+}
+
+function openSchemaFieldsModal(){
+  const info = _schemaCardInfo;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'pu-modal-backdrop';
+  const typeLabel = function(f){
+    if (f.type === 'enum') return 'Keuzelijst (' + f.enumCount + ' waarden)';
+    if (f.type === 'date') return 'Datum';
+    return 'Tekst';
+  };
+  let body;
+  if (info && info.hasSchema){
+    const rows = info.fields.map(function(f){
+      return '<tr><td>' + escapeHtml(f.label) + '</td>'
+        + '<td>' + escapeHtml(typeLabel(f)) + '</td>'
+        + '<td>' + (f.required ? '<span class="meta-req-badge">verplicht</span>' : '') + '</td></tr>';
+    }).join('');
+    body = '<h2>Metadata-schema' + (info.name ? ' — ' + escapeHtml(info.name) : '') + '</h2>'
+      + '<p class="sub">' + info.fieldCount + ' velden actief in dit project'
+      + (info.requiredCount > 0 ? ' · ' + info.requiredCount + ' door het schema als verplicht gemarkeerd' : '') + '.'
+      + ' Trimble Connect stelt dit per project op licentieniveau in.</p>'
+      + '<table class="meta-fields-table"><thead><tr><th>Veld</th><th>Type</th><th></th></tr></thead>'
+      + '<tbody>' + rows + '</tbody></table>';
+  } else if (info && !info.hasSchema){
+    body = '<h2>Geen metadata-schema in dit project</h2>'
+      + '<p class="sub">Trimble Connect stelt per project op licentieniveau in of er een eigenschappenset (metadata-schema) actief is. In dit project is er geen — daardoor staan metadata-kolommen in de Documentenlijst, de metadata-velden in de uploader en de metadata-filters uit.</p>'
+      + '<p class="sub">Wat kun je doen? Vraag je Trimble Connect-beheerder om een eigenschappenset aan dit project te koppelen (Instellingen → Eigenschappenset bibliotheek), of mail At Fielt via <strong>info@atfielt.nl</strong> — dan kijken we mee.</p>';
+  } else {
+    body = '<h2>Schemastatus onbekend</h2>'
+      + '<p class="sub">De schemastatus kon niet worden opgehaald. Open het Diagnose-paneel (rechtsonder) en gebruik <em>Kopieer diagnose</em> — mail dat rapport naar info@atfielt.nl, dan zien wij direct wat er speelt.</p>';
+  }
+  backdrop.innerHTML = '<div class="pu-modal">' + body
+    + '<div style="margin-top:16px;text-align:right">'
+    + '<button type="button" class="pu-tpl-skip" data-close-schema-modal="1">Sluiten</button>'
+    + '</div></div>';
+  document.body.appendChild(backdrop);
+  const close = function(){ try { backdrop.remove(); } catch(_){} };
+  backdrop.addEventListener('click', function(e){ if (e.target === backdrop) close(); });
+  const closeBtn = backdrop.querySelector('[data-close-schema-modal]');
+  if (closeBtn) closeBtn.addEventListener('click', close);
 }
 
 // ============================================================
@@ -3909,7 +4084,10 @@ const PU = (function(){
           schemaRequired: !!def.required,
         });
       }
-      _schemaDef = { props: r.schema.props, labels: labels, fields: fields };
+      // v1.37: schema-/bibliotheeknaam meenemen indien TC die ooit meestuurt.
+      // Huidige defs-responses hebben er geen — dan blijft dit null en toont de
+      // dashboard-kaart alleen het aantal velden.
+      _schemaDef = { props: r.schema.props, labels: labels, fields: fields, name: r.name || r.title || null };
       console.log('[PU] PSet-schema geladen:', fields.length, 'velden —',
         fields.map(function(f){ return f.label + ' (' + f.type + ')'; }).join(', '));
       _schemaLoaded = true;
@@ -3931,6 +4109,43 @@ const PU = (function(){
       { uuid: PROP_UUIDS.project_fase,    label: 'Fase',       type: 'enum', enum: ENUM_VALUES.project_fase,    maxLength: null, schemaRequired: false },
       { uuid: PROP_UUIDS.document_status, label: 'Status',     type: 'enum', enum: ENUM_VALUES.document_status, maxLength: null, schemaRequired: false },
     ];
+  }
+
+  // v1.37 — schema-status voor de dashboard-kaart en het Diagnose-paneel.
+  // Licentie-onafhankelijk (alleen tcToken nodig): werkt ook wanneer de klant geen
+  // PU-licentie heeft en warmAll de PU-prefetch skipt. Bestaande _schemaLoaded/
+  // _schemaLoading-guards voorkomen dubbele fetches als prefetch later ook draait.
+  // Retourneert een KOPIE — callers kunnen niet in _schemaDef muteren.
+  async function ensureSchemaInfo(){
+    if (_schemaLoading){
+      // Load loopt al (bv. prefetch): poll tot klaar — zelfde patroon als prefetch-race.
+      await new Promise(function(resolve){
+        const t = setInterval(function(){
+          if (!_schemaLoading){ clearInterval(t); resolve(); }
+        }, 100);
+      });
+    } else if (!_schemaLoaded){
+      await _loadPsetSchema();
+    }
+    const hasSchema = !!(_schemaDef && _schemaDef.fields && _schemaDef.fields.length);
+    if (!hasSchema){
+      return { hasSchema: false, fieldCount: 0, requiredCount: 0, name: null, fields: [] };
+    }
+    const fields = _schemaDef.fields.map(function(f){
+      return {
+        label: f.label,
+        type: f.type,
+        enumCount: (f.enum && f.enum.length) || 0,
+        required: !!f.schemaRequired,
+      };
+    });
+    return {
+      hasSchema: true,
+      fieldCount: fields.length,
+      requiredCount: fields.filter(function(f){ return f.required; }).length,
+      name: _schemaDef.name || null,
+      fields: fields,
+    };
   }
 
   // Geeft de actieve velden terug — wat in de uploader-rij verschijnt.
@@ -6587,9 +6802,11 @@ const PU = (function(){
         configGeladen: _configLoaded,
         regels: (_uploadConfig && _uploadConfig.rules ? _uploadConfig.rules.length : 0),
         schemaGeladen: _schemaLoaded,
+        schemaVelden: (_schemaDef && _schemaDef.fields) ? _schemaDef.fields.length : 0,
         psetOk: _psetStats.ok, psetFout: _psetStats.fail
       };
     },
+    ensureSchemaInfo: ensureSchemaInfo,
     activate: function(){
       // Hub-access respecteren (defense-in-depth bovenop tile/tab disable)
       const ext = EXTENSIONS.find(function(e){ return e.key === 'project-upload'; });

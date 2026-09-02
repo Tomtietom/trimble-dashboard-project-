@@ -2,6 +2,24 @@
 
 ---
 
+## Versie 1.37 — 2 september 2026
+
+### Dashboard toont nu of het project een metadata-schema heeft
+
+Trimble Connect bepaalt per project — op licentieniveau — of er een eigenschappenset (metadata-schema) actief is. Zonder schema doen alle metadata-onderdelen van de cockpit niets: kolommen blijven leeg, de uploader valt terug op drie standaardvelden en de filters vinden niets. Dat was tot nu toe onzichtbaar; gebruikers zagen alleen "lege" metadata en dachten dat de cockpit stuk was.
+
+**Wat is er veranderd?**
+
+- **Statuskaart op het dashboard** — direct onder de projectcijfers staat nu een kaart die voor iedereen zichtbaar is: groen **"Metadata-schema actief — 16 velden"** wanneer er een schema is, of grijs **"Geen metadata-schema in dit project"** met één zin uitleg wanneer het ontbreekt.
+- **Klik voor de veldenlijst** — de kaart opent een overzicht van alle velden in het schema: naam, type (*Keuzelijst (12 waarden)*, *Datum* of *Tekst*) en of het schema het veld als verplicht markeert. Zo zie je in één oogopslag wélk schema er draait.
+- **Zonder schema: uitleg én handelingsperspectief** — de kaart legt uit dat Trimble dit per project regelt, en wat je kunt doen: je Trimble Connect-beheerder vragen een eigenschappenset te koppelen, of At Fielt mailen.
+- **Extra regel in het Diagnose-paneel** — de Diagnose (rechtsonder) controleert nu ook de schemastatus. Bij een supportmelding zien wij dus direct of "geen schema" de verklaring is voor lege metadata.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.36 — 2 september 2026
 
 ### Deel-links op het dashboard tonen nu de bestandsnaam
