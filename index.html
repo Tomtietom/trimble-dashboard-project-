@@ -1515,7 +1515,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.41';
+const COCKPIT_VERSION = '1.42';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -12290,10 +12290,17 @@ const DL = (function(){
 
   // v1.41 — projectleden voor het deelvenster (klant: "projectleden worden niet
   // herkend in het invulveld"): autocomplete via datalist + herkenning per adres.
-  let _shareMembers = null;     // [{email,name}] — null = (nog) niet geladen
+  let _shareMembers = null;     // [{email,name,id}] — null = (nog) niet geladen
   let _shareMembersBusy = false;
-  async function _shareMembersLoad(){
-    if (_shareMembers || _shareMembersBusy || !tcProject || !tcProject.id || !tcToken) return;
+  let _shareMembersPromise = null; // v1.42: submit kan op de load wachten
+  function _shareMembersLoad(){
+    if (_shareMembers) return Promise.resolve();
+    if (_shareMembersPromise) return _shareMembersPromise;
+    _shareMembersPromise = _shareMembersLoadEcht().finally(function(){ _shareMembersPromise = null; });
+    return _shareMembersPromise;
+  }
+  async function _shareMembersLoadEcht(){
+    if (!tcProject || !tcProject.id || !tcToken) return;
     _shareMembersBusy = true;
     try {
       const all = [];
@@ -12306,7 +12313,8 @@ const DL = (function(){
         if (!Array.isArray(users) || !users.length) break;
         users.forEach(function(u){
           if (u && u.email) all.push({ email: String(u.email).toLowerCase(),
-            name: ((u.firstName || '') + ' ' + (u.lastName || '')).trim() });
+            name: ((u.firstName || '') + ' ' + (u.lastName || '')).trim(),
+            id: u.id || u.userId || '' }); // v1.42: nodig voor USER-notify bij PROJECT_USERS
         });
         if (users.length < pageSize) break;
         start += pageSize;
@@ -12452,8 +12460,11 @@ const DL = (function(){
     // lukt niet"). Nu: wél versturen; alleen bij een adres dat geen projectlid is
     // eerst bevestigen, want die ontvanger kan de bestanden bij deze modus niet openen.
     if (shareMode === 'PROJECT_USERS' && emails.length){
+      // v1.42: wacht op de ledenlijst — nodig om e-mails naar TC-gebruikers-ids te
+      // vertalen (TC eist notify-type USER bij deze modus; EMAIL geeft 400).
+      try { await _shareMembersLoad(); } catch(_){}
       const onbekend = _shareOnbekendeLeden(emails);
-      if (onbekend.length && !window.confirm('Geen projectlid: ' + onbekend.join(', ') + '\n\nBij "Alleen projectleden" kunnen zij de bestanden niet openen, ook al ontvangen ze de mail. Toch delen?')) return;
+      if (onbekend.length && !window.confirm('Geen projectlid: ' + onbekend.join(', ') + '\n\nBij "Alleen projectleden" kan alleen naar projectleden gestuurd worden; deze adressen worden overgeslagen. Toch delen?')) return;
     }
 
     const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
@@ -12473,7 +12484,22 @@ const DL = (function(){
       objects: selDocs.map(function(d){ return { id: d._vid, type: 'FILE' }; }),
     };
     if (expiryDate) body.expiryDate = expiryDate;
-    if (emails.length) body.notify = emails.map(function(e){ return { type: 'EMAIL', id: e }; });
+    // v1.42 — klant-400 "Invalid notify type for specified mode": bij
+    // PROJECT_USERS eist TC notify-type USER met het gebruikers-id; EMAIL is
+    // daar ongeldig. Bij de andere modi blijft EMAIL het juiste type.
+    if (emails.length){
+      if (shareMode === 'PROJECT_USERS'){
+        const leden = [];
+        emails.forEach(function(e){
+          const low = e.toLowerCase();
+          const lid = _shareMembers && _shareMembers.find(function(m){ return m.email === low; });
+          if (lid && lid.id) leden.push({ type: 'USER', id: lid.id });
+        });
+        if (leden.length) body.notify = leden;
+      } else {
+        body.notify = emails.map(function(e){ return { type: 'EMAIL', id: e }; });
+      }
+    }
 
     submitBtn.disabled = true;
     submitBtn.textContent = '⏳ Verzenden…';
@@ -12487,17 +12513,29 @@ const DL = (function(){
         });
       };
       let r = await post(body);
-      let notifyFailed = false;
-      if (!r.ok && r.status === 400 && body.notify){
-        // v1.41 — vangnet: weigert TC de e-mailmelding voor deze modus, dan moet
-        // het delen zelf wél doorgaan; de mislukte melding wordt daarna gemeld.
-        const eersteTekst = await r.text().catch(function(){ return ''; });
-        console.warn('[DL] share 400 mét notify, retry zonder:', eersteTekst.slice(0, 200));
-        const b2 = Object.assign({}, body);
-        delete b2.notify;
-        const r2 = await post(b2);
-        if (r2.ok){ r = r2; notifyFailed = true; }
-        else { throw new Error('HTTP 400: ' + eersteTekst.slice(0, 300)); }
+      // v1.42 — zelfherstellende ladder: TC's 400-teksten benoemen het geweigerde
+      // veld ("Expiry date cannot be specified", "Invalid notify type"). Herken het
+      // veld, laat het weg, probeer opnieuw en meld achteraf wat TC niet accepteerde.
+      // (v1.41 had één blinde retry en gooide de twééde fouttekst weg — diagnose-gat.)
+      const weggelaten = [];
+      let pogingen = 0;
+      while (!r.ok && r.status === 400 && pogingen < 3){
+        const tekst = await r.text().catch(function(){ return ''; });
+        // Op de melding-wáárde matchen, niet op de rauwe JSON: die heeft altijd
+        // een "message"-sleutel en zou dus elke fout op het bericht-veld gooien.
+        let melding = tekst;
+        try { const j = JSON.parse(tekst); if (j && j.message) melding = String(j.message); } catch(_){}
+        let veld = null;
+        if (/notify/i.test(melding) && body.notify) veld = 'notify';
+        else if (/permission/i.test(melding) && body.permission) veld = 'permission';
+        else if (/expir/i.test(melding) && body.expiryDate) veld = 'expiryDate';
+        else if (/message/i.test(melding) && body.message) veld = 'message';
+        if (!veld) throw new Error('HTTP 400: ' + tekst.slice(0, 300));
+        console.warn('[DL] share 400 op veld "' + veld + '" — opnieuw zonder. TC zei:', tekst.slice(0, 200));
+        delete body[veld];
+        weggelaten.push(veld);
+        pogingen++;
+        r = await post(body);
       }
       if (!r.ok){
         const txt = await r.text().catch(function(){ return ''; });
@@ -12513,7 +12551,7 @@ const DL = (function(){
         const url = so && so.url ? 'https://web.connect.trimble.com' + so.url : '';
         return { name: d.bestandsnaam, url: url };
       });
-      _renderShareSuccess(links, shareMode, selDocs.length, emails, notifyFailed);
+      _renderShareSuccess(links, shareMode, selDocs.length, emails, weggelaten);
     } catch(e){
       console.error('[DL] Share fout:', e);
       alert('Delen mislukt: ' + e.message);
@@ -12522,7 +12560,7 @@ const DL = (function(){
     }
   }
 
-  function _renderShareSuccess(links, shareMode, count, emails, notifyFailed){
+  function _renderShareSuccess(links, shareMode, count, emails, weggelaten){
     const form = document.getElementById('dl-share-form');
     const success = document.getElementById('dl-share-success');
     const successMsg = document.getElementById('dl-share-success-msg');
@@ -12535,11 +12573,17 @@ const DL = (function(){
     if (copyBtn) copyBtn.style.display = '';
     if (successMsg){
       const modeText = shareMode === 'PUBLIC' ? 'openbaar' : (shareMode === 'PROJECT_USERS' ? 'met projectleden' : 'met geregistreerde gebruikers');
-      const emailText = emails.length
-        ? (notifyFailed
-            ? ' Let op: Trimble kon de e-mailmelding bij deze deelmodus niet versturen — stuur de links hieronder zelf door.'
-            : ' Verstuurd via TC naar: ' + emails.join(', ') + '.')
+      const genotifyd = emails.length && !(weggelaten && weggelaten.indexOf('notify') >= 0);
+      let emailText = emails.length
+        ? (genotifyd
+            ? ' Verstuurd via TC naar: ' + emails.join(', ') + '.'
+            : ' Let op: Trimble kon de e-mailmelding bij deze deelmodus niet versturen — stuur de links hieronder zelf door.')
         : '';
+      const rest = (weggelaten || []).filter(function(v){ return v !== 'notify'; });
+      if (rest.length){
+        const nl = { permission: 'de rechten-keuze', expiryDate: 'de vervaldatum', message: 'het bericht' };
+        emailText += ' Trimble accepteerde bij deze deelmodus niet: ' + rest.map(function(v){ return nl[v] || v; }).join(' en ') + ' — gedeeld met de standaardinstellingen.';
+      }
       successMsg.textContent = '✓ ' + count + ' bestand' + (count === 1 ? '' : 'en') + ' gedeeld ' + modeText + '.' + emailText;
     }
     if (linksEl){

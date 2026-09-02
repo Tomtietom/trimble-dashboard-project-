@@ -2,6 +2,22 @@
 
 ---
 
+## Versie 1.42 — 2 september 2026
+
+### Delen met "Alleen projectleden": ook het meesturen van e-mails werkt nu
+
+Vervolg op v1.41. De vervaldatum-fout was opgelost, maar daaronder zat nog een tweede Trimble-regel: bij "Alleen projectleden" accepteert Trimble geen losse e-mailadressen als melding, alleen verwijzingen naar de gebruikersaccounts van het project.
+
+**Wat is er veranderd?**
+
+- **Meldingen gaan nu als projectlid-verwijzing.** De cockpit vertaalt de getypte e-mailadressen automatisch naar de bijbehorende projectleden-accounts. Adressen van buiten het project worden bij deze modus overgeslagen (na een duidelijke melding) — Trimble kan ze hier simpelweg niet bedienen.
+- **Slimmer vangnet.** Weigert Trimble bij een deelmodus tóch nog een onderdeel (bijvoorbeeld de rechten-keuze of het bericht), dan herkent de cockpit uit de foutmelding wélk onderdeel het was, deelt alsnog zonder dat onderdeel en vertelt je achteraf precies wat er niet geaccepteerd werd. Het delen zelf strandt daar niet meer op.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw, en probeer dezelfde deelactie nog eens.
+
+---
+
 ## Versie 1.41 — 2 september 2026
 
 ### Delen met "Alleen projectleden" werkt weer, en het e-mailveld kent je projectleden
