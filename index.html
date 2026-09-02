@@ -1514,7 +1514,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.37';
+const COCKPIT_VERSION = '1.38';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -8989,6 +8989,9 @@ const DL = (function(){
         v = '<span class="dl-bdg ' + (qrWarn ? 'dl-bdg-ver' : 'dl-bdg-def') + '" title="' + _esc(qrTt) + '">🏷 ' + _esc(v) + '</span>';
       }
       else {
+        // v1.38 — datum-metadata (doc.datum e.d.) in dezelfde weergave als
+        // Toegevoegd (klantvoorkeur); opslag blijft ISO, alleen de tekst verandert.
+        if (v != null && v !== '' && _isDateField(c.k) && /^\d{4}-\d{2}-\d{2}/.test(String(v))) v = _formatDate(v);
         v = _esc(v == null ? '' : v);
         // Metadata-kolommen krijgen dl-cell-meta zodat lange teksten afbreken en de
         // kolom versmalbaar is (klant-melding: alleen de mapnaam-kolom "vouwde op").
@@ -10872,6 +10875,29 @@ const DL = (function(){
           cell.value = { formula: 'HYPERLINK("' + safeUrl + '","' + safeText + '")', result: displayText };
         }
       }
+      // v1.38 — datum-metadatakolommen als échte Excel-datums met opmaak
+      // "dd mmm jjjj", dezelfde weergave als Toegevoegd (klantvoorkeur). Typt
+      // iemand een nieuwe datum, dan maakt Excel er zelf weer een datumcel van.
+      // Het basis-werkblad houdt de rauwe ISO-string, dus de diff blijft kloppen.
+      const dateColIdx = [];
+      cols.forEach(function(c, i){
+        if (c.k !== '_created' && c.k !== '_modified' && _isDateField(c.k)) dateColIdx.push(i);
+      });
+      dateColIdx.forEach(function(ci){ ws.getColumn(ci + 1).numFmt = 'dd mmm yyyy;@'; });
+      if (dateColIdx.length){
+        for (let rowI = 1; rowI < aoa.length; rowI++){
+          if (groupHeaderRows.indexOf(rowI) !== -1) continue;
+          const arr = aoa[rowI];
+          if (!arr || arr.length === 0) continue;
+          dateColIdx.forEach(function(ci){
+            const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(arr[ci] || ''));
+            if (!m) return; // onherkenbare waarde blijft gewoon tekst
+            const cell = ws.getCell(rowI + 1, ci + 1);
+            cell.value = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+            cell.numFmt = 'dd mmm yyyy;@';
+          });
+        }
+      }
       // Kolom-breedtes op basis van tekst-lengte (max 60).
       // ExcelJS' column.width gebruikt dezelfde tekenbreedte-eenheid als SheetJS' wch,
       // dus de berekende getallen blijven ongewijzigd.
@@ -11015,9 +11041,10 @@ const DL = (function(){
       else if (v.text != null) v = v.text;
     }
     if (v instanceof Date){
-      // Excel-datum → jjjj-mm-dd (lokaal, anders schuift de dag door de tijdzone)
+      // Excel-datum → jjjj-mm-dd. UTC-getters: ExcelJS ankert Excel-serials op
+      // UTC-middernacht, dus lokale getters zouden wést van UTC een dag terugschuiven.
       const p = function(n){ return String(n).padStart(2, '0'); };
-      return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate());
+      return v.getUTCFullYear() + '-' + p(v.getUTCMonth() + 1) + '-' + p(v.getUTCDate());
     }
     return String(v);
   }
@@ -11027,6 +11054,31 @@ const DL = (function(){
   function _xiNorm(v){
     const s = String(v == null ? '' : v).trim();
     return s === '--' ? '' : s;
+  }
+
+  // v1.38 — getypte datums ruimhartig herkennen (klant typte "02 sep 2026", de
+  // notatie die de kolom Toegevoegd toont, en liep vast op de strikte jjjj-mm-dd-
+  // eis). NL + EN maandnamen; eerste 3 letters volstaan ("maart" → maa).
+  const _XI_MAANDEN = { jan:1, feb:2, mrt:3, maa:3, mar:3, apr:4, mei:5, may:5,
+    jun:6, jul:7, aug:8, sep:9, okt:10, oct:10, nov:11, dec:12 };
+  function _xiIsoDate(y, mo, d){
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const p = function(n){ return String(n).padStart(2, '0'); };
+    return y + '-' + p(mo) + '-' + p(d);
+  }
+  function _xiParseDatum(s){
+    s = String(s == null ? '' : s).trim();
+    if (!s) return null;
+    let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+    if (m) return _xiIsoDate(+m[1], +m[2], +m[3]);
+    m = /^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/.exec(s);
+    if (m) return _xiIsoDate(+m[3], +m[2], +m[1]); // NL-conventie: dd-mm-jjjj
+    m = /^(\d{1,2})\s+([a-z]{3,9})\.?\s+(\d{4})$/.exec(s.toLowerCase());
+    if (m){
+      const mo = _XI_MAANDEN[m[2].slice(0, 3)];
+      if (mo) return _xiIsoDate(+m[3], mo, +m[1]);
+    }
+    return null;
   }
 
   // Leest het verborgen basis-werkblad. null = geen geldig basis-blad.
@@ -11099,7 +11151,7 @@ const DL = (function(){
         const c = parseInt(cStr, 10);
         const key = colMap[c];
         if (!(key in basisRij)) continue; // veld zat niet in deze export
-        const excel = _xiNorm(_xiCellText(ws.getCell(r, c)));
+        let excel = _xiNorm(_xiCellText(ws.getCell(r, c)));
         const basisVal = basisRij[key];
         if (excel === basisVal) continue; // niet aangeraakt in Excel → nooit schrijven
         // Validatie binnen het projectschema
@@ -11109,9 +11161,16 @@ const DL = (function(){
             reden: 'geen geldige waarde voor dit veld (kies uit: ' + enumVals.slice(0, 6).join(', ') + (enumVals.length > 6 ? ', …' : '') + ')' });
           continue;
         }
-        if (excel && /datum/.test(key) && !/^\d{4}-\d{2}-\d{2}$/.test(excel)){
-          fouten.push({ naam: doc.bestandsnaam, label: keyLabel[key], waarde: excel, reden: 'geen geldige datum (jjjj-mm-dd)' });
-          continue;
+        if (excel && _isDateField(key)){
+          // v1.38 — accepteer alles wat _xiParseDatum herkent (Excel-datumcel is
+          // hierboven al ISO geworden via _xiCellText); normaliseer naar jjjj-mm-dd.
+          const iso = _xiParseDatum(excel);
+          if (!iso){
+            fouten.push({ naam: doc.bestandsnaam, label: keyLabel[key], waarde: excel, reden: 'geen herkenbare datum (gebruik bv. 02-09-2026 of 2 sep 2026)' });
+            continue;
+          }
+          excel = iso;
+          if (excel === basisVal) continue; // zelfde datum, alleen anders genoteerd
         }
         const huidig = _xiNorm(doc[key]);
         const item = { vid: vid, doc: doc, key: key, label: keyLabel[key], oud: huidig, nieuw: excel };
@@ -11218,11 +11277,15 @@ const DL = (function(){
     if (r.fouten.length) delen.push(r.fouten.length + ' ongeldige waarde(n)');
     if (sum) sum.textContent = delen.join(' · ') + '. Er wordt pas geschreven na Doorvoeren.';
     let h = '';
+    // v1.38 — datums in de preview in dezelfde leesbare vorm als de tabel
+    function xd(w, s){
+      return (s && w.key && _isDateField(w.key) && /^\d{4}-\d{2}-\d{2}/.test(String(s))) ? _formatDate(s) : s;
+    }
     function rij(w, extra){
       return '<div class="dl-xi-row">'
         + '<span class="dl-xi-naam" title="' + _esc(w.naam || (w.doc && w.doc.bestandsnaam) || '') + '">' + _esc(w.naam || (w.doc && w.doc.bestandsnaam) || '') + '</span>'
         + '<span class="dl-xi-veld">' + _esc(w.label) + '</span>'
-        + (extra || '<span class="dl-xi-delta">' + _esc(w.oud || '(leeg)') + ' → <strong>' + _esc(w.nieuw || '(leeg)') + '</strong></span>')
+        + (extra || '<span class="dl-xi-delta">' + _esc(xd(w, w.oud) || '(leeg)') + ' → <strong>' + _esc(xd(w, w.nieuw) || '(leeg)') + '</strong></span>')
         + '</div>';
     }
     if (r.wijzigingen.length){
@@ -11233,7 +11296,7 @@ const DL = (function(){
     if (r.conflicten.length){
       h += '<div class="dl-xi-groep">Conflicten — iemand wijzigde dit veld in Trimble Connect ná jouw export. Vink aan wat je tóch wilt overschrijven:</div>';
       r.conflicten.forEach(function(c, i){
-        h += rij(c, '<span class="dl-xi-delta"><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-xi-conflict="' + i + '"> TC heeft nu: <em>' + _esc(c.tc || '(leeg)') + '</em> · jouw Excel: <strong>' + _esc(c.nieuw || '(leeg)') + '</strong></label></span>');
+        h += rij(c, '<span class="dl-xi-delta"><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-xi-conflict="' + i + '"> TC heeft nu: <em>' + _esc(xd(c, c.tc) || '(leeg)') + '</em> · jouw Excel: <strong>' + _esc(xd(c, c.nieuw) || '(leeg)') + '</strong></label></span>');
       });
     }
     if (r.fouten.length){

@@ -2,6 +2,25 @@
 
 ---
 
+## Versie 1.38 — 2 september 2026
+
+### Datums: één weergave overal, en datums typen in Excel werkt nu gewoon
+
+Gebruikersfeedback op het Excel terug-inlezen: een aangepaste doc.datum kwam niet mee terug de app in, en de datumkolommen toonden twee verschillende notaties door elkaar (doc.datum als `2026-04-01`, Toegevoegd als `02 sep 2026`).
+
+**Wat is er veranderd?**
+
+- **Overal dezelfde datumweergave.** Doc.datum en andere datum-metadatavelden tonen nu `02 sep 2026`, net als de kolom Toegevoegd — in de documentenlijst, in de Excel-export én in het voorbeeldscherm van het terug-inlezen. Achter de schermen blijft de waarde gewoon een datum; alleen de weergave is gelijkgetrokken.
+- **Datumcellen in de Excel zijn nu échte datums.** Excel herkent ze als datum, en wat je er ook intypt — `02 sep 2026`, `2-9-2026`, `02-09-2026` of `2 september 2026` — het terug-inlezen begrijpt het allemaal en zet het netjes om. Alleen bij iets onherkenbaars krijg je een duidelijke melding met voorbeelden van wat wél kan.
+- **Zelfde datum, andere schrijfwijze telt niet als wijziging.** Typ je in Excel dezelfde datum die er al stond maar in een andere notatie, dan wordt er niets overschreven.
+
+**Goed om te weten:** ook een Excel die je met een eerdere versie hebt geëxporteerd kun je met deze verbeteringen terug-inlezen — de nieuwe datumherkenning geldt daar net zo goed.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw. Voor de mooiste datumcellen exporteer je daarna één keer opnieuw.
+
+---
+
 ## Versie 1.37 — 2 september 2026
 
 ### Dashboard toont nu of het project een metadata-schema heeft
