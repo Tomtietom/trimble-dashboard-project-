@@ -869,6 +869,7 @@ h1 em,h2 em,h3 em,h4 em,.accent{font-style:normal;color:var(--af)}
 .dl-share-label{display:block;font-size:13px;color:var(--g6);font-weight:500;margin-bottom:var(--s3)}
 .dl-share-input{display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--hl);border-radius:var(--r-sm);font:14px 'Poppins',sans-serif;background:#fff;box-sizing:border-box}
 .dl-share-input:focus{outline:none;border-color:var(--af);box-shadow:0 0 0 3px var(--afl)}
+.dl-share-field-note{font-size:11px;line-height:1.4;margin:-4px 0 10px;color:var(--g5)}
 .dl-share-mode-info{padding:8px 12px;border-radius:var(--r-sm);font-size:13px;margin:-4px 0 var(--s3) 0;line-height:1.4}
 .dl-share-files{margin-top:var(--s3);padding:var(--s3);background:var(--gr);border-radius:var(--r-sm);border:1px solid var(--hl-light)}
 .dl-share-files-head{font-size:12px;color:var(--g5);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
@@ -1514,7 +1515,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.40';
+const COCKPIT_VERSION = '1.41';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -12287,6 +12288,75 @@ const DL = (function(){
     }
   }
 
+  // v1.41 — projectleden voor het deelvenster (klant: "projectleden worden niet
+  // herkend in het invulveld"): autocomplete via datalist + herkenning per adres.
+  let _shareMembers = null;     // [{email,name}] — null = (nog) niet geladen
+  let _shareMembersBusy = false;
+  async function _shareMembersLoad(){
+    if (_shareMembers || _shareMembersBusy || !tcProject || !tcProject.id || !tcToken) return;
+    _shareMembersBusy = true;
+    try {
+      const all = [];
+      let start = 0; const pageSize = 100; let safety = 0;
+      while (safety++ < 30){
+        const headers = { 'Authorization': 'Bearer ' + tcToken, 'Accept': 'application/json', 'Range': 'items=' + start + '-' + (start + pageSize - 1) };
+        const r = await fetch(TC_API_BASE + '/projects/' + encodeURIComponent(tcProject.id) + '/users', { headers: headers });
+        if (!r.ok) break;
+        const users = await r.json();
+        if (!Array.isArray(users) || !users.length) break;
+        users.forEach(function(u){
+          if (u && u.email) all.push({ email: String(u.email).toLowerCase(),
+            name: ((u.firstName || '') + ' ' + (u.lastName || '')).trim() });
+        });
+        if (users.length < pageSize) break;
+        start += pageSize;
+      }
+      if (all.length){
+        _shareMembers = all;
+        const dl = document.getElementById('dl-share-members-list');
+        if (dl) dl.innerHTML = all.map(function(m){
+          return '<option value="' + _esc(m.email) + '">' + _esc(m.name) + '</option>';
+        }).join('');
+        console.log('[DL] share: ' + all.length + ' projectleden geladen voor autocomplete');
+      }
+    } catch(e){ console.warn('[DL] share: projectleden laden mislukt:', e.message); }
+    finally { _shareMembersBusy = false; _shareEmailsValidate(); }
+  }
+  function _shareParseEmails(v){
+    return String(v || '').split(',').map(function(e){ return e.trim(); }).filter(function(e){ return e && e.indexOf('@') > 0; });
+  }
+  function _shareOnbekendeLeden(emails){
+    if (!_shareMembers) return [];
+    return emails.filter(function(e){
+      const low = e.toLowerCase();
+      return !_shareMembers.some(function(m){ return m.email === low; });
+    });
+  }
+  function _shareEmailsValidate(){
+    const el = document.getElementById('dl-share-email-check');
+    const emailsEl = document.getElementById('dl-share-emails');
+    const modeEl = document.getElementById('dl-share-mode');
+    if (!el || !emailsEl) return;
+    const emails = _shareParseEmails(emailsEl.value);
+    if (!emails.length){ el.style.display = 'none'; el.textContent = ''; return; }
+    if (!_shareMembers){
+      el.style.display = _shareMembersBusy ? '' : 'none';
+      el.style.color = 'var(--g5)';
+      el.textContent = _shareMembersBusy ? 'Projectleden laden…' : '';
+      return;
+    }
+    const onbekend = _shareOnbekendeLeden(emails);
+    el.style.display = '';
+    if (!onbekend.length){
+      el.style.color = 'var(--ok)';
+      el.textContent = '✓ ' + (emails.length === 1 ? 'Projectlid herkend' : 'Alle ' + emails.length + ' adressen zijn projectleden');
+    } else {
+      el.style.color = '#856404';
+      el.textContent = '⚠ Geen projectlid: ' + onbekend.join(', ')
+        + ((modeEl && modeEl.value === 'PROJECT_USERS') ? ' — kan de bestanden bij "Alleen projectleden" niet openen' : '');
+    }
+  }
+
   // === Share-modal (iter B) ===
   // Toont modal, popt selectie-bestanden in, reset form, vult voorbeeld-vervaldatum (+14 dagen).
   function _openShareDialog(){
@@ -12316,6 +12386,7 @@ const DL = (function(){
       expiry.value = d.toISOString().split('T')[0];
     }
     _updateShareModeInfo();
+    _shareMembersLoad(); // fire-and-forget: vult autocomplete + herkenning zodra binnen
     // Vul bestandenlijst
     const count = document.getElementById('dl-share-count');
     if (count) count.textContent = selDocs.length + ' bestand' + (selDocs.length === 1 ? '' : 'en');
@@ -12348,6 +12419,17 @@ const DL = (function(){
       el.style.background = '#d4edda'; el.style.color = '#155724';
       el.innerHTML = '🔒 Alleen bestaande projectleden kunnen deze bestanden openen.';
     }
+    // v1.41 — Trimble weigert een vervaldatum bij PROJECT_USERS (klant kreeg
+    // HTTP 400 "Expiry date cannot be specified"): veld uit mét zichtbare uitleg.
+    const expiryEl = document.getElementById('dl-share-expiry');
+    const expiryNote = document.getElementById('dl-share-expiry-note');
+    const zonderExpiry = m === 'PROJECT_USERS';
+    if (expiryEl){ expiryEl.disabled = zonderExpiry; expiryEl.style.opacity = zonderExpiry ? '.45' : ''; }
+    if (expiryNote){
+      expiryNote.style.display = zonderExpiry ? '' : 'none';
+      expiryNote.textContent = 'Trimble staat geen vervaldatum toe bij "Alleen projectleden" — leden hebben via het project al toegang. De datum hierboven wordt bij deze keuze genegeerd.';
+    }
+    _shareEmailsValidate();
   }
 
   async function _submitShare(){
@@ -12362,11 +12444,16 @@ const DL = (function(){
     const shareMode = modeEl.value;
     const permission = permEl.value;
     const message = (msgEl && msgEl.value || '').trim();
-    const expiryDate = expiryEl && expiryEl.value ? (expiryEl.value + 'T23:59:00+0000') : null;
-    const emails = (emailsEl && emailsEl.value || '').split(',').map(function(e){ return e.trim(); }).filter(function(e){ return e && e.indexOf('@') > 0; });
+    // v1.41 — Trimble weigert expiryDate bij PROJECT_USERS (klant-400); nooit meesturen.
+    const expiryDate = (shareMode !== 'PROJECT_USERS' && expiryEl && expiryEl.value) ? (expiryEl.value + 'T23:59:00+0000') : null;
+    const emails = _shareParseEmails(emailsEl && emailsEl.value);
 
+    // v1.41 — e-mails werden bij PROJECT_USERS stil genegeerd (klant: "versturen
+    // lukt niet"). Nu: wél versturen; alleen bij een adres dat geen projectlid is
+    // eerst bevestigen, want die ontvanger kan de bestanden bij deze modus niet openen.
     if (shareMode === 'PROJECT_USERS' && emails.length){
-      console.log('[DL] Share: emails worden genegeerd bij mode PROJECT_USERS');
+      const onbekend = _shareOnbekendeLeden(emails);
+      if (onbekend.length && !window.confirm('Geen projectlid: ' + onbekend.join(', ') + '\n\nBij "Alleen projectleden" kunnen zij de bestanden niet openen, ook al ontvangen ze de mail. Toch delen?')) return;
     }
 
     const selDocs = _docs.filter(function(d){ return d._vid && _selectedVids.has(d._vid); });
@@ -12392,11 +12479,26 @@ const DL = (function(){
     submitBtn.textContent = '⏳ Verzenden…';
     try {
       const url = TC_API_BASE + '/shares';
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + tcToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const post = function(b){
+        return fetch(url, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + tcToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(b),
+        });
+      };
+      let r = await post(body);
+      let notifyFailed = false;
+      if (!r.ok && r.status === 400 && body.notify){
+        // v1.41 — vangnet: weigert TC de e-mailmelding voor deze modus, dan moet
+        // het delen zelf wél doorgaan; de mislukte melding wordt daarna gemeld.
+        const eersteTekst = await r.text().catch(function(){ return ''; });
+        console.warn('[DL] share 400 mét notify, retry zonder:', eersteTekst.slice(0, 200));
+        const b2 = Object.assign({}, body);
+        delete b2.notify;
+        const r2 = await post(b2);
+        if (r2.ok){ r = r2; notifyFailed = true; }
+        else { throw new Error('HTTP 400: ' + eersteTekst.slice(0, 300)); }
+      }
       if (!r.ok){
         const txt = await r.text().catch(function(){ return ''; });
         throw new Error('HTTP ' + r.status + ': ' + txt.slice(0, 300));
@@ -12411,7 +12513,7 @@ const DL = (function(){
         const url = so && so.url ? 'https://web.connect.trimble.com' + so.url : '';
         return { name: d.bestandsnaam, url: url };
       });
-      _renderShareSuccess(links, shareMode, selDocs.length, emails);
+      _renderShareSuccess(links, shareMode, selDocs.length, emails, notifyFailed);
     } catch(e){
       console.error('[DL] Share fout:', e);
       alert('Delen mislukt: ' + e.message);
@@ -12420,7 +12522,7 @@ const DL = (function(){
     }
   }
 
-  function _renderShareSuccess(links, shareMode, count, emails){
+  function _renderShareSuccess(links, shareMode, count, emails, notifyFailed){
     const form = document.getElementById('dl-share-form');
     const success = document.getElementById('dl-share-success');
     const successMsg = document.getElementById('dl-share-success-msg');
@@ -12433,7 +12535,11 @@ const DL = (function(){
     if (copyBtn) copyBtn.style.display = '';
     if (successMsg){
       const modeText = shareMode === 'PUBLIC' ? 'openbaar' : (shareMode === 'PROJECT_USERS' ? 'met projectleden' : 'met geregistreerde gebruikers');
-      const emailText = emails.length ? ' Verstuurd via TC naar: ' + emails.join(', ') + '.' : '';
+      const emailText = emails.length
+        ? (notifyFailed
+            ? ' Let op: Trimble kon de e-mailmelding bij deze deelmodus niet versturen — stuur de links hieronder zelf door.'
+            : ' Verstuurd via TC naar: ' + emails.join(', ') + '.')
+        : '';
       successMsg.textContent = '✓ ' + count + ' bestand' + (count === 1 ? '' : 'en') + ' gedeeld ' + modeText + '.' + emailText;
     }
     if (linksEl){
@@ -14003,12 +14109,15 @@ const DL = (function(){
                 '<label class="dl-share-label">Vervalt op (optioneel)' +
                   '<input type="date" id="dl-share-expiry" class="dl-share-input">' +
                 '</label>' +
+                '<div id="dl-share-expiry-note" class="dl-share-field-note" style="display:none"></div>' +
                 '<label class="dl-share-label">Bericht (optioneel)' +
                   '<textarea id="dl-share-msg" class="dl-share-input" rows="3" placeholder="Bericht dat meegestuurd wordt..."></textarea>' +
                 '</label>' +
                 '<label class="dl-share-label">Verstuur via TC naar emails (optioneel, komma-gescheiden)' +
-                  '<input type="text" id="dl-share-emails" class="dl-share-input" placeholder="naam@bedrijf.nl, andere@bedrijf.nl">' +
+                  '<input type="text" id="dl-share-emails" class="dl-share-input" list="dl-share-members-list" placeholder="naam@bedrijf.nl, andere@bedrijf.nl">' +
                 '</label>' +
+                '<datalist id="dl-share-members-list"></datalist>' +
+                '<div id="dl-share-email-check" class="dl-share-field-note" style="display:none"></div>' +
                 '<div class="dl-share-files">' +
                   '<div class="dl-share-files-head"><strong id="dl-share-count">0 bestanden</strong></div>' +
                   '<ul id="dl-share-files-list" class="dl-share-files-list"></ul>' +
@@ -14540,6 +14649,8 @@ const DL = (function(){
     if (shareSubmit) shareSubmit.addEventListener('click', _submitShare);
     const shareModeSel = root.querySelector('#dl-share-mode');
     if (shareModeSel) shareModeSel.addEventListener('change', _updateShareModeInfo);
+    const shareEmails = root.querySelector('#dl-share-emails');
+    if (shareEmails) shareEmails.addEventListener('input', _shareEmailsValidate);
     const shareCopy = root.querySelector('#dl-share-copy');
     if (shareCopy) shareCopy.addEventListener('click', _copyShareLinks);
     // Bulk-edit dialog

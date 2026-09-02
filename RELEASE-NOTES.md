@@ -2,6 +2,23 @@
 
 ---
 
+## Versie 1.41 — 2 september 2026
+
+### Delen met "Alleen projectleden" werkt weer, en het e-mailveld kent je projectleden
+
+Gebruikersfeedback: delen met "Alleen projectleden" gaf een foutmelding, en getypte e-mailadressen leken niet aan te komen.
+
+**Wat is er veranderd?**
+
+- **De foutmelding is opgelost.** Trimble staat bij "Alleen projectleden" geen vervaldatum toe (leden hebben via het project immers al toegang). De cockpit stuurde die datum toch mee, waardoor het hele delen strandde. Nu wordt het vervalveld bij deze keuze uitgeschakeld, met uitleg erbij; bij de andere deelmodi werkt de vervaldatum zoals altijd.
+- **E-mails worden nu ook bij "Alleen projectleden" verstuurd.** Voorheen werden ze bij deze modus stilletjes overgeslagen. Mocht Trimble de melding onverhoopt weigeren, dan gaat het delen zelf gewoon door en zie je in het resultaat dat je de links even zelf moet doorsturen.
+- **Het e-mailveld herkent projectleden.** Tijdens het typen krijg je suggesties uit de ledenlijst van het project, en onder het veld zie je direct of een adres een projectlid is. Typ je bij "Alleen projectleden" een adres van iemand buiten het project, dan waarschuwt de cockpit vóór het delen: die ontvanger krijgt de mail wel, maar kan de bestanden niet openen.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.40 — 2 september 2026
 
 ### De Excel legt nu zelf uit hoe je hem invult
