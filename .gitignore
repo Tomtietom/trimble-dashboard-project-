@@ -17,3 +17,7 @@ _archief/
 
 # Klant-sjablonen en andere Excel-bestanden horen niet in de publieke Pages-repo
 *.xlsx
+
+# Klantmateriaal en opnames — nooit mee naar de publieke repo
+documenten/
+*.mov
