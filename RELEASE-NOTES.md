@@ -2,6 +2,21 @@
 
 ---
 
+## Versie 1.44 — 3 september 2026
+
+### Startersjabloon: bouw je eigen exportsjabloon in een paar minuten
+
+Elk bedrijf heeft zijn eigen documentenlijst-format, en die zijn er legio. Daarom levert de cockpit nu zelf de basis: kies in het Excel-exportmenu **Startersjabloon downloaden** (projectbeheerders).
+
+Je krijgt een kant-en-klaar sjabloon dat al perfect samenwerkt met de export: een vak voor je eigen logo, een titelblok dat bij elke export automatisch wordt ingevuld (projectnaam, datum, opsteller) en een kopregel met precies de metadatakolommen van jouw project. Een meegeleverd Uitleg-tabblad vertelt wat je vrij mag aanpassen: kolommen verplaatsen of weggooien, eigen kolommen toevoegen (die blijven leeg voor handmatig gebruik), en de opmaak volledig naar je huisstijl zetten. Daarna upload je hem via **Sjabloon instellen** en exporteert het hele project in het eigen format.
+
+Ook nieuw: probeer je een sjabloon te uploaden waarin geen kolommen herkend worden, dan verwijst de melding je nu naar het startersjabloon.
+
+**Wat moet je doen?**
+Sluit Trimble Connect één keer volledig en open opnieuw.
+
+---
+
 ## Versie 1.43 — 2 september 2026
 
 ### Exporteren in het eigen documentenlijst-sjabloon van je project

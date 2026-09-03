@@ -1521,7 +1521,7 @@ const EXTENSION_SLUG = 'cockpit';
 //  Cockpit-versie — verschijnt in het diagnoserapport zodat we bij een
 //  klantmelding meteen weten welke build iemand draait.
 // ============================================================
-const COCKPIT_VERSION = '1.43';
+const COCKPIT_VERSION = '1.44';
 
 // ============================================================
 //  DIAG — diagnose (fase 2)
@@ -11145,6 +11145,95 @@ const DL = (function(){
     return beste;
   }
 
+  // v1.44 — startersjabloon (Tom: "kunnen we een template meeleveren? of een
+  // excel waarmee de klant een eigen template kan opbouwen?"). Runtime gegenereerd
+  // zodat de kopregel altijd het metadata-schema van dít project volgt; de klant
+  // bouwt er zijn eigen huisstijl omheen en uploadt hem weer via Sjabloon instellen.
+  function _tplVoorbeeldKolommen(){
+    return ALL_COLS.filter(function(c){
+      return c.k === 'file_location' || c.k === 'bestandsnaam' || _isEditableField(c.k);
+    });
+  }
+  async function _tplVoorbeeldDownload(){
+    try {
+      const ExcelJS = await _ensureExcelJS();
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Documentenlijst');
+
+      // Logo-vak (rij 1-4) — gestippeld kader met instructie
+      ws.mergeCells('A1:C4');
+      const lc = ws.getCell('A1');
+      lc.value = 'Jouw logo hier — vervang dit blok via Invoegen → Afbeeldingen (of maak de cel leeg)';
+      lc.font = { italic: true, size: 11, color: { argb: 'FF8A8378' } };
+      lc.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+      lc.border = { top: { style: 'dashed' }, bottom: { style: 'dashed' }, left: { style: 'dashed' }, right: { style: 'dashed' } };
+
+      // Titelblok met automatisch gevulde velden (benoemde cellen + placeholders)
+      ws.getCell('A6').value = 'DOCUMENTENLIJST';
+      ws.getCell('A6').font = { bold: true, size: 16 };
+      const meta = [['Project:', '[project naam]', 'ProjectName'],
+                    ['Print datum:', '[print datum]', 'PrintDate'],
+                    ['Opgesteld door:', '[opgesteld door]', 'CreatedBy']];
+      meta.forEach(function(m, i){
+        const r = 7 + i;
+        ws.getCell(r, 1).value = m[0];
+        ws.getCell(r, 2).value = m[1];
+        ws.getCell(r, 2).font = { color: { argb: 'FF6F7D88' } };
+        wb.definedNames.add('Documentenlijst!$B$' + r, m[2]);
+      });
+
+      // Kopregel (rij 11) — de kolommen van dit project; verplaatsen/weggooien mag
+      const kolommen = _tplVoorbeeldKolommen();
+      kolommen.forEach(function(c, i){
+        const cel = ws.getCell(11, i + 1);
+        cel.value = c.l || c.k;
+        cel.font = { bold: true };
+        cel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+        cel.border = { bottom: { style: 'medium' } };
+        ws.getColumn(i + 1).width = c.k === 'bestandsnaam' ? 34 : (c.k === 'titel' || c.k === 'file_location' ? 26 : 17);
+      });
+      ws.views = [{ state: 'frozen', ySplit: 11 }];
+      ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '11:11' };
+
+      // Uitleg-tabblad — hoe bouw je hier je eigen sjabloon van
+      const wsU = wb.addWorksheet('Uitleg', { properties: { tabColor: { argb: 'FFD4821A' } } });
+      const regels = [
+        ['Zo maak je hier je eigen documentenlijst-sjabloon van', true],
+        [''],
+        ['Vervang het gestippelde vak linksboven door je eigen logo en pas titelblok en opmaak aan naar je huisstijl. Kleuren, lettertypen, randen: alles mag.'],
+        ['De teksten [project naam], [print datum] en [opgesteld door] worden bij elke export automatisch ingevuld. Laat ze staan waar je ze wilt hebben, of verwijder ze.'],
+        ['De kopregel (rij 11) is de kern: dat is de rij waar de cockpit de documenten onder invult. Houd het bij één rij. Kolommen verplaatsen of weggooien mag gewoon.'],
+        ['Eigen kolommen toevoegen (bijvoorbeeld Opmerkingen of Akkoord) mag ook — die laat de export leeg, voor handmatig gebruik.'],
+        ['Deze kolomnamen herkent de cockpit in dit project:'],
+      ];
+      _tplVoorbeeldKolommen().forEach(function(c){
+        const alias = c.k.replace(/_/g, ' ');
+        regels.push(['    •  ' + (c.l || c.k) + (alias.toLowerCase() !== String(c.l || '').toLowerCase() ? '   (ook herkend als: ' + alias + ')' : '')]);
+      });
+      regels.push(['']);
+      regels.push(['Klaar? Sla op als .xlsx (maximaal 600 KB) en upload hem in de Documentenlijst via 📊 Excel → Sjabloon instellen. Het sjabloon geldt alleen voor dat project.']);
+      regels.push(['Dit Uitleg-tabblad mag je daarna gerust verwijderen — de export gebruikt alleen het eerste zichtbare werkblad.']);
+      regels.forEach(function(rij, i){
+        const cel = wsU.getCell(i + 1, 1);
+        cel.value = rij[0];
+        cel.alignment = { wrapText: true, vertical: 'top' };
+        if (rij[1]) cel.font = { bold: true, size: 14, color: { argb: 'FFD4821A' } };
+      });
+      wsU.getColumn(1).width = 110;
+
+      const buf = await wb.xlsx.writeBuffer();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      a.download = 'startersjabloon-documentenlijst.xlsx';
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+      console.log('[DL] startersjabloon gedownload:', _tplVoorbeeldKolommen().length, 'kolommen');
+    } catch(e){
+      console.error('[DL] startersjabloon:', e);
+      alert('Startersjabloon maken mislukt: ' + (e.message || e));
+    }
+  }
+
   async function _tplUploadFile(file){
     if (file.size > 600 * 1024){
       alert('Sjabloon is te groot (' + Math.round(file.size / 1024) + ' KB, maximum 600 KB). Verwijder grote afbeeldingen of tabbladen die niet nodig zijn.');
@@ -11160,7 +11249,7 @@ const DL = (function(){
       if (!ws) throw new Error('geen werkblad gevonden');
       const kop = _tplVindKop(ws);
       if (!kop){
-        alert('Geen kolomkoppen herkend in dit sjabloon.\n\nZet in één rij de kolomnamen die de cockpit kent, bijvoorbeeld: Bestandsnaam, Document nummer, Project fase, Document datum, Revisie, Document status. Daaronder vult de export de documenten in.');
+        alert('Geen kolomkoppen herkend in dit sjabloon.\n\nZet in één rij de kolomnamen die de cockpit kent, bijvoorbeeld: Bestandsnaam, Document nummer, Project fase, Document datum, Revisie, Document status. Daaronder vult de export de documenten in.\n\nTip: download eerst het startersjabloon via deze knop — daar staat de juiste kopregel al in.');
         return;
       }
       const velden = Object.values(kop.kolommen).join(', ');
@@ -11197,6 +11286,8 @@ const DL = (function(){
       items.push('<hr>');
       items.push('<button type="button" data-exp="upload">⬆️ Sjabloon ' + (_tpl ? 'vervangen' : 'instellen') + '…'
         + '<div class="dl-exp-sub">Geldt alleen voor dit project</div></button>');
+      items.push('<button type="button" data-exp="voorbeeld">📄 Startersjabloon downloaden'
+        + '<div class="dl-exp-sub">Basis om je eigen sjabloon op te bouwen</div></button>');
       if (_tpl) items.push('<button type="button" data-exp="del">🗑 Sjabloon verwijderen</button>');
     }
     m.innerHTML = items.join('');
@@ -11217,6 +11308,7 @@ const DL = (function(){
         }
         _exportExcelSjabloon();
       }
+      else if (wat === 'voorbeeld'){ _tplVoorbeeldDownload(); }
       else if (wat === 'upload'){
         const inp = document.createElement('input');
         inp.type = 'file';
